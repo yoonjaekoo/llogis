@@ -68,22 +68,6 @@ export const templates: ProblemTemplate[] = [
       tags: ['일차함수', '계산']
   },
   {
-      title: '확률 기초',
-      template: '1부터 $a$까지 적힌 카드 중 한 장을 뽑을 때, $b$의 배수가 나올 확률은? (분수로 입력, 예: 1/2)',
-      answerFormula: (v) => {
-          const count = Math.floor(v.a / v.b);
-          const gcd = (x: number, y: number): number => y === 0 ? x : gcd(y, x % y);
-          const common = gcd(count, v.a);
-          return `${count/common}/${v.a/common}`;
-      },
-      vars: {
-          a: { min: 10, max: 20 },
-          b: { min: 2, max: 5 }
-      },
-      difficulty: 900,
-      tags: ['확률', '계산']
-  },
-  {
       title: '식의 값 계산',
       template: '$x = a, y = b$ 일 때, $3x - 2y + 5$의 값은?',
       answerFormula: (v) => (3 * v.a - 2 * v.b + 5).toString(),
@@ -123,7 +107,10 @@ export function generateProblem() {
 
   let content = template.template;
   for (const [name, val] of Object.entries(variables)) {
-    content = content.replace(new RegExp(`\\b${name}\\b`, 'g'), val.toString());
+    // Replace variable names. We use a regex that looks for the variable name with a word boundary before it,
+    // and ensuring it's not part of another word (except for 'x' which is the math unknown).
+    const regex = new RegExp(`\\b${name}(?![a-wy-z가-힣])`, 'g');
+    content = content.replace(regex, val.toString());
   }
 
   return {
