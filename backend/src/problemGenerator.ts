@@ -101,7 +101,12 @@ export function generateProblem() {
       variables['b'] = x - y;
   } else {
       for (const [name, range] of Object.entries(template.vars)) {
-        variables[name] = Math.floor(Math.random() * (range.max - range.min + 1)) + range.min;
+        let val = 0;
+        // 0이 되지 않도록 반복 생성 (범위가 0을 포함하는 경우 대비)
+        do {
+            val = Math.floor(Math.random() * (range.max - range.min + 1)) + range.min;
+        } while (val === 0);
+        variables[name] = val;
       }
   }
 

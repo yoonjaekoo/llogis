@@ -12,7 +12,7 @@ const pool = new Pool({
 const engine = new Glicko2Engine();
 
 export const getTier = (rating: number): string => {
-  // 티어 구간을 기하급수적으로 늘려 승급에 필요한 문제 수를 대폭 상향
+  // 레이팅 100배 인플레이션에 맞춰 티어 구간 조정
   if (rating < 100000) return 'Bronze';     // 시작 ~ 10만
   if (rating < 300000) return 'Silver';     // +20만 (약 20문제)
   if (rating < 800000) return 'Gold';       // +50만 (약 50문제)
@@ -23,6 +23,8 @@ export const getTier = (rating: number): string => {
   if (rating < 70000000) return 'God';      // +4000만
   return 'Hacker';
 };
+
+const MAX_RATING = 100000000; // 오버플로우 방지를 위한 최대 레이팅 캡 (1억)
 
 export const processSubmission = async (userId: number, problemId: number, isCorrect: boolean) => {
   const client = await pool.connect();
@@ -72,7 +74,9 @@ export const processSubmission = async (userId: number, problemId: number, isCor
         ratingDiff *= scale;
     }
     
-    const finalRating = currentRating + ratingDiff;
+    // 최종 레이팅 계산 및 범위 제한 (0 ~ 1억)
+    const finalRating = Math.max(0, Math.min(MAX_RATING, currentRating + ratingDiff));
+    const finalProblemDifficulty = Math.max(0, newProblemRatingScaled);
 
     await client.query(
       'UPDATE users SET rating = $1, rating_deviation = $2, volatility = $3 WHERE id = $4',
@@ -81,7 +85,7 @@ export const processSubmission = async (userId: number, problemId: number, isCor
 
     await client.query(
       'UPDATE problems SET current_difficulty = $1 WHERE id = $2',
-      [newProblemRatingScaled, problemId]
+      [finalProblemDifficulty, problemId]
     );
 
     await client.query(
@@ -95,7 +99,7 @@ export const processSubmission = async (userId: number, problemId: number, isCor
         ...newUserRatingRaw,
         rating: finalRating
       }, 
-      newProblemDifficulty: newProblemRatingScaled,
+      newProblemDifficulty: finalProblemDifficulty,
       tier: getTier(finalRating)
     };
   } catch (err) {

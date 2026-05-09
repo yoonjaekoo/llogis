@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
 import './styles/globals.css';
 import 'katex/dist/katex.min.css';
@@ -65,6 +65,7 @@ const Navbar: React.FC<{
       <nav>
         <ul>
           <li><Link to="/">문제</Link></li>
+          <li><Link to="/ranking">랭킹</Link></li>
           {user ? (
             <>
               {user.username === 'admin' && <li><Link to="/admin" style={{ color: '#fab1a0', fontWeight: 800 }}>관리</Link></li>}
@@ -92,15 +93,107 @@ const Navbar: React.FC<{
   </header>
 );
 
+const Ranking: React.FC = () => {
+  const [ranks, setRanks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/users/ranking')
+      .then(res => res.json())
+      .then(data => {
+        setRanks(data);
+        setLoading(false);
+      });
+  }, []);
+
+  const tierColors: { [key: string]: string } = {
+    'Bronze': '#cd7f32',
+    'Silver': '#c0c0c0',
+    'Gold': '#ffd700',
+    'Platinum': '#e5e4e2',
+    'Diamond': '#b9f2ff',
+    'Ruby': '#e0115f',
+    'Master': '#800080',
+    'God': '#ff4500',
+    'Hacker': '#00ff00'
+  };
+
+  if (loading) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>로딩 중...</div>;
+
+  return (
+    <main className="container" style={{ padding: '4rem 0' }}>
+      <div className="problem-card" style={{ maxWidth: '800px', margin: '0 auto' }}>
+        <h2 style={{ fontSize: '2rem', marginBottom: '2rem', textAlign: 'center', color: 'var(--color-4)' }}>실시간 랭킹</h2>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-muted)' }}>
+                <th style={{ padding: '1rem' }}>순위</th>
+                <th style={{ padding: '1rem' }}>사용자</th>
+                <th style={{ padding: '1rem' }}>티어</th>
+                <th style={{ padding: '1rem' }}>레이팅</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ranks.map((u, i) => (
+                <tr key={i} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s' }}>
+                  <td style={{ padding: '1.2rem 1rem', fontWeight: 800 }}>
+                    {i + 1 === 1 ? '🥇' : i + 1 === 2 ? '🥈' : i + 1 === 3 ? '🥉' : i + 1}
+                  </td>
+                  <td style={{ padding: '1.2rem 1rem', fontWeight: 600 }}>{u.username}</td>
+                  <td style={{ padding: '1.2rem 1rem' }}>
+                    <span style={{ 
+                      color: tierColors[u.tier], 
+                      fontWeight: 800, 
+                      fontSize: '0.9rem',
+                      textTransform: 'uppercase' 
+                    }}>
+                      {u.tier}
+                    </span>
+                  </td>
+                  <td style={{ padding: '1.2rem 1rem', fontWeight: 800 }}>{Math.round(u.rating).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  );
+};
+
 const Admin: React.FC<{ user: User | null }> = ({ user }) => {
   const [message, setMessage] = useState('');
+  const [users, setUsers] = useState<any[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
   const navigate = useNavigate();
+
+  const fetchUsers = useCallback(() => {
+    setLoadingUsers(true);
+    const token = localStorage.getItem('token');
+    fetch('/api/admin/users', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => {
+      if (!res.ok) throw new Error('Unauthorized');
+      return res.json();
+    })
+    .then(data => {
+      setUsers(data);
+      setLoadingUsers(false);
+    })
+    .catch(() => {
+      navigate('/');
+    });
+  }, [navigate]);
 
   useEffect(() => {
     if (!user || user.username !== 'admin') {
       navigate('/');
+      return;
     }
-  }, [user, navigate]);
+    fetchUsers();
+  }, [user, navigate, fetchUsers]);
 
   const handleSeed = async () => {
     const token = localStorage.getItem('token');
@@ -110,6 +203,7 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
     });
     const data = await res.json();
     setMessage(data.message || data.error);
+    if (res.ok) fetchUsers();
   };
 
   const handleReset = async () => {
@@ -124,42 +218,135 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
     });
     const data = await res.json();
     setMessage(data.message || data.error);
+    if (res.ok) fetchUsers();
+  };
+
+  const handleDeleteUser = async (userId: number, username: string) => {
+    if (!window.confirm(`정말로 ${username} 계정을 삭제하시겠습니까?`)) return;
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/admin/users/${userId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(data.message);
+      fetchUsers();
+    } else {
+      alert(data.error);
+    }
+  };
+
+  const handleUpdateRating = async (userId: number, currentRating: number) => {
+    const newRatingStr = window.prompt('새로운 레이팅을 입력하세요:', currentRating.toString());
+    if (newRatingStr === null) return;
+    const newRating = parseFloat(newRatingStr);
+    if (isNaN(newRating)) return alert('올바른 숫자를 입력해주세요.');
+
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/admin/users/${userId}/rating`, {
+      method: 'PATCH',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}` 
+      },
+      body: JSON.stringify({ rating: newRating })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(data.message);
+      fetchUsers();
+    } else {
+      alert(data.error);
+    }
   };
 
   return (
     <main className="container" style={{ padding: '4rem 0' }}>
-      <div className="problem-card" style={{ maxWidth: '600px', margin: '0 auto' }}>
-        <h2 style={{ color: 'var(--color-4)', marginBottom: '2rem' }}>관리자 패널</h2>
+      <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+        <h2 style={{ color: 'var(--color-4)', marginBottom: '2rem', fontSize: '2.5rem' }}>관리자 패널</h2>
         
-        <div style={{ marginBottom: '3rem', padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
-          <h3 style={{ marginBottom: '1rem' }}>데이터 관리</h3>
-          <p style={{ marginBottom: '1.5rem', opacity: 0.8 }}>데이터베이스에 새로운 문제 10개를 생성하여 추가합니다.</p>
-          <button onClick={handleSeed} className="btn" style={{ background: 'var(--color-2)', color: 'white', width: '100%' }}>
-            문제 10개 추가 생성
-          </button>
-        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '3rem' }}>
+          <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
+            <h3 style={{ marginBottom: '1rem' }}>데이터 관리</h3>
+            <p style={{ marginBottom: '1.5rem', opacity: 0.8 }}>데이터베이스에 새로운 문제 10개를 생성하여 추가합니다.</p>
+            <button onClick={handleSeed} className="btn" style={{ background: 'var(--color-2)', color: 'white' }}>
+              문제 10개 추가 생성
+            </button>
+          </div>
 
-        <div style={{ marginBottom: '2rem', padding: '1.5rem', background: 'rgba(255, 118, 117, 0.1)', border: '1px solid #ff7675', borderRadius: '1rem' }}>
-          <h3 style={{ marginBottom: '1rem', color: '#ff7675' }}>위험 구역</h3>
-          <p style={{ marginBottom: '1.5rem', opacity: 0.8 }}>모든 문제와 사용자의 제출 기록을 삭제하고 초기화합니다.</p>
-          <button onClick={handleReset} className="btn" style={{ background: '#ff7675', color: 'white', width: '100%' }}>
-            데이터베이스 초기화
-          </button>
+          <div style={{ padding: '1.5rem', background: 'rgba(255, 118, 117, 0.1)', border: '1px solid #ff7675', borderRadius: '1rem' }}>
+            <h3 style={{ marginBottom: '1rem', color: '#ff7675' }}>위험 구역</h3>
+            <p style={{ marginBottom: '1.5rem', opacity: 0.8 }}>모든 문제와 사용자의 제출 기록을 삭제하고 초기화합니다.</p>
+            <button onClick={handleReset} className="btn" style={{ background: '#ff7675', color: 'white' }}>
+              데이터베이스 초기화
+            </button>
+          </div>
         </div>
 
         {message && (
           <div style={{ 
-            padding: '1rem', 
-            background: 'var(--card-bg)', 
-            border: '1px solid var(--border)', 
-            borderRadius: '0.5rem',
-            color: 'var(--color-3)',
-            fontWeight: 600,
-            textAlign: 'center'
+            padding: '1rem', background: 'var(--card-bg)', border: '1px solid var(--border)', 
+            borderRadius: '0.5rem', color: 'var(--color-3)', fontWeight: 600, textAlign: 'center', marginBottom: '2rem'
           }}>
             {message}
           </div>
         )}
+
+        <div className="problem-card" style={{ margin: 0 }}>
+          <h3 style={{ marginBottom: '1.5rem' }}>사용자 관리 ({users.length})</h3>
+          {loadingUsers ? <p>사용자 목록 로딩 중...</p> : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-muted)' }}>
+                    <th style={{ padding: '1rem' }}>순위</th>
+                    <th style={{ padding: '1rem' }}>사용자</th>
+                    <th style={{ padding: '1rem' }}>레이팅</th>
+                    <th style={{ padding: '1rem' }}>정답수</th>
+                    <th style={{ padding: '1rem' }}>관리</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((u, i) => (
+                    <tr key={u.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '1rem', fontWeight: 800 }}>{i + 1}</td>
+                      <td style={{ padding: '1rem' }}>
+                        <div style={{ fontWeight: 800 }}>{u.username}</div>
+                        <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>{u.email}</div>
+                      </td>
+                      <td style={{ padding: '1rem' }}>
+                        <div style={{ fontWeight: 800 }}>{Math.round(u.rating).toLocaleString()}</div>
+                        <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>{u.tier}</div>
+                      </td>
+                      <td style={{ padding: '1rem' }}>{u.correct_submissions} / {u.total_submissions}</td>
+                      <td style={{ padding: '1rem' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button 
+                            onClick={() => handleUpdateRating(u.id, u.rating)}
+                            className="btn" 
+                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: 'var(--color-3)', color: 'white' }}
+                          >
+                            수정
+                          </button>
+                          {u.username !== 'admin' && (
+                            <button 
+                              onClick={() => handleDeleteUser(u.id, u.username)}
+                              className="btn" 
+                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: '#ff7675', color: 'white' }}
+                            >
+                              삭제
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </main>
   );
@@ -167,6 +354,9 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
 
 const Profile: React.FC<{ user: User | null }> = ({ user }) => {
   const [profileData, setProfileData] = useState<any>(null);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -182,6 +372,28 @@ const Profile: React.FC<{ user: User | null }> = ({ user }) => {
     .then(res => res.json())
     .then(data => setProfileData(data));
   }, [user, navigate]);
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = localStorage.getItem('token');
+    const res = await fetch('/api/users/change-password', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ currentPassword, newPassword })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert('비밀번호가 성공적으로 변경되었습니다.');
+      setCurrentPassword('');
+      setNewPassword('');
+      setIsChangingPassword(false);
+    } else {
+      alert(data.error);
+    }
+  };
 
   if (!profileData) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>로딩 중...</div>;
 
@@ -245,8 +457,58 @@ const Profile: React.FC<{ user: User | null }> = ({ user }) => {
           </div>
         </div>
 
-        <div style={{ textAlign: 'left', opacity: 0.6, fontSize: '0.9rem' }}>
+        <div style={{ textAlign: 'left', opacity: 0.6, fontSize: '0.9rem', marginBottom: '3rem' }}>
           가입일: {new Date(u.created_at).toLocaleDateString()}
+        </div>
+
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
+          <button 
+            onClick={() => setIsChangingPassword(!isChangingPassword)}
+            style={{ 
+              background: 'none', 
+              border: 'none', 
+              color: 'var(--color-3)', 
+              cursor: 'pointer', 
+              fontWeight: 800,
+              fontSize: '1rem' 
+            }}
+          >
+            {isChangingPassword ? '취소' : '비밀번호 변경하기'}
+          </button>
+
+          {isChangingPassword && (
+            <form onSubmit={handleChangePassword} style={{ marginTop: '1.5rem', maxWidth: '400px', margin: '1.5rem auto 0' }}>
+              <input 
+                type="password" 
+                placeholder="현재 비밀번호" 
+                value={currentPassword} 
+                onChange={e => setCurrentPassword(e.target.value)} 
+                style={{ 
+                  width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', 
+                  background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '0.75rem' 
+                }}
+                required 
+              />
+              <input 
+                type="password" 
+                placeholder="새 비밀번호" 
+                value={newPassword} 
+                onChange={e => setNewPassword(e.target.value)} 
+                style={{ 
+                  width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', 
+                  background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '1rem' 
+                }}
+                required 
+              />
+              <button 
+                type="submit" 
+                className="btn" 
+                style={{ background: 'var(--color-4)', color: 'white' }}
+              >
+                변경 확인
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </main>
@@ -317,28 +579,19 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
         
         // Remove the solved problem
         const remainingProblems = problems.filter(p => p.id !== problemId);
-        
-        // Automatically generate a new one to keep the list full
-        fetch('/api/problems/generate', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
-        .then(res => res.json())
-        .then(genData => {
-          const updatedProblems = [...remainingProblems, ...genData.problems];
-          setProblems(updatedProblems);
-          if (updatedProblems.length > 0) {
-            // Select the next problem in the list or the newly generated one
-            const nextIndex = problems.findIndex(p => p.id === problemId);
-            if (nextIndex < updatedProblems.length) {
-                setSelectedProblemId(updatedProblems[nextIndex].id);
-            } else {
-                setSelectedProblemId(updatedProblems[0].id);
-            }
+        setProblems(remainingProblems);
+
+        if (remainingProblems.length > 0) {
+          // Select the next problem in the list
+          const nextIndex = problems.findIndex(p => p.id === problemId);
+          if (nextIndex < remainingProblems.length) {
+            setSelectedProblemId(remainingProblems[nextIndex].id);
           } else {
-            setSelectedProblemId(null);
+            setSelectedProblemId(remainingProblems[0].id);
           }
-        });
+        } else {
+          setSelectedProblemId(null);
+        }
       } else {
         alert(`아쉽네요, 틀렸습니다. 🧐\n레이팅 변화: ${Math.round(user.rating)} → ${Math.round(data.newUserRating.rating)}`);
       }
@@ -548,6 +801,7 @@ const App: React.FC = () => {
       <Navbar user={user} onLogout={handleLogout} theme={theme} toggleTheme={toggleTheme} />
       <Routes>
         <Route path="/" element={<ProblemList user={user} setUser={setUser} />} />
+        <Route path="/ranking" element={<Ranking />} />
         <Route path="/login" element={<Login onLogin={handleLogin} />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/profile" element={<Profile user={user} />} />

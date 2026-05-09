@@ -113,6 +113,46 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
   }
 });
 
+app.post('/api/users/change-password', authenticateToken, async (req: any, res: Response) => {
+  const { currentPassword, newPassword } = req.body;
+  const userId = req.user.id;
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Both current and new passwords are required' });
+  }
+
+  try {
+    const userResult = await pool.query('SELECT password_hash FROM users WHERE id = $1', [userId]);
+    const user = userResult.rows[0];
+
+    if (!user || !(await bcrypt.compare(currentPassword, user.password_hash))) {
+      return res.status(401).json({ error: 'Invalid current password' });
+    }
+
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashedNewPassword, userId]);
+
+    res.json({ message: 'Password changed successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to change password' });
+  }
+});
+
+app.get('/api/users/ranking', async (req: Request, res: Response) => {
+  try {
+    const result = await pool.query(
+      'SELECT username, rating FROM users ORDER BY rating DESC LIMIT 50'
+    );
+    const users = result.rows.map(u => ({
+      ...u,
+      tier: getTier(u.rating)
+    }));
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch ranking' });
+  }
+});
+
 app.get('/api/problems', async (req: Request, res: Response) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -190,7 +230,8 @@ app.post('/api/problems/generate', authenticateToken, async (req: Request, res: 
           await pool.query('INSERT INTO problem_tags (problem_id, tag_id) VALUES ($1, $2)', [problemId, tagRes.rows[0].id]);
         }
       }
-      newProblems.push({ id: problemId, ...p });
+      const { answer, ...problemWithoutAnswer } = p;
+      newProblems.push({ id: problemId, ...problemWithoutAnswer });
     }
     res.json({ message: '5 new problems generated!', problems: newProblems });
   } catch (err) {
@@ -204,13 +245,25 @@ app.post('/api/submissions', authenticateToken, async (req: any, res: any) => {
   const userId = req.user.id;
 
   try {
+    // 이미 맞힌 문제인지 확인
+    const existingSubmission = await pool.query(
+      'SELECT id FROM submissions WHERE user_id = $1 AND problem_id = $2 AND is_correct = true',
+      [userId, problemId]
+    );
+
+    if (existingSubmission.rows.length > 0) {
+      return res.status(400).json({ error: 'Already solved this problem correctly!' });
+    }
+
     // DB에서 실제 정답 가져오기
     const problemRes = await pool.query('SELECT answer FROM problems WHERE id = $1', [problemId]);
     if (problemRes.rows.length === 0) return res.status(404).json({ error: 'Problem not found' });
 
     const correctAnswer = problemRes.rows[0].answer;
-    // 공백 제거 및 소문자 변환 후 비교
-    const isCorrect = userAnswer.trim().toLowerCase() === correctAnswer.trim().toLowerCase();
+    // 공백 전체 제거 및 소문자 변환 후 비교 (더 견고한 체크)
+    const normalizedUserAnswer = userAnswer.replace(/\s+/g, '').toLowerCase();
+    const normalizedCorrectAnswer = correctAnswer.replace(/\s+/g, '').toLowerCase();
+    const isCorrect = normalizedUserAnswer === normalizedCorrectAnswer;
 
     const updateResult = await processSubmission(userId, problemId, isCorrect);
     res.json({ 
@@ -254,6 +307,63 @@ app.post('/api/admin/reset', authenticateToken, async (req: any, res: Response) 
     res.json({ message: 'Database reset successfully (all problems and submissions cleared)' });
   } catch (err) {
     res.status(500).json({ error: 'Database reset failed' });
+  }
+});
+
+// --- User Management Admin APIs ---
+
+app.get('/api/admin/users', authenticateToken, async (req: any, res: Response) => {
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  
+  try {
+    const result = await pool.query(`
+      SELECT u.id, u.username, u.email, u.rating, u.created_at,
+             COUNT(s.id) as total_submissions,
+             SUM(CASE WHEN s.is_correct THEN 1 ELSE 0 END) as correct_submissions
+      FROM users u
+      LEFT JOIN submissions s ON u.id = s.user_id
+      GROUP BY u.id
+      ORDER BY u.rating DESC
+    `);
+    const users = result.rows.map(u => ({
+      ...u,
+      tier: getTier(parseFloat(u.rating)),
+      total_submissions: parseInt(u.total_submissions),
+      correct_submissions: parseInt(u.correct_submissions || 0)
+    }));
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+app.patch('/api/admin/users/:id/rating', authenticateToken, async (req: any, res: Response) => {
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const { id } = req.params;
+  const { rating } = req.body;
+  
+  try {
+    const result = await pool.query(
+      'UPDATE users SET rating = $1 WHERE id = $2 RETURNING id, username, rating',
+      [rating, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    res.json({ message: 'Rating updated successfully', user: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update rating' });
+  }
+});
+
+app.delete('/api/admin/users/:id', authenticateToken, async (req: any, res: Response) => {
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const { id } = req.params;
+  
+  try {
+    const result = await pool.query('DELETE FROM users WHERE id = $1 RETURNING id, username', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    res.json({ message: `User ${result.rows[0].username} deleted successfully` });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete user' });
   }
 });
 
