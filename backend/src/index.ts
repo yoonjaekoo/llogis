@@ -229,11 +229,6 @@ app.post('/api/admin/seed', authenticateToken, async (req: any, res: Response) =
   if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
   
   try {
-    const countRes = await pool.query('SELECT COUNT(*) FROM problems');
-    if (parseInt(countRes.rows[0].count) > 0) {
-        return res.json({ message: 'Database already has problems' });
-    }
-
     // Trigger generation of 10 problems
     const generated = [];
     for (let i = 0; i < 10; i++) {
@@ -244,9 +239,21 @@ app.post('/api/admin/seed', authenticateToken, async (req: any, res: Response) =
         );
         generated.push(result.rows[0].id);
     }
-    res.json({ message: 'Seeded 10 problems', ids: generated });
+    res.json({ message: '10 problems added successfully', ids: generated });
   } catch (err) {
     res.status(500).json({ error: 'Seeding failed' });
+  }
+});
+
+app.post('/api/admin/reset', authenticateToken, async (req: any, res: Response) => {
+  // Simple check if user is 'admin'
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  
+  try {
+    await pool.query('TRUNCATE problems, submissions RESTART IDENTITY CASCADE');
+    res.json({ message: 'Database reset successfully (all problems and submissions cleared)' });
+  } catch (err) {
+    res.status(500).json({ error: 'Database reset failed' });
   }
 });
 

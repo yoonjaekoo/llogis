@@ -112,16 +112,41 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
     setMessage(data.message || data.error);
   };
 
+  const handleReset = async () => {
+    if (!window.confirm('정말로 모든 문제와 제출 기록을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+      return;
+    }
+
+    const token = localStorage.getItem('token');
+    const res = await fetch('/api/admin/reset', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    setMessage(data.message || data.error);
+  };
+
   return (
     <main className="container" style={{ padding: '4rem 0' }}>
       <div className="problem-card" style={{ maxWidth: '600px', margin: '0 auto' }}>
         <h2 style={{ color: 'var(--color-4)', marginBottom: '2rem' }}>관리자 패널</h2>
-        <div style={{ marginBottom: '2rem' }}>
-          <p style={{ marginBottom: '1rem' }}>데이터베이스에 초기 문제를 생성합니다.</p>
-          <button onClick={handleSeed} className="btn" style={{ background: 'var(--color-2)', color: 'white' }}>
-            문제 시딩 (Seed Problems)
+        
+        <div style={{ marginBottom: '3rem', padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
+          <h3 style={{ marginBottom: '1rem' }}>데이터 관리</h3>
+          <p style={{ marginBottom: '1.5rem', opacity: 0.8 }}>데이터베이스에 새로운 문제 10개를 생성하여 추가합니다.</p>
+          <button onClick={handleSeed} className="btn" style={{ background: 'var(--color-2)', color: 'white', width: '100%' }}>
+            문제 10개 추가 생성
           </button>
         </div>
+
+        <div style={{ marginBottom: '2rem', padding: '1.5rem', background: 'rgba(255, 118, 117, 0.1)', border: '1px solid #ff7675', borderRadius: '1rem' }}>
+          <h3 style={{ marginBottom: '1rem', color: '#ff7675' }}>위험 구역</h3>
+          <p style={{ marginBottom: '1.5rem', opacity: 0.8 }}>모든 문제와 사용자의 제출 기록을 삭제하고 초기화합니다.</p>
+          <button onClick={handleReset} className="btn" style={{ background: '#ff7675', color: 'white', width: '100%' }}>
+            데이터베이스 초기화
+          </button>
+        </div>
+
         {message && (
           <div style={{ 
             padding: '1rem', 
@@ -129,7 +154,8 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
             border: '1px solid var(--border)', 
             borderRadius: '0.5rem',
             color: 'var(--color-3)',
-            fontWeight: 600
+            fontWeight: 600,
+            textAlign: 'center'
           }}>
             {message}
           </div>
