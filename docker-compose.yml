@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-mathuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-mathpass}
+      POSTGRES_DB: ${DB_NAME:-math_solved}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+
+  backend:
+    build: ./backend
+    restart: always
+    environment:
+      PORT: 5000
+      DB_HOST: db
+      DB_USER: ${DB_USER:-mathuser}
+      DB_PASSWORD: ${DB_PASSWORD:-mathpass}
+      DB_NAME: ${DB_NAME:-math_solved}
+      DB_PORT: 5432
+    ports:
+      - "5000:5000"
+    depends_on:
+      - db
+
+  frontend:
+    build: ./frontend
+    restart: always
+    ports:
+      - "1972:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

@@ -1,0 +1,235 @@
+:root {
+  /* User Provided Vibrant Palette */
+  --color-1: #f87575; /* Vibrant Coral/Pink */
+  --color-2: #ffa9a3; /* Soft Peach/Pink */
+  --color-3: #b9e6ff; /* Light Sky Blue */
+  --color-4: #5c95ff; /* Vibrant Royal Blue */
+
+  /* Light Theme Mapping */
+  --bg-color: #f0f7ff;
+  --text-main: #2d3436;
+  --text-muted: #636e72;
+  --card-bg: #ffffff;
+  --card-shadow: 0 8px 20px rgba(92, 149, 255, 0.1);
+  --nav-bg: var(--color-4);
+  --primary: var(--color-4);
+  --accent: var(--color-1);
+  --border: #dff0ff;
+  --transition: all 0.25s ease-out;
+}
+
+[data-theme='dark'] {
+  /* Dark Theme Mapping */
+  --bg-color: #0a101e;
+  --text-main: #e1e8f5;
+  --text-muted: var(--color-3);
+  --card-bg: #161f32;
+  --card-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+  --nav-bg: #0d1425;
+  --border: #243352;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Pretendard', -apple-system, sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  transition: var(--transition);
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+/* Header & Nav */
+header {
+  background-color: var(--nav-bg);
+  color: white;
+  padding: 1.25rem 0;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+header h1 a {
+  color: white !important;
+  font-weight: 900;
+  font-size: 1.8rem;
+  letter-spacing: -1.5px;
+  text-decoration: none;
+}
+
+nav ul {
+  list-style: none;
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+}
+
+nav a {
+  color: var(--color-3);
+  text-decoration: none;
+  font-weight: 700;
+  transition: var(--transition);
+}
+
+nav a:hover {
+  color: white;
+}
+
+/* Problem Cards */
+.problem-list {
+  padding: 3rem 0;
+}
+
+.problem-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  padding: 2.25rem;
+  margin-bottom: 2rem;
+  box-shadow: var(--card-shadow);
+  transition: var(--transition);
+}
+
+.problem-card:hover {
+  border-color: var(--color-3);
+  transform: translateY(-5px);
+}
+
+.difficulty-badge {
+  background: var(--color-3);
+  color: var(--color-4);
+  padding: 0.5rem 1.2rem;
+  border-radius: 1rem;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.math-content {
+  font-size: 1.4rem;
+  padding: 2rem 0;
+  color: var(--text-main);
+  text-align: center;
+  min-height: 80px;
+  display: block; /* Change from flex to block to allow BlockMath own centering */
+}
+
+.block-math-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin: 1.5rem 0;
+}
+
+.katex-display {
+  margin: 0 !important;
+}
+
+.answer-input {
+  width: 100%;
+  padding: 1rem;
+  border: 2px solid var(--border);
+  border-radius: 1rem;
+  font-size: 1.1rem;
+  background: var(--bg-color);
+  color: var(--text-main);
+  box-sizing: border-box;
+  transition: var(--transition);
+  text-align: center;
+  margin-bottom: 0.75rem;
+}
+
+.answer-input:focus {
+  border-color: var(--color-4);
+  outline: none;
+  box-shadow: 0 0 15px rgba(92, 149, 255, 0.2);
+}
+
+/* Buttons */
+.btn {
+  padding: 1rem 2rem;
+  border-radius: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+  border: none;
+  transition: var(--transition);
+  font-size: 1.05rem;
+  width: 100%;
+}
+
+.btn-solve { 
+  background-color: var(--color-4); 
+  color: white;
+  box-shadow: 0 4px 15px rgba(92, 149, 255, 0.3);
+}
+.btn-solve:hover { 
+  background-color: #4a84f0;
+  transform: scale(1.02);
+}
+
+.theme-toggle {
+  background: rgba(255,255,255,0.15);
+  border: 2px solid var(--color-3);
+  color: white;
+  padding: 0.5rem 0.8rem;
+  border-radius: 1rem;
+  cursor: pointer;
+  font-size: 1.2rem;
+}
+
+/* Auth Forms */
+.auth-form {
+  max-width: 400px;
+  background: var(--card-bg);
+  padding: 3rem;
+  border-radius: 1.5rem;
+  margin: 4rem auto;
+  box-shadow: var(--card-shadow);
+  border: 1px solid var(--border);
+  border-top: 6px solid var(--color-4);
+}
+
+.auth-form h2 {
+  margin-top: 0;
+  margin-bottom: 2rem;
+  text-align: center;
+  color: var(--color-4);
+  font-weight: 900;
+}
+
+.auth-form input {
+  width: 100%;
+  padding: 1rem;
+  margin-bottom: 1.25rem;
+  border: 2px solid var(--border);
+  border-radius: 1rem;
+  background: var(--bg-color);
+  color: var(--text-main);
+  box-sizing: border-box;
+  font-size: 1rem;
+}
+
+.auth-form button {
+  width: 100%;
+  padding: 1rem;
+  background-color: var(--color-4);
+  color: white;
+  border: none;
+  border-radius: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+  font-size: 1.1rem;
+}
+
+/* KaTeX Dark Mode */
+[data-theme='dark'] .katex {
+  color: white;
+}
