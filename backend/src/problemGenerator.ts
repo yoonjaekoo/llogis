@@ -4,7 +4,6 @@ export interface ProblemTemplate {
   template: string;
   answerFormula: (vars: { [key: string]: number }) => string;
   vars: { [key: string]: { min: number; max: number } };
-  difficulty: number;
   tags: string[];
 }
 
@@ -18,7 +17,6 @@ export const templates: ProblemTemplate[] = [
       b: { min: 1, max: 20 },
       c: { min: 21, max: 50 }
     },
-    difficulty: 700,
     tags: ['일차방정식', '계산']
   },
   {
@@ -29,7 +27,6 @@ export const templates: ProblemTemplate[] = [
       a: { min: 10, max: 50 },
       b: { min: 2, max: 10 }
     },
-    difficulty: 900,
     tags: ['연립방정식', '계산']
   },
   {
@@ -41,7 +38,6 @@ export const templates: ProblemTemplate[] = [
       b: { min: 2, max: 5 },
       c: { min: 6, max: 12 }
     },
-    difficulty: 800,
     tags: ['지수법칙', '계산']
   },
   {
@@ -52,7 +48,6 @@ export const templates: ProblemTemplate[] = [
       a: { min: 30, max: 80 },
       b: { min: 30, max: 80 }
     },
-    difficulty: 650,
     tags: ['도형', '계산']
   },
   {
@@ -64,7 +59,6 @@ export const templates: ProblemTemplate[] = [
           b: { min: -10, max: 10 },
           c: { min: -5, max: 5 }
       },
-      difficulty: 850,
       tags: ['일차함수', '계산']
   },
   {
@@ -75,7 +69,6 @@ export const templates: ProblemTemplate[] = [
           a: { min: -10, max: 10 },
           b: { min: -10, max: 10 }
       },
-      difficulty: 750,
       tags: ['식의계산', '계산']
   }
 ];
@@ -122,7 +115,6 @@ export function generateProblem() {
     title: template.title,
     content,
     answer: template.answerFormula(variables),
-    difficulty: template.difficulty,
     tags: template.tags
   };
 }

@@ -33,59 +33,20 @@ export const processSubmission = async (userId: number, problemId: number, isCor
     await client.query('BEGIN');
 
     const userRes = await client.query(
-      'SELECT rating, rating_deviation as rd, volatility FROM users WHERE id = $1 FOR UPDATE',
+      'SELECT rating FROM users WHERE id = $1 FOR UPDATE',
       [userId]
     );
     
-    const problemRes = await client.query(
-      'SELECT current_difficulty as rating FROM problems WHERE id = $1 FOR UPDATE',
-      [problemId]
-    );
-
-    if (userRes.rows.length === 0 || problemRes.rows.length === 0) {
-      throw new Error('User or Problem not found');
+    if (userRes.rows.length === 0) {
+      throw new Error('User not found');
     }
 
     const currentRating = parseFloat(userRes.rows[0].rating);
-    
-    const userData: Rating = {
-      rating: currentRating / 100,
-      rd: parseFloat(userRes.rows[0].rd),
-      volatility: parseFloat(userRes.rows[0].volatility),
-    };
-
-    const problemData: Rating = {
-      rating: parseFloat(problemRes.rows[0].rating) / 100,
-      rd: 100,
-      volatility: 0.06,
-    };
-
-    const result = isCorrect ? 1.0 : 0.0;
-    const newUserRatingRaw = engine.updateRating(userData, problemData, result);
-    
-    const newUserRatingScaled = newUserRatingRaw.rating * 100;
-    const newProblemRatingScaled = engine.updateRating(problemData, userData, 1.0 - result).rating * 100;
-
-    // 고레벨일수록 성장이 훨씬 더디게 느껴지도록 보정치 강화
-    let ratingDiff = newUserRatingScaled - currentRating;
-    if (ratingDiff > 0) {
-        // 50만점까지는 거의 그대로 상승, 그 이후부터는 상승폭이 급격히 감소
-        const scale = 1.0 / (1.0 + Math.pow(Math.max(0, currentRating - 500000) / 1000000, 2));
-        ratingDiff *= scale;
-    }
-    
-    // 최종 레이팅 계산 및 범위 제한 (0 ~ 1억)
-    const finalRating = Math.max(0, Math.min(MAX_RATING, currentRating + ratingDiff));
-    const finalProblemDifficulty = Math.max(0, newProblemRatingScaled);
+    const finalRating = isCorrect ? Math.min(MAX_RATING, currentRating + 10000) : currentRating;
 
     await client.query(
-      'UPDATE users SET rating = $1, rating_deviation = $2, volatility = $3 WHERE id = $4',
-      [finalRating, newUserRatingRaw.rd, newUserRatingRaw.volatility, userId]
-    );
-
-    await client.query(
-      'UPDATE problems SET current_difficulty = $1 WHERE id = $2',
-      [finalProblemDifficulty, problemId]
+      'UPDATE users SET rating = $1 WHERE id = $2',
+      [finalRating, userId]
     );
 
     await client.query(
@@ -95,11 +56,7 @@ export const processSubmission = async (userId: number, problemId: number, isCor
 
     await client.query('COMMIT');
     return { 
-      newUserRating: {
-        ...newUserRatingRaw,
-        rating: finalRating
-      }, 
-      newProblemDifficulty: finalProblemDifficulty,
+      newUserRating: finalRating,
       tier: getTier(finalRating)
     };
   } catch (err) {

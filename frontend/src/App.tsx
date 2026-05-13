@@ -51,6 +51,64 @@ const renderMath = (content: any) => {
 
 // --- Components ---
 
+// ... (keep imports)
+
+// --- About Component ---
+const About: React.FC<{ user: User | null }> = ({ user }) => {
+  const tiers = [
+    { name: 'Bronze', threshold: '0' },
+    { name: 'Silver', threshold: '100,000' },
+    { name: 'Gold', threshold: '300,000' },
+    { name: 'Platinum', threshold: '800,000' },
+    { name: 'Diamond', threshold: '2,000,000' },
+    { name: 'Ruby', threshold: '5,000,000' },
+    { name: 'Master', threshold: '12,000,000' },
+    { name: 'God', threshold: '30,000,000' },
+    { name: 'Hacker', threshold: '70,000,000' }
+  ];
+
+  return (
+    <main className="container" style={{ padding: '4rem 0', maxWidth: '800px' }}>
+      <div className="problem-card" style={{ textAlign: 'center' }}>
+        <h2 style={{ color: 'var(--color-4)', marginBottom: '1.5rem' }}>About Logis</h2>
+        <p style={{ marginBottom: '2rem' }}>수학 문제를 풀고 레이팅을 올리는 재미있는 수학 학습 플랫폼입니다.</p>
+        
+        <div style={{ marginBottom: '2rem' }}>
+          <h3 style={{ marginBottom: '1rem' }}>랭크 기준</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '2rem', textAlign: 'center' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                <th style={{ padding: '0.8rem' }}>랭크</th>
+                <th style={{ padding: '0.8rem' }}>레이팅 기준</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tiers.map(t => (
+                <tr key={t.name} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '0.8rem', fontWeight: 800 }}>{t.name}</td>
+                  <td style={{ padding: '0.8rem' }}>{t.threshold}+</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ marginBottom: '2rem' }}>
+          <h3 style={{ marginBottom: '0.5rem' }}>Contributors</h3>
+          <p>yoonjaekoo, 13ksh</p>
+        </div>
+
+        {user && (
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+            <h3 style={{ marginBottom: '0.5rem' }}>내 랭크 및 레이팅</h3>
+            <p style={{ fontSize: '1.2rem', fontWeight: 800 }}>{user.tier} Rank, {Math.round(user.rating).toLocaleString()}</p>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+};
+
 const Navbar: React.FC<{ 
   user: User | null; 
   onLogout: () => void; 
@@ -66,6 +124,7 @@ const Navbar: React.FC<{
         <ul>
           <li><Link to="/">문제</Link></li>
           <li><Link to="/ranking">랭킹</Link></li>
+          <li><Link to="/about">소개</Link></li>
           {user ? (
             <>
               {user.username === 'admin' && <li><Link to="/admin" style={{ color: '#fab1a0', fontWeight: 800 }}>관리</Link></li>}
@@ -92,6 +151,9 @@ const Navbar: React.FC<{
     </div>
   </header>
 );
+
+// [ ... continue with updated components without difficulty displays ... ]
+
 
 const Ranking: React.FC = () => {
   const [ranks, setRanks] = useState<any[]>([]);
@@ -630,7 +692,6 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
               }}
             >
               {p.title}
-              <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>Lv.{Math.round(p.current_difficulty)}</div>
             </div>
           ))}
           {problems.length === 0 && (
@@ -665,7 +726,6 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
           <div className="problem-card" style={{ margin: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
               <h3 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--color-4)' }}>{selectedProblem.title}</h3>
-              <span className="difficulty-badge">{Math.round(selectedProblem.current_difficulty)}</span>
             </div>
             <div className="math-content" style={{ fontSize: '1.8rem' }}>
               {renderMath(selectedProblem.content)}
@@ -802,6 +862,7 @@ const App: React.FC = () => {
       <Routes>
         <Route path="/" element={<ProblemList user={user} setUser={setUser} />} />
         <Route path="/ranking" element={<Ranking />} />
+        <Route path="/about" element={<About user={user} />} />
         <Route path="/login" element={<Login onLogin={handleLogin} />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/profile" element={<Profile user={user} />} />
