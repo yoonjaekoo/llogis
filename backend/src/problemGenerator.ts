@@ -5,6 +5,7 @@ export interface ProblemTemplate {
   answerFormula: (vars: { [key: string]: number }) => string;
   vars: { [key: string]: { min: number; max: number } };
   tags: string[];
+  difficulty: number;
 }
 
 export const templates: ProblemTemplate[] = [
@@ -17,7 +18,8 @@ export const templates: ProblemTemplate[] = [
       b: { min: 1, max: 20 },
       c: { min: 21, max: 50 }
     },
-    tags: ['일차방정식', '계산']
+    tags: ['일차방정식', '계산'],
+    difficulty: 65000
   },
   {
     title: '연립방정식 연습',
@@ -27,7 +29,8 @@ export const templates: ProblemTemplate[] = [
       a: { min: 10, max: 50 },
       b: { min: 2, max: 10 }
     },
-    tags: ['연립방정식', '계산']
+    tags: ['연립방정식', '계산'],
+    difficulty: 85000
   },
   {
     title: '지수법칙 곱셈',
@@ -38,7 +41,8 @@ export const templates: ProblemTemplate[] = [
       b: { min: 2, max: 5 },
       c: { min: 6, max: 12 }
     },
-    tags: ['지수법칙', '계산']
+    tags: ['지수법칙', '계산'],
+    difficulty: 80000
   },
   {
     title: '삼각형의 내각',
@@ -48,7 +52,8 @@ export const templates: ProblemTemplate[] = [
       a: { min: 30, max: 80 },
       b: { min: 30, max: 80 }
     },
-    tags: ['도형', '계산']
+    tags: ['도형', '계산'],
+    difficulty: 70000
   },
   {
       title: '일차함수 함숫값',
@@ -59,7 +64,8 @@ export const templates: ProblemTemplate[] = [
           b: { min: -10, max: 10 },
           c: { min: -5, max: 5 }
       },
-      tags: ['일차함수', '계산']
+      tags: ['일차함수', '계산'],
+      difficulty: 82000
   },
   {
       title: '식의 값 계산',
@@ -69,7 +75,8 @@ export const templates: ProblemTemplate[] = [
           a: { min: -10, max: 10 },
           b: { min: -10, max: 10 }
       },
-      tags: ['식의계산', '계산']
+      tags: ['식의계산', '계산'],
+      difficulty: 75000
   }
 ];
 
@@ -115,6 +122,7 @@ export function generateProblem() {
     title: template.title,
     content,
     answer: template.answerFormula(variables),
+    difficulty: template.difficulty,
     tags: template.tags
   };
 }
