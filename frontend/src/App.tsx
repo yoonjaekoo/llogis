@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useParams } from 'react-router-dom';
 import './styles/globals.css';
 import 'katex/dist/katex.min.css';
 import { InlineMath, BlockMath } from 'react-katex';
@@ -166,7 +166,11 @@ const Groups: React.FC<{ user: User | null }> = ({ user }) => {
   const navigate = useNavigate();
 
   const fetchGroups = useCallback(() => {
-    fetch('/api/groups')
+    const token = localStorage.getItem('token');
+    const headers: any = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    fetch('/api/groups', { headers })
       .then(res => res.json())
       .then(data => {
         setGroups(data);
@@ -204,7 +208,8 @@ const Groups: React.FC<{ user: User | null }> = ({ user }) => {
     }
   };
 
-  const handleJoin = async (groupId: number) => {
+  const handleJoin = async (e: React.MouseEvent, groupId: number) => {
+    e.stopPropagation();
     if (!user) return navigate('/login');
     const token = localStorage.getItem('token');
     const res = await fetch(`/api/groups/${groupId}/join`, {
@@ -228,8 +233,11 @@ const Groups: React.FC<{ user: User | null }> = ({ user }) => {
     <main className="container" style={{ padding: '4rem 0' }}>
       <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-          <h2 style={{ color: 'var(--color-4)', fontSize: '2.5rem' }}>유저 그룹</h2>
-          {isSilverPlus && (
+          <div>
+            <h2 style={{ color: 'var(--color-4)', fontSize: '2.5rem', marginBottom: '0.5rem' }}>유저 그룹</h2>
+            <p style={{ opacity: 0.7 }}>다른 유저들과 함께 학습하고 경쟁해보세요.</p>
+          </div>
+          {isSilverPlus ? (
             <button 
               onClick={() => setShowCreate(!showCreate)} 
               className="btn" 
@@ -237,6 +245,10 @@ const Groups: React.FC<{ user: User | null }> = ({ user }) => {
             >
               {showCreate ? '취소' : '그룹 만들기'}
             </button>
+          ) : (
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', textAlign: 'right' }}>
+              그룹 생성은 <b>Silver</b> 티어 이상부터 가능합니다.
+            </div>
           )}
         </div>
 
@@ -265,19 +277,127 @@ const Groups: React.FC<{ user: User | null }> = ({ user }) => {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
           {groups.map(g => (
-            <div key={g.id} className="problem-card" style={{ margin: 0, display: 'flex', flexDirection: 'column' }}>
-              <h3 style={{ marginBottom: '0.5rem', color: 'var(--color-3)' }}>{g.name}</h3>
-              <p style={{ fontSize: '0.9rem', opacity: 0.8, marginBottom: '1.5rem', flexGrow: 1 }}>{g.description || '설명이 없습니다.'}</p>
+            <div 
+              key={g.id} 
+              className="problem-card" 
+              onClick={() => navigate(`/groups/${g.id}`)}
+              style={{ margin: 0, display: 'flex', flexDirection: 'column', cursor: 'pointer', border: g.is_member ? '2px solid var(--color-3)' : '1px solid var(--border)' }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                <h3 style={{ color: 'var(--color-3)', margin: 0 }}>{g.name}</h3>
+                {g.is_member && <span style={{ background: 'var(--color-3)', color: 'white', fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '1rem', fontWeight: 800 }}>참여 중</span>}
+              </div>
+              <p style={{ fontSize: '0.9rem', opacity: 0.8, marginBottom: '1.5rem', flexGrow: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                {g.description || '설명이 없습니다.'}
+              </p>
               <div style={{ fontSize: '0.8rem', marginBottom: '1rem' }}>
                 <div>방장: <b>{g.creator_name}</b></div>
                 <div>멤버: <b>{g.member_count}명</b></div>
               </div>
-              <button onClick={() => handleJoin(g.id)} className="btn" style={{ background: 'var(--color-1)', color: 'white', width: '100%' }}>
-                가입하기
-              </button>
+              {!g.is_member && (
+                <button onClick={(e) => handleJoin(e, g.id)} className="btn" style={{ background: 'var(--color-1)', color: 'white', width: '100%' }}>
+                  가입하기
+                </button>
+              )}
             </div>
           ))}
           {groups.length === 0 && <p style={{ textAlign: 'center', gridColumn: '1 / -1', opacity: 0.5 }}>아직 생성된 그룹이 없습니다.</p>}
+        </div>
+      </div>
+    </main>
+  );
+};
+
+const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
+  const { id } = useParams<{ id: string }>();
+  const [group, setGroup] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
+  const fetchGroupDetail = useCallback(() => {
+    fetch(`/api/groups/${id}`)
+      .then(res => res.json())
+      .then(data => {
+        setGroup(data);
+        setLoading(false);
+      });
+  }, [id]);
+
+  useEffect(() => {
+    fetchGroupDetail();
+  }, [fetchGroupDetail]);
+
+  const handleJoin = async () => {
+    if (!user) return navigate('/login');
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/groups/${id}/join`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      alert('그룹에 가입되었습니다!');
+      fetchGroupDetail();
+    } else {
+      const data = await res.json();
+      alert(data.error);
+    }
+  };
+
+  const handleLeave = async () => {
+    if (!window.confirm('정말로 그룹을 탈퇴하시겠습니까?')) return;
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/groups/${id}/leave`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      alert('그룹에서 탈퇴하였습니다.');
+      navigate('/groups');
+    } else {
+      alert('탈퇴 실패');
+    }
+  };
+
+  if (loading) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>로딩 중...</div>;
+  if (!group || group.error) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>그룹을 찾을 수 없습니다.</div>;
+
+  const isMember = user && group.members.some((m: any) => m.id === user.id);
+
+  return (
+    <main className="container" style={{ padding: '4rem 0' }}>
+      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+        <button onClick={() => navigate('/groups')} style={{ background: 'none', border: 'none', color: 'var(--color-3)', cursor: 'pointer', marginBottom: '1rem', fontWeight: 800 }}>← 목록으로 돌아가기</button>
+        
+        <div className="problem-card" style={{ marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <h2 style={{ color: 'var(--color-4)', fontSize: '2.5rem', margin: 0 }}>{group.name}</h2>
+            {isMember ? (
+              <button onClick={handleLeave} className="btn" style={{ background: '#ff7675', color: 'white', width: 'auto' }}>그룹 탈퇴</button>
+            ) : (
+              <button onClick={handleJoin} className="btn" style={{ background: 'var(--color-1)', color: 'white', width: 'auto' }}>그룹 가입</button>
+            )}
+          </div>
+          <p style={{ fontSize: '1.1rem', opacity: 0.9, marginBottom: '2rem', lineHeight: 1.6 }}>{group.description || '설명이 없습니다.'}</p>
+          <div style={{ padding: '1rem', background: 'rgba(0,0,0,0.05)', borderRadius: '0.5rem', fontSize: '0.9rem' }}>
+             방장: <b>{group.creator_name}</b> | 생성일: {new Date(group.created_at).toLocaleDateString()}
+          </div>
+        </div>
+
+        <h3 style={{ marginBottom: '1.5rem', color: 'var(--color-4)' }}>그룹 멤버 ({group.members.length})</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
+          {group.members.map((m: any) => (
+            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--color-3)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, flexShrink: 0 }}>
+                {m.profile_image_url ? (
+                  <img src={m.profile_image_url} alt={m.username} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                ) : m.username[0].toUpperCase()}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.username}</div>
+                <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>{m.tier} | {Math.round(m.rating).toLocaleString()}</div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </main>
@@ -944,6 +1064,7 @@ const App: React.FC = () => {
         <Route path="/" element={<ProblemList user={user} setUser={setUser} />} />
         <Route path="/ranking" element={<Ranking />} />
         <Route path="/groups" element={<Groups user={user} />} />
+        <Route path="/groups/:id" element={<GroupDetail user={user} />} />
         <Route path="/about" element={<About user={user} />} />
         <Route path="/login" element={<Login onLogin={handleLogin} />} />
         <Route path="/signup" element={<Signup />} />

@@ -173,17 +173,31 @@ app.post('/api/users/profile-image', authenticateToken, async (req: any, res: Re
 
 // Group Endpoints
 app.get('/api/groups', async (req: Request, res: Response) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  let userId: number | null = null;
+
+  if (token) {
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      userId = decoded.id;
+    } catch (err) { }
+  }
+
   try {
-    const result = await pool.query(`
-      SELECT g.*, u.username as creator_name, COUNT(gm.user_id) as member_count
+    const query = `
+      SELECT g.*, u.username as creator_name, COUNT(gm.user_id) as member_count,
+             EXISTS(SELECT 1 FROM group_members WHERE group_id = g.id AND user_id = $1) as is_member
       FROM groups g
       LEFT JOIN users u ON g.creator_id = u.id
       LEFT JOIN group_members gm ON g.id = gm.group_id
       GROUP BY g.id, u.username
       ORDER BY g.created_at DESC
-    `);
+    `;
+    const result = await pool.query(query, [userId || null]);
     res.json(result.rows);
   } catch (err) {
+    console.error('Failed to fetch groups:', err);
     res.status(500).json({ error: 'Failed to fetch groups' });
   }
 });
