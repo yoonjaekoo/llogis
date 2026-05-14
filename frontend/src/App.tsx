@@ -18,12 +18,12 @@ interface User {
   username: string;
   rating: number;
   tier: string;
+  profile_image_url?: string;
 }
 
 // LaTeX Helper
 const renderMath = (content: any) => {
   if (typeof content !== 'string') return null;
-  // Replace escaped backslashes if any and ensure proper LaTeX format
   const sanitizedContent = content.replace(/\\\\/g, '\\');
   const parts = sanitizedContent.split(/(\$\$.*?\$\$|\$.*?\$)/gs);
 
@@ -51,9 +51,57 @@ const renderMath = (content: any) => {
 
 // --- Components ---
 
-// ... (keep imports)
+const Navbar: React.FC<{ 
+  user: User | null; 
+  onLogout: () => void; 
+  theme: string; 
+  toggleTheme: () => void 
+}> = ({ user, onLogout, theme, toggleTheme }) => (
+  <header>
+    <div className="container">
+      <h1 style={{ margin: 0 }}>
+        <Link to="/" style={{ color: 'white', textDecoration: 'none', letterSpacing: '-1px' }}>Logis</Link>
+      </h1>
+      <nav>
+        <ul>
+          <li><Link to="/">문제</Link></li>
+          <li><Link to="/ranking">랭킹</Link></li>
+          <li><Link to="/groups">그룹</Link></li>
+          <li><Link to="/about">소개</Link></li>
+          {user ? (
+            <>
+              {user.username === 'admin' && <li><Link to="/admin" style={{ color: '#fab1a0', fontWeight: 800 }}>관리</Link></li>}
+              <li>
+                <Link to="/profile" style={{ color: 'var(--color-3)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {user.profile_image_url ? (
+                    <img src={user.profile_image_url} alt="Profile" style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }} />
+                  ) : (
+                    <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'var(--color-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: 'white' }}>
+                      {user.username[0].toUpperCase()}
+                    </div>
+                  )}
+                  {user.username} <span style={{ fontSize: '0.8rem', opacity: 0.8 }}>({user.tier})</span> <b style={{ color: 'white' }}>{Math.round(user.rating).toLocaleString()}</b>
+                </Link>
+              </li>
+              <li><button onClick={onLogout} style={{ background: 'none', border: 'none', color: '#ff7675', cursor: 'pointer', fontWeight: 800 }}>로그아웃</button></li>
+            </>
+          ) : (
+            <>
+              <li><Link to="/login">로그인</Link></li>
+              <li><Link to="/signup">가입</Link></li>
+            </>
+          )}
+          <li>
+            <button onClick={toggleTheme} className="theme-toggle">
+              {theme === 'light' ? '🌙' : '☀️'}
+            </button>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+);
 
-// --- About Component ---
 const About: React.FC<{ user: User | null }> = ({ user }) => {
   const tiers = [
     { name: 'Bronze', threshold: '0' },
@@ -109,51 +157,132 @@ const About: React.FC<{ user: User | null }> = ({ user }) => {
   );
 };
 
-const Navbar: React.FC<{ 
-  user: User | null; 
-  onLogout: () => void; 
-  theme: string; 
-  toggleTheme: () => void 
-}> = ({ user, onLogout, theme, toggleTheme }) => (
-  <header>
-    <div className="container">
-      <h1 style={{ margin: 0 }}>
-        <Link to="/" style={{ color: 'white', textDecoration: 'none', letterSpacing: '-1px' }}>Logis</Link>
-      </h1>
-      <nav>
-        <ul>
-          <li><Link to="/">문제</Link></li>
-          <li><Link to="/ranking">랭킹</Link></li>
-          <li><Link to="/about">소개</Link></li>
-          {user ? (
-            <>
-              {user.username === 'admin' && <li><Link to="/admin" style={{ color: '#fab1a0', fontWeight: 800 }}>관리</Link></li>}
-              <li>
-                <Link to="/profile" style={{ color: 'var(--color-3)', textDecoration: 'none' }}>
-                  {user.username} <span style={{ fontSize: '0.8rem', opacity: 0.8 }}>({user.tier})</span> <b style={{ color: 'white' }}>{Math.round(user.rating)}</b>
-                </Link>
-              </li>
-              <li><button onClick={onLogout} style={{ background: 'none', border: 'none', color: '#ff7675', cursor: 'pointer', fontWeight: 800 }}>로그아웃</button></li>
-            </>
-          ) : (
-            <>
-              <li><Link to="/login">로그인</Link></li>
-              <li><Link to="/signup">가입</Link></li>
-            </>
-          )}
-          <li>
-            <button onClick={toggleTheme} className="theme-toggle">
-              {theme === 'light' ? '🌙' : '☀️'}
+const Groups: React.FC<{ user: User | null }> = ({ user }) => {
+  const [groups, setGroups] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const navigate = useNavigate();
+
+  const fetchGroups = useCallback(() => {
+    fetch('/api/groups')
+      .then(res => res.json())
+      .then(data => {
+        setGroups(data);
+        setLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    fetchGroups();
+  }, [fetchGroups]);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return navigate('/login');
+    
+    const token = localStorage.getItem('token');
+    const res = await fetch('/api/groups', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ name, description })
+    });
+    
+    const data = await res.json();
+    if (res.ok) {
+      alert('그룹이 생성되었습니다!');
+      setName('');
+      setDescription('');
+      setShowCreate(false);
+      fetchGroups();
+    } else {
+      alert(data.error);
+    }
+  };
+
+  const handleJoin = async (groupId: number) => {
+    if (!user) return navigate('/login');
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/groups/${groupId}/join`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert('그룹에 가입되었습니다!');
+      fetchGroups();
+    } else {
+      alert(data.error);
+    }
+  };
+
+  if (loading) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>로딩 중...</div>;
+
+  const isSilverPlus = user && user.rating >= 100000;
+
+  return (
+    <main className="container" style={{ padding: '4rem 0' }}>
+      <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+          <h2 style={{ color: 'var(--color-4)', fontSize: '2.5rem' }}>유저 그룹</h2>
+          {isSilverPlus && (
+            <button 
+              onClick={() => setShowCreate(!showCreate)} 
+              className="btn" 
+              style={{ background: 'var(--color-3)', color: 'white', width: 'auto' }}
+            >
+              {showCreate ? '취소' : '그룹 만들기'}
             </button>
-          </li>
-        </ul>
-      </nav>
-    </div>
-  </header>
-);
+          )}
+        </div>
 
-// [ ... continue with updated components without difficulty displays ... ]
+        {showCreate && (
+          <div className="problem-card" style={{ marginBottom: '2rem' }}>
+            <h3 style={{ marginBottom: '1.5rem' }}>새 그룹 생성</h3>
+            <form onSubmit={handleCreate}>
+              <input 
+                type="text" 
+                placeholder="그룹 이름" 
+                value={name} 
+                onChange={e => setName(e.target.value)} 
+                style={{ width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '1rem' }}
+                required 
+              />
+              <textarea 
+                placeholder="그룹 설명" 
+                value={description} 
+                onChange={e => setDescription(e.target.value)} 
+                style={{ width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '1rem', minHeight: '100px' }}
+              />
+              <button type="submit" className="btn" style={{ background: 'var(--color-4)', color: 'white' }}>만들기</button>
+            </form>
+          </div>
+        )}
 
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
+          {groups.map(g => (
+            <div key={g.id} className="problem-card" style={{ margin: 0, display: 'flex', flexDirection: 'column' }}>
+              <h3 style={{ marginBottom: '0.5rem', color: 'var(--color-3)' }}>{g.name}</h3>
+              <p style={{ fontSize: '0.9rem', opacity: 0.8, marginBottom: '1.5rem', flexGrow: 1 }}>{g.description || '설명이 없습니다.'}</p>
+              <div style={{ fontSize: '0.8rem', marginBottom: '1rem' }}>
+                <div>방장: <b>{g.creator_name}</b></div>
+                <div>멤버: <b>{g.member_count}명</b></div>
+              </div>
+              <button onClick={() => handleJoin(g.id)} className="btn" style={{ background: 'var(--color-1)', color: 'white', width: '100%' }}>
+                가입하기
+              </button>
+            </div>
+          ))}
+          {groups.length === 0 && <p style={{ textAlign: 'center', gridColumn: '1 / -1', opacity: 0.5 }}>아직 생성된 그룹이 없습니다.</p>}
+        </div>
+      </div>
+    </main>
+  );
+};
 
 const Ranking: React.FC = () => {
   const [ranks, setRanks] = useState<any[]>([]);
@@ -414,26 +543,32 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
   );
 };
 
-const Profile: React.FC<{ user: User | null }> = ({ user }) => {
+const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ user, setUser }) => {
   const [profileData, setProfileData] = useState<any>(null);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [newProfileImageUrl, setNewProfileImageUrl] = useState('');
+  const [isUpdatingImage, setIsUpdatingImage] = useState(false);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (!user) {
-      navigate('/login');
-      return;
-    }
-
+  const fetchProfile = useCallback(() => {
+    if (!user) return;
     const token = localStorage.getItem('token');
     fetch('/api/users/profile', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
     .then(res => res.json())
     .then(data => setProfileData(data));
-  }, [user, navigate]);
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    fetchProfile();
+  }, [user, navigate, fetchProfile]);
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -457,6 +592,29 @@ const Profile: React.FC<{ user: User | null }> = ({ user }) => {
     }
   };
 
+  const handleUpdateProfileImage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = localStorage.getItem('token');
+    const res = await fetch('/api/users/profile-image', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ profileImageUrl: newProfileImageUrl })
+    });
+    if (res.ok) {
+      alert('프로필 사진이 변경되었습니다.');
+      setIsUpdatingImage(false);
+      const updatedUser = { ...user!, profile_image_url: newProfileImageUrl };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+      fetchProfile();
+    } else {
+      alert('변경 실패');
+    }
+  };
+
   if (!profileData) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>로딩 중...</div>;
 
   const { user: u, stats } = profileData;
@@ -476,30 +634,44 @@ const Profile: React.FC<{ user: User | null }> = ({ user }) => {
   return (
     <main className="container" style={{ padding: '4rem 0' }}>
       <div className="problem-card" style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center' }}>
-        <div style={{ 
-          width: '120px', 
-          height: '120px', 
-          borderRadius: '50%', 
-          background: tierColors[u.tier] || 'var(--color-3)', 
-          margin: '0 auto 2rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '3rem',
-          boxShadow: '0 0 20px rgba(0,0,0,0.2)',
-          color: 'white',
-          fontWeight: 800
-        }}>
-          {u.username[0].toUpperCase()}
+        <div style={{ position: 'relative', width: '120px', height: '120px', margin: '0 auto 2rem' }}>
+          {u.profile_image_url ? (
+            <img src={u.profile_image_url} alt="Profile" style={{ width: '120px', height: '120px', borderRadius: '50%', objectFit: 'cover', boxShadow: '0 0 20px rgba(0,0,0,0.2)' }} />
+          ) : (
+            <div style={{ 
+              width: '120px', height: '120px', borderRadius: '50%', 
+              background: tierColors[u.tier] || 'var(--color-3)', 
+              display: 'flex', alignItems: 'center', justifyContent: 'center', 
+              fontSize: '3rem', boxShadow: '0 0 20px rgba(0,0,0,0.2)', color: 'white', fontWeight: 800
+            }}>
+              {u.username[0].toUpperCase()}
+            </div>
+          )}
+          <button 
+            onClick={() => setIsUpdatingImage(!isUpdatingImage)}
+            style={{ position: 'absolute', bottom: 0, right: 0, background: 'var(--color-4)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}
+          >
+            📷
+          </button>
         </div>
+
+        {isUpdatingImage && (
+          <form onSubmit={handleUpdateProfileImage} style={{ marginBottom: '2rem', maxWidth: '400px', margin: '0 auto 2rem' }}>
+            <input 
+              type="text" 
+              placeholder="프로필 이미지 URL" 
+              value={newProfileImageUrl} 
+              onChange={e => setNewProfileImageUrl(e.target.value)} 
+              style={{ width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '0.5rem' }}
+              required 
+            />
+            <button type="submit" className="btn" style={{ background: 'var(--color-2)', color: 'white', fontSize: '0.9rem', padding: '0.5rem' }}>변경 적용</button>
+          </form>
+        )}
+
         <h2 style={{ fontSize: '2.5rem', marginBottom: '0.5rem', color: 'var(--color-4)' }}>{u.username}</h2>
         <div style={{ 
-          fontSize: '1.5rem', 
-          fontWeight: 800, 
-          color: tierColors[u.tier],
-          textTransform: 'uppercase',
-          letterSpacing: '2px',
-          marginBottom: '2rem'
+          fontSize: '1.5rem', fontWeight: 800, color: tierColors[u.tier], textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '2rem'
         }}>
           {u.tier} Rank
         </div>
@@ -507,7 +679,7 @@ const Profile: React.FC<{ user: User | null }> = ({ user }) => {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '3rem' }}>
           <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
             <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>현재 레이팅</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800 }}>{Math.round(u.rating)}</div>
+            <div style={{ fontSize: '1.8rem', fontWeight: 800 }}>{Math.round(u.rating).toLocaleString()}</div>
           </div>
           <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
             <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>해결한 문제</div>
@@ -526,49 +698,16 @@ const Profile: React.FC<{ user: User | null }> = ({ user }) => {
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
           <button 
             onClick={() => setIsChangingPassword(!isChangingPassword)}
-            style={{ 
-              background: 'none', 
-              border: 'none', 
-              color: 'var(--color-3)', 
-              cursor: 'pointer', 
-              fontWeight: 800,
-              fontSize: '1rem' 
-            }}
+            style={{ background: 'none', border: 'none', color: 'var(--color-3)', cursor: 'pointer', fontWeight: 800, fontSize: '1rem' }}
           >
             {isChangingPassword ? '취소' : '비밀번호 변경하기'}
           </button>
 
           {isChangingPassword && (
             <form onSubmit={handleChangePassword} style={{ marginTop: '1.5rem', maxWidth: '400px', margin: '1.5rem auto 0' }}>
-              <input 
-                type="password" 
-                placeholder="현재 비밀번호" 
-                value={currentPassword} 
-                onChange={e => setCurrentPassword(e.target.value)} 
-                style={{ 
-                  width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', 
-                  background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '0.75rem' 
-                }}
-                required 
-              />
-              <input 
-                type="password" 
-                placeholder="새 비밀번호" 
-                value={newPassword} 
-                onChange={e => setNewPassword(e.target.value)} 
-                style={{ 
-                  width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', 
-                  background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '1rem' 
-                }}
-                required 
-              />
-              <button 
-                type="submit" 
-                className="btn" 
-                style={{ background: 'var(--color-4)', color: 'white' }}
-              >
-                변경 확인
-              </button>
+              <input type="password" placeholder="현재 비밀번호" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} style={{ width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '0.75rem' }} required />
+              <input type="password" placeholder="새 비밀번호" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={{ width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '1rem' }} required />
+              <button type="submit" className="btn" style={{ background: 'var(--color-4)', color: 'white' }}>변경 확인</button>
             </form>
           )}
         </div>
@@ -589,22 +728,12 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
     fetch('/api/problems', { headers })
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to fetch problems');
-        return res.json();
-      })
+      .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
           setProblems(data);
           if (data.length > 0) setSelectedProblemId(data[0].id);
-        } else {
-          console.error('Invalid data format:', data);
-          setProblems([]);
         }
-      })
-      .catch(err => {
-        console.error(err);
-        setProblems([]);
       });
   }, []);
 
@@ -613,17 +742,10 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
   };
 
   const handleSubmit = (problemId: number) => {
-    if (!user) {
-      alert('로그인이 필요합니다!');
-      navigate('/login');
-      return;
-    }
+    if (!user) return navigate('/login');
 
     const userAnswer = answers[problemId];
-    if (!userAnswer || userAnswer.trim() === '') {
-      alert('정답을 입력해주세요!');
-      return;
-    }
+    if (!userAnswer || userAnswer.trim() === '') return alert('정답을 입력해주세요!');
 
     const token = localStorage.getItem('token');
     fetch('/api/submissions', {
@@ -637,30 +759,18 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
     .then(res => res.json())
     .then(data => {
       if (data.isCorrect) {
-        alert(`정답입니다! 🎉\n레이팅 변화: ${Math.round(user.rating)} → ${Math.round(data.newUserRating.rating)}`);
-        
-        // Remove the solved problem
+        alert('정답입니다! 🎉');
         const remainingProblems = problems.filter(p => p.id !== problemId);
         setProblems(remainingProblems);
-
-        if (remainingProblems.length > 0) {
-          // Select the next problem in the list
-          const nextIndex = problems.findIndex(p => p.id === problemId);
-          if (nextIndex < remainingProblems.length) {
-            setSelectedProblemId(remainingProblems[nextIndex].id);
-          } else {
-            setSelectedProblemId(remainingProblems[0].id);
-          }
-        } else {
-          setSelectedProblemId(null);
-        }
+        if (remainingProblems.length > 0) setSelectedProblemId(remainingProblems[0].id);
+        else setSelectedProblemId(null);
       } else {
-        alert(`아쉽네요, 틀렸습니다. 🧐\n레이팅 변화: ${Math.round(user.rating)} → ${Math.round(data.newUserRating.rating)}`);
+        alert('틀렸습니다. 🧐');
       }
       
       const updatedUser = { 
         ...user, 
-        rating: data.newUserRating.rating,
+        rating: data.newUserRating,
         tier: data.tier
       };
       localStorage.setItem('user', JSON.stringify(updatedUser));
@@ -673,7 +783,6 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
 
   return (
     <main className="container" style={{ display: 'flex', gap: '2rem', padding: '2rem 0', maxWidth: '1400px' }}>
-      {/* Sidebar List */}
       <div style={{ width: '300px', flexShrink: 0 }}>
         <h3 style={{ marginBottom: '1rem', color: 'var(--color-4)' }}>문제 목록 ({problems.length})</h3>
         <div style={{ maxHeight: '70vh', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '1rem', background: 'var(--card-bg)' }}>
@@ -682,13 +791,10 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
               key={p.id} 
               onClick={() => setSelectedProblemId(p.id)}
               style={{ 
-                padding: '1rem', 
-                cursor: 'pointer', 
-                borderBottom: '1px solid var(--border)',
+                padding: '1rem', cursor: 'pointer', borderBottom: '1px solid var(--border)',
                 background: selectedProblemId === p.id ? 'var(--color-3)' : 'transparent',
                 color: selectedProblemId === p.id ? 'var(--color-4)' : 'inherit',
-                fontWeight: selectedProblemId === p.id ? 800 : 400,
-                transition: 'all 0.2s'
+                fontWeight: selectedProblemId === p.id ? 800 : 400
               }}
             >
               {p.title}
@@ -700,56 +806,33 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
               <button 
                 onClick={() => {
                   const token = localStorage.getItem('token');
-                  fetch('/api/problems/generate', {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                  })
+                  fetch('/api/problems/generate', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
                   .then(res => res.json())
                   .then(data => {
-                    setProblems(prev => [...prev, ...data.problems]);
+                    setProblems(data.problems);
                     if (data.problems.length > 0) setSelectedProblemId(data.problems[0].id);
                   });
                 }}
-                className="btn"
-                style={{ background: 'var(--color-2)', color: 'white' }}
+                className="btn" style={{ background: 'var(--color-2)', color: 'white' }}
               >
-                새 문제 생성하기
+                새 문제 생성
               </button>
             </div>
           )}
         </div>
       </div>
 
-      {/* Problem View */}
       <div style={{ flexGrow: 1 }}>
         {selectedProblem ? (
           <div className="problem-card" style={{ margin: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h3 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--color-4)' }}>{selectedProblem.title}</h3>
-            </div>
-            <div className="math-content" style={{ fontSize: '1.8rem' }}>
-              {renderMath(selectedProblem.content)}
-            </div>
+            <h3 style={{ marginBottom: '1.5rem', color: 'var(--color-4)' }}>{selectedProblem.title}</h3>
+            <div className="math-content" style={{ fontSize: '1.8rem' }}>{renderMath(selectedProblem.content)}</div>
             <div style={{ marginTop: '2rem' }}>
-              <input 
-                type="text" 
-                placeholder="정답을 입력하세요" 
-                className="answer-input"
-                autoFocus
-                value={answers[selectedProblem.id] || ''}
-                onChange={(e) => handleInputChange(selectedProblem.id, e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSubmit(selectedProblem.id)}
-              />
-              <button onClick={() => handleSubmit(selectedProblem.id)} className="btn btn-solve">
-                정답 제출하기
-              </button>
+              <input type="text" placeholder="정답" className="answer-input" value={answers[selectedProblem.id] || ''} onChange={(e) => handleInputChange(selectedProblem.id, e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSubmit(selectedProblem.id)} />
+              <button onClick={() => handleSubmit(selectedProblem.id)} className="btn btn-solve">제출</button>
             </div>
           </div>
-        ) : (
-          <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-muted)' }}>
-            문제를 선택해주세요.
-          </div>
-        )}
+        ) : <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-muted)' }}>문제를 선택해주세요.</div>}
       </div>
     </main>
   );
@@ -771,17 +854,15 @@ const Login: React.FC<{ onLogin: (token: string, user: User) => void }> = ({ onL
     if (res.ok) {
       onLogin(data.token, data.user);
       navigate('/');
-    } else {
-      alert(data.error);
-    }
+    } else alert(data.error);
   };
 
   return (
     <main className="container">
       <div className="auth-form">
-        <h2 style={{ color: 'var(--color-4)' }}>환영합니다</h2>
+        <h2 style={{ color: 'var(--color-4)' }}>로그인</h2>
         <form onSubmit={handleSubmit}>
-          <input type="text" placeholder="아이디 또는 이메일" value={email} onChange={e => setEmail(e.target.value)} required />
+          <input type="text" placeholder="아이디/이메일" value={email} onChange={e => setEmail(e.target.value)} required />
           <input type="password" placeholder="비밀번호" value={password} onChange={e => setPassword(e.target.value)} required />
           <button type="submit">로그인</button>
         </form>
@@ -804,7 +885,7 @@ const Signup: React.FC = () => {
       body: JSON.stringify({ username, email, password })
     });
     if (res.ok) {
-      alert('가입을 환영합니다!');
+      alert('가입 환영!');
       navigate('/login');
     } else {
       const data = await res.json();
@@ -820,7 +901,7 @@ const Signup: React.FC = () => {
           <input type="text" placeholder="이름" value={username} onChange={e => setUsername(e.target.value)} required />
           <input type="email" placeholder="이메일" value={email} onChange={e => setEmail(e.target.value)} required />
           <input type="password" placeholder="비밀번호" value={password} onChange={e => setPassword(e.target.value)} required />
-          <button type="submit">Logis 시작하기</button>
+          <button type="submit">가입</button>
         </form>
       </div>
     </main>
@@ -862,10 +943,11 @@ const App: React.FC = () => {
       <Routes>
         <Route path="/" element={<ProblemList user={user} setUser={setUser} />} />
         <Route path="/ranking" element={<Ranking />} />
+        <Route path="/groups" element={<Groups user={user} />} />
         <Route path="/about" element={<About user={user} />} />
         <Route path="/login" element={<Login onLogin={handleLogin} />} />
         <Route path="/signup" element={<Signup />} />
-        <Route path="/profile" element={<Profile user={user} />} />
+        <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
         <Route path="/admin" element={<Admin user={user} />} />
       </Routes>
     </Router>

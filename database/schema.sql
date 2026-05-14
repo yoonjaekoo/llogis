@@ -12,6 +12,7 @@ CREATE TABLE users (
     rating FLOAT DEFAULT 0.0 NOT NULL,
     rating_deviation FLOAT DEFAULT 350.0 NOT NULL,
     volatility FLOAT DEFAULT 0.06 NOT NULL,
+    profile_image_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -49,6 +50,23 @@ CREATE TABLE submissions (
     is_correct BOOLEAN NOT NULL,
     user_answer VARCHAR(255),
     submitted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Groups Table
+CREATE TABLE groups (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    creator_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Group Members Table
+CREATE TABLE group_members (
+    group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (group_id, user_id)
 );
 
 -- 초기 사용자

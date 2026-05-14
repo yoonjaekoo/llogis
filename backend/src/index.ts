@@ -6,12 +6,46 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { processSubmission, getTier } from './rating/ratingService';
 import { generateProblem } from './problemGenerator';
+import path from 'path';
+import fs from 'fs';
+import multer from 'multer';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Multer storage configuration
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (extname && mimetype) {
+      return cb(null, true);
+    }
+    cb(new Error('Only images are allowed (jpeg, jpg, png, gif)'));
+  }
+});
 
 const pool = new Pool({
   user: process.env.DB_USER || 'mathuser',
@@ -23,6 +57,7 @@ const pool = new Pool({
 
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static(uploadsDir));
 
 const authenticateToken = (req: any, res: any, next: NextFunction) => {
   const authHeader = req.headers['authorization'];
@@ -81,22 +116,21 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
   try {
     const userId = req.user.id;
     const userResult = await pool.query(
-      'SELECT id, username, email, rating, created_at FROM users WHERE id = $1',
+      'SELECT id, username, email, rating, profile_image_url, created_at FROM users WHERE id = $1',
       [userId]
     );
-    
+
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
-    
+
     const user = userResult.rows[0];
-    
+
     // Get submission statistics
     const statsResult = await pool.query(
       'SELECT COUNT(*) as total, SUM(CASE WHEN is_correct THEN 1 ELSE 0 END) as correct FROM submissions WHERE user_id = $1',
       [userId]
     );
-    
     const stats = statsResult.rows[0];
-    
+
     res.json({
       user: {
         ...user,
@@ -112,6 +146,125 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
     res.status(500).json({ error: 'Failed to fetch profile' });
   }
 });
+
+app.post('/api/users/profile-image', authenticateToken, async (req: any, res: Response) => {
+  const { profileImageUrl } = req.body;
+  const userId = req.user.id;
+
+  try {
+    await pool.query('UPDATE users SET profile_image_url = $1 WHERE id = $2', [profileImageUrl, userId]);
+    res.json({ message: 'Profile image updated successfully', profileImageUrl });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update profile image' });
+  }
+});
+
+// Group Endpoints
+app.get('/api/groups', async (req: Request, res: Response) => {
+  try {
+    const result = await pool.query(`
+      SELECT g.*, u.username as creator_name, COUNT(gm.user_id) as member_count
+      FROM groups g
+      LEFT JOIN users u ON g.creator_id = u.id
+      LEFT JOIN group_members gm ON g.id = gm.group_id
+      GROUP BY g.id, u.username
+      ORDER BY g.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch groups' });
+  }
+});
+
+app.post('/api/groups', authenticateToken, async (req: any, res: Response) => {
+  const { name, description } = req.body;
+  const userId = req.user.id;
+
+  try {
+    // Check if user is Silver or higher (Rating >= 100,000)
+    const userRes = await pool.query('SELECT rating FROM users WHERE id = $1', [userId]);
+    const rating = parseFloat(userRes.rows[0].rating);
+
+    if (rating < 100000) {
+      return res.status(403).json({ error: 'Only Silver tier (Rating 100,000+) can create groups' });
+    }
+
+    // Check group creation limit (Max 2)
+    const countRes = await pool.query('SELECT COUNT(*) FROM groups WHERE creator_id = $1', [userId]);
+    if (parseInt(countRes.rows[0].count) >= 2) {
+      return res.status(403).json({ error: 'You can only create up to 2 groups' });
+    }
+
+    const groupResult = await pool.query(
+      'INSERT INTO groups (name, description, creator_id) VALUES ($1, $2, $3) RETURNING id',
+      [name, description, userId]
+    );
+    const groupId = groupResult.rows[0].id;
+
+    // Creator automatically joins the group
+    await pool.query('INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)', [groupId, userId]);
+
+    res.status(201).json({ message: 'Group created successfully', groupId });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create group' });
+  }
+});
+
+app.get('/api/groups/:id', async (req: Request, res: Response) => {
+  const groupId = req.params.id;
+  try {
+    const groupResult = await pool.query(`
+      SELECT g.*, u.username as creator_name
+      FROM groups g
+      JOIN users u ON g.creator_id = u.id
+      WHERE g.id = $1
+    `, [groupId]);
+
+    if (groupResult.rows.length === 0) return res.status(404).json({ error: 'Group not found' });
+
+    const membersResult = await pool.query(`
+      SELECT u.id, u.username, u.rating, u.profile_image_url
+      FROM group_members gm
+      JOIN users u ON gm.user_id = u.id
+      WHERE gm.group_id = $1
+    `, [groupId]);
+
+    res.json({
+      ...groupResult.rows[0],
+      members: membersResult.rows.map(m => ({ ...m, tier: getTier(m.rating) }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch group details' });
+  }
+});
+
+app.post('/api/groups/:id/join', authenticateToken, async (req: any, res: Response) => {
+  const groupId = req.params.id;
+  const userId = req.user.id;
+
+  try {
+    await pool.query('INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)', [groupId, userId]);
+    res.json({ message: 'Joined group successfully' });
+  } catch (err) {
+    if ((err as any).code === '23505') {
+      return res.status(400).json({ error: 'Already a member of this group' });
+    }
+    res.status(500).json({ error: 'Failed to join group' });
+  }
+});
+
+app.post('/api/groups/:id/leave', authenticateToken, async (req: any, res: Response) => {
+  const groupId = req.params.id;
+  const userId = req.user.id;
+
+  try {
+    await pool.query('DELETE FROM group_members WHERE group_id = $1 AND user_id = $2', [groupId, userId]);
+    res.json({ message: 'Left group successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to leave group' });
+  }
+});
+
 
 app.post('/api/users/change-password', authenticateToken, async (req: any, res: Response) => {
   const { currentPassword, newPassword } = req.body;
