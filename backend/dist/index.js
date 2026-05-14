@@ -56,6 +56,26 @@ const pool = new pg_1.Pool({
 app.use((0, cors_1.default)());
 app.use(express_1.default.json());
 app.use('/uploads', express_1.default.static(uploadsDir));
+const ensureSchema = async () => {
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_url TEXT');
+    await pool.query(`
+    CREATE TABLE IF NOT EXISTS groups (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(100) NOT NULL,
+      description TEXT,
+      creator_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+    await pool.query(`
+    CREATE TABLE IF NOT EXISTS group_members (
+      group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (group_id, user_id)
+    )
+  `);
+};
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -102,6 +122,7 @@ app.post('/api/auth/login', async (req, res) => {
                 id: user.id,
                 username: user.username,
                 rating: user.rating,
+                profile_image_url: user.profile_image_url,
                 tier: (0, ratingService_1.getTier)(user.rating)
             }
         });
@@ -136,31 +157,52 @@ app.get('/api/users/profile', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch profile' });
     }
 });
-app.post('/api/users/profile-image', authenticateToken, async (req, res) => {
-    const { profileImageUrl } = req.body;
-    const userId = req.user.id;
-    try {
-        await pool.query('UPDATE users SET profile_image_url = $1 WHERE id = $2', [profileImageUrl, userId]);
-        res.json({ message: 'Profile image updated successfully', profileImageUrl });
-    }
-    catch (err) {
-        res.status(500).json({ error: 'Failed to update profile image' });
-    }
+app.post('/api/users/profile-image', authenticateToken, (req, res) => {
+    upload.single('profileImage')(req, res, async (uploadErr) => {
+        if (uploadErr) {
+            return res.status(400).json({ error: uploadErr.message || 'Failed to upload profile image' });
+        }
+        if (!req.file) {
+            return res.status(400).json({ error: 'Profile image file is required' });
+        }
+        const profileImageUrl = `/uploads/${req.file.filename}`;
+        const userId = req.user.id;
+        try {
+            await pool.query('UPDATE users SET profile_image_url = $1 WHERE id = $2', [profileImageUrl, userId]);
+            res.json({ message: 'Profile image updated successfully', profileImageUrl });
+        }
+        catch (err) {
+            res.status(500).json({ error: 'Failed to update profile image' });
+        }
+    });
 });
 // Group Endpoints
 app.get('/api/groups', async (req, res) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    let userId = null;
+    if (token) {
+        try {
+            const decoded = jsonwebtoken_1.default.verify(token, JWT_SECRET);
+            userId = decoded.id;
+        }
+        catch (err) { }
+    }
     try {
-        const result = await pool.query(`
-      SELECT g.*, u.username as creator_name, COUNT(gm.user_id) as member_count
+        const query = `
+      SELECT g.*, u.username as creator_name, COUNT(gm.user_id) as member_count,
+             EXISTS(SELECT 1 FROM group_members WHERE group_id = g.id AND user_id = $1) as is_member
       FROM groups g
       LEFT JOIN users u ON g.creator_id = u.id
       LEFT JOIN group_members gm ON g.id = gm.group_id
       GROUP BY g.id, u.username
       ORDER BY g.created_at DESC
-    `);
+    `;
+        const result = await pool.query(query, [userId || null]);
         res.json(result.rows);
     }
     catch (err) {
+        console.error('Failed to fetch groups:', err);
         res.status(500).json({ error: 'Failed to fetch groups' });
     }
 });
@@ -465,6 +507,13 @@ app.delete('/api/admin/users/:id', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Failed to delete user' });
     }
 });
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+ensureSchema()
+    .then(() => {
+    app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+    });
+})
+    .catch((err) => {
+    console.error('Failed to initialize database schema:', err);
+    process.exit(1);
 });

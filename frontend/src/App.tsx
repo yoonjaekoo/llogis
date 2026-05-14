@@ -171,9 +171,17 @@ const Groups: React.FC<{ user: User | null }> = ({ user }) => {
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
     fetch('/api/groups', { headers })
-      .then(res => res.json())
+      .then(async res => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to fetch groups');
+        return data;
+      })
       .then(data => {
-        setGroups(data);
+        setGroups(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch(() => {
+        setGroups([]);
         setLoading(false);
       });
   }, []);
@@ -361,7 +369,8 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
   if (loading) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>로딩 중...</div>;
   if (!group || group.error) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>그룹을 찾을 수 없습니다.</div>;
 
-  const isMember = user && group.members.some((m: any) => m.id === user.id);
+  const members = Array.isArray(group.members) ? group.members : [];
+  const isMember = user && members.some((m: any) => m.id === user.id);
 
   return (
     <main className="container" style={{ padding: '4rem 0' }}>
@@ -383,9 +392,9 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
           </div>
         </div>
 
-        <h3 style={{ marginBottom: '1.5rem', color: 'var(--color-4)' }}>그룹 멤버 ({group.members.length})</h3>
+        <h3 style={{ marginBottom: '1.5rem', color: 'var(--color-4)' }}>그룹 멤버 ({members.length})</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
-          {group.members.map((m: any) => (
+          {members.map((m: any) => (
             <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
               <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--color-3)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, flexShrink: 0 }}>
                 {m.profile_image_url ? (
@@ -668,7 +677,7 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
-  const [newProfileImageUrl, setNewProfileImageUrl] = useState('');
+  const [newProfileImageFile, setNewProfileImageFile] = useState<File | null>(null);
   const [isUpdatingImage, setIsUpdatingImage] = useState(false);
   const navigate = useNavigate();
 
@@ -714,24 +723,28 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
 
   const handleUpdateProfileImage = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newProfileImageFile) return;
+
     const token = localStorage.getItem('token');
+    const formData = new FormData();
+    formData.append('profileImage', newProfileImageFile);
+
     const res = await fetch('/api/users/profile-image', {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ profileImageUrl: newProfileImageUrl })
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData
     });
+    const data = await res.json().catch(() => ({}));
     if (res.ok) {
       alert('프로필 사진이 변경되었습니다.');
       setIsUpdatingImage(false);
-      const updatedUser = { ...user!, profile_image_url: newProfileImageUrl };
+      setNewProfileImageFile(null);
+      const updatedUser = { ...user!, profile_image_url: data.profileImageUrl };
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setUser(updatedUser);
       fetchProfile();
     } else {
-      alert('변경 실패');
+      alert(data.error || '이미지 변경에 실패했습니다.');
     }
   };
 
@@ -778,10 +791,9 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
         {isUpdatingImage && (
           <form onSubmit={handleUpdateProfileImage} style={{ marginBottom: '2rem', maxWidth: '400px', margin: '0 auto 2rem' }}>
             <input 
-              type="text" 
-              placeholder="프로필 이미지 URL" 
-              value={newProfileImageUrl} 
-              onChange={e => setNewProfileImageUrl(e.target.value)} 
+              type="file" 
+              accept="image/jpeg,image/png,image/gif"
+              onChange={e => setNewProfileImageFile(e.target.files?.[0] ?? null)} 
               style={{ width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '0.5rem' }}
               required 
             />

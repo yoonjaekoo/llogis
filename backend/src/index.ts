@@ -71,6 +71,27 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(uploadsDir));
 
+const ensureSchema = async () => {
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_url TEXT');
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS groups (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(100) NOT NULL,
+      description TEXT,
+      creator_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS group_members (
+      group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (group_id, user_id)
+    )
+  `);
+};
+
 const authenticateToken = (req: any, res: any, next: NextFunction) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -116,6 +137,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         id: user.id, 
         username: user.username, 
         rating: user.rating,
+        profile_image_url: user.profile_image_url,
         tier: getTier(user.rating)
       } 
     });
@@ -159,16 +181,26 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
   }
 });
 
-app.post('/api/users/profile-image', authenticateToken, async (req: any, res: Response) => {
-  const { profileImageUrl } = req.body;
-  const userId = req.user.id;
+app.post('/api/users/profile-image', authenticateToken, (req: any, res: Response) => {
+  upload.single('profileImage')(req, res, async (uploadErr: any) => {
+    if (uploadErr) {
+      return res.status(400).json({ error: uploadErr.message || 'Failed to upload profile image' });
+    }
 
-  try {
-    await pool.query('UPDATE users SET profile_image_url = $1 WHERE id = $2', [profileImageUrl, userId]);
-    res.json({ message: 'Profile image updated successfully', profileImageUrl });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to update profile image' });
-  }
+    if (!req.file) {
+      return res.status(400).json({ error: 'Profile image file is required' });
+    }
+
+    const profileImageUrl = `/uploads/${req.file.filename}`;
+    const userId = req.user.id;
+
+    try {
+      await pool.query('UPDATE users SET profile_image_url = $1 WHERE id = $2', [profileImageUrl, userId]);
+      res.json({ message: 'Profile image updated successfully', profileImageUrl });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to update profile image' });
+    }
+  });
 });
 
 // Group Endpoints
@@ -546,6 +578,13 @@ app.delete('/api/admin/users/:id', authenticateToken, async (req: any, res: Resp
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+ensureSchema()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('Failed to initialize database schema:', err);
+    process.exit(1);
+  });
