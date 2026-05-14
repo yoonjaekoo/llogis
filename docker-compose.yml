@@ -13,7 +13,11 @@ services:
       - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      # ARM/Pi 등에서 BuildKit 어테스테이션보내기 중 스냅샷 오류가 나는 경우 완화
+      provenance: false
+      sbom: false
     restart: always
     environment:
       PORT: 5000
@@ -28,7 +32,10 @@ services:
       - db
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      provenance: false
+      sbom: false
     restart: always
     ports:
       - "1972:80"

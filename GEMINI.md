@@ -20,6 +20,7 @@ Math Solved (internally referred to as **Logis**) is an interactive math learnin
 - **Start Environment:** `docker-compose up -d`
 - **Build Services:** `docker-compose build`  
   Backend 이미지는 `tsc` 빌드에 `@types/*`가 필요하므로 Dockerfile에서 `npm install --include=dev`로 devDependencies를 포함합니다. 로컬에서 백엔드만 빌드할 때는 `cd backend && npm install && npm run build`로 동일하게 확인할 수 있습니다.
+- **Raspberry Pi / BuildKit:** `docker compose` 빌드가 `parent snapshot ... does not exist` 로 실패하면 로컬 BuildKit 캐시 손상 가능성이 큽니다. `docker builder prune -af` 후 다시 빌드하거나, `docker compose`가 오래된 경우 Docker/Compose를 최신으로 올리세요. 저장소의 `docker-compose.yml`은 `provenance: false`, `sbom: false`로 기본 어테스테이션을 끄도록 설정되어 있습니다.
 - **View Logs:** `docker-compose logs -f`
 - **Database Reset:** Use the Admin Panel `/admin` (admin account required) or `docker-compose down -v` to clear persistent data.
 
