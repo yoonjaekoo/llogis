@@ -61,7 +61,10 @@ const Navbar: React.FC<{
   <header>
     <div className="container">
       <h1 style={{ margin: 0 }}>
-        <Link to="/" style={{ color: 'white', textDecoration: 'none', letterSpacing: '-1px' }}>Logis</Link>
+        <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', color: 'white', textDecoration: 'none' }}>
+          <img src="/logo.png" alt="Logis Logo" style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover' }} />
+          <span style={{ letterSpacing: '-1px' }}>Logis</span>
+        </Link>
       </h1>
       <nav>
         <ul>
@@ -119,6 +122,7 @@ const About: React.FC<{ user: User | null }> = ({ user }) => {
   return (
     <main className="container" style={{ padding: '4rem 0', maxWidth: '800px' }}>
       <div className="problem-card" style={{ textAlign: 'center' }}>
+        <img src="/logo.png" alt="Logis Logo" style={{ width: '80px', height: '80px', borderRadius: '1.5rem', marginBottom: '1.5rem', boxShadow: 'var(--card-shadow)' }} />
         <h2 style={{ color: 'var(--color-4)', marginBottom: '1.5rem' }}>About Logis</h2>
         <p style={{ marginBottom: '2rem' }}>수학 문제를 풀고 레이팅을 올리는 재미있는 수학 학습 플랫폼입니다.</p>
         
@@ -1233,6 +1237,9 @@ const Login: React.FC<{ onLogin: (token: string, user: User) => void }> = ({ onL
   return (
     <main className="container">
       <div className="auth-form">
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+          <img src="/logo.png" alt="Logis Logo" style={{ width: '80px', height: '80px', borderRadius: '1.5rem', boxShadow: 'var(--card-shadow)' }} />
+        </div>
         <h2 style={{ color: 'var(--color-4)' }}>로그인</h2>
         <form onSubmit={handleSubmit}>
           <input type="text" placeholder="아이디/이메일" value={email} onChange={e => setEmail(e.target.value)} required />
@@ -1269,6 +1276,9 @@ const Signup: React.FC = () => {
   return (
     <main className="container">
       <div className="auth-form">
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+          <img src="/logo.png" alt="Logis Logo" style={{ width: '80px', height: '80px', borderRadius: '1.5rem', boxShadow: 'var(--card-shadow)' }} />
+        </div>
         <h2 style={{ color: 'var(--color-4)' }}>가입하기</h2>
         <form onSubmit={handleSubmit}>
           <input type="text" placeholder="이름" value={username} onChange={e => setUsername(e.target.value)} required />
