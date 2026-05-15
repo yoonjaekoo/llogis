@@ -73,6 +73,7 @@ app.use('/uploads', express.static(uploadsDir));
 
 const ensureSchema = async () => {
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_url TEXT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT');
   await pool.query(`
     CREATE TABLE IF NOT EXISTS groups (
       id SERIAL PRIMARY KEY,
@@ -138,6 +139,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         username: user.username, 
         rating: user.rating,
         profile_image_url: user.profile_image_url,
+        bio: user.bio,
         tier: getTier(user.rating)
       } 
     });
@@ -150,7 +152,7 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
   try {
     const userId = req.user.id;
     const userResult = await pool.query(
-      'SELECT id, username, email, rating, profile_image_url, created_at FROM users WHERE id = $1',
+      'SELECT id, username, email, rating, profile_image_url, bio, created_at FROM users WHERE id = $1',
       [userId]
     );
 
@@ -201,6 +203,82 @@ app.post('/api/users/profile-image', authenticateToken, (req: any, res: Response
       res.status(500).json({ error: 'Failed to update profile image' });
     }
   });
+});
+
+app.patch('/api/users/profile', authenticateToken, async (req: any, res: Response) => {
+  const { username, bio } = req.body;
+  const userId = req.user.id;
+
+  try {
+    if (username) {
+      // Check if username already exists for another user
+      const existingUser = await pool.query('SELECT id FROM users WHERE username = $1 AND id != $2', [username, userId]);
+      if (existingUser.rows.length > 0) {
+        return res.status(400).json({ error: 'Username already exists' });
+      }
+      await pool.query('UPDATE users SET username = $1, bio = $2 WHERE id = $3', [username, bio, userId]);
+    } else {
+      await pool.query('UPDATE users SET bio = $1 WHERE id = $2', [bio, userId]);
+    }
+    
+    res.json({ message: 'Profile updated successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+app.get('/api/users/search', async (req: Request, res: Response) => {
+  const { q } = req.query;
+  if (!q) return res.json([]);
+
+  try {
+    const result = await pool.query(
+      'SELECT id, username, rating, profile_image_url, bio FROM users WHERE username ILIKE $1 ORDER BY rating DESC LIMIT 10',
+      [`%${q}%`]
+    );
+    const users = result.rows.map(u => ({
+      ...u,
+      tier: getTier(u.rating)
+    }));
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: 'Search failed' });
+  }
+});
+
+app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const userResult = await pool.query(
+      'SELECT id, username, rating, profile_image_url, bio, created_at FROM users WHERE id = $1',
+      [id]
+    );
+
+    if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+
+    const user = userResult.rows[0];
+
+    // Get submission statistics
+    const statsResult = await pool.query(
+      'SELECT COUNT(*) as total, SUM(CASE WHEN is_correct THEN 1 ELSE 0 END) as correct FROM submissions WHERE user_id = $1',
+      [id]
+    );
+    const stats = statsResult.rows[0];
+
+    res.json({
+      user: {
+        ...user,
+        tier: getTier(user.rating)
+      },
+      stats: {
+        totalSubmissions: parseInt(stats.total),
+        correctSubmissions: parseInt(stats.correct || 0),
+        accuracy: stats.total > 0 ? (stats.correct / stats.total) * 100 : 0
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch user profile' });
+  }
 });
 
 // Group Endpoints

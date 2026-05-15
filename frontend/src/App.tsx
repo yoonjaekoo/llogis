@@ -19,6 +19,7 @@ interface User {
   rating: number;
   tier: string;
   profile_image_url?: string;
+  bio?: string;
 }
 
 // LaTeX Helper
@@ -395,7 +396,7 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
         <h3 style={{ marginBottom: '1.5rem', color: 'var(--color-4)' }}>그룹 멤버 ({members.length})</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
           {members.map((m: any) => (
-            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
+            <div key={m.id} onClick={() => navigate(`/users/${m.id}`)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
               <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--color-3)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, flexShrink: 0 }}>
                 {m.profile_image_url ? (
                   <img src={m.profile_image_url} alt={m.username} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
@@ -416,6 +417,9 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
 const Ranking: React.FC = () => {
   const [ranks, setRanks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[] | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetch('/api/users/ranking')
@@ -425,6 +429,17 @@ const Ranking: React.FC = () => {
         setLoading(false);
       });
   }, []);
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) {
+      setSearchResults(null);
+      return;
+    }
+    const res = await fetch(`/api/users/search?q=${encodeURIComponent(searchQuery)}`);
+    const data = await res.json();
+    setSearchResults(data);
+  };
 
   const tierColors: { [key: string]: string } = {
     'Bronze': '#cd7f32',
@@ -442,40 +457,189 @@ const Ranking: React.FC = () => {
 
   return (
     <main className="container" style={{ padding: '4rem 0' }}>
-      <div className="problem-card" style={{ maxWidth: '800px', margin: '0 auto' }}>
-        <h2 style={{ fontSize: '2rem', marginBottom: '2rem', textAlign: 'center', color: 'var(--color-4)' }}>실시간 랭킹</h2>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-muted)' }}>
-                <th style={{ padding: '1rem' }}>순위</th>
-                <th style={{ padding: '1rem' }}>사용자</th>
-                <th style={{ padding: '1rem' }}>티어</th>
-                <th style={{ padding: '1rem' }}>레이팅</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ranks.map((u, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s' }}>
-                  <td style={{ padding: '1.2rem 1rem', fontWeight: 800 }}>
-                    {i + 1 === 1 ? '🥇' : i + 1 === 2 ? '🥈' : i + 1 === 3 ? '🥉' : i + 1}
-                  </td>
-                  <td style={{ padding: '1.2rem 1rem', fontWeight: 600 }}>{u.username}</td>
-                  <td style={{ padding: '1.2rem 1rem' }}>
-                    <span style={{ 
-                      color: tierColors[u.tier], 
-                      fontWeight: 800, 
-                      fontSize: '0.9rem',
-                      textTransform: 'uppercase' 
-                    }}>
-                      {u.tier}
-                    </span>
-                  </td>
-                  <td style={{ padding: '1.2rem 1rem', fontWeight: 800 }}>{Math.round(u.rating).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+        <h2 style={{ fontSize: '2.5rem', marginBottom: '2rem', textAlign: 'center', color: 'var(--color-4)' }}>사용자 랭킹 및 검색</h2>
+        
+        <form onSubmit={handleSearch} style={{ display: 'flex', gap: '0.5rem', marginBottom: '3rem' }}>
+          <input 
+            type="text" 
+            placeholder="사용자 이름 검색..." 
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            style={{ flexGrow: 1, padding: '1rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontSize: '1.1rem' }}
+          />
+          <button type="submit" className="btn" style={{ width: 'auto', padding: '0 2rem', background: 'var(--color-3)', color: 'white' }}>검색</button>
+        </form>
+
+        {searchResults !== null && (
+          <div className="problem-card" style={{ marginBottom: '3rem' }}>
+            <h3 style={{ marginBottom: '1.5rem' }}>검색 결과 ({searchResults.length})</h3>
+            {searchResults.length > 0 ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
+                {searchResults.map(u => (
+                  <div 
+                    key={u.id} 
+                    onClick={() => navigate(`/users/${u.id}`)}
+                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', background: 'rgba(0,0,0,0.05)', borderRadius: '1rem', border: '1px solid var(--border)' }}
+                  >
+                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--color-3)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+                      {u.profile_image_url ? <img src={u.profile_image_url} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} /> : u.username[0].toUpperCase()}
+                    </div>
+                    <div style={{ overflow: 'hidden' }}>
+                      <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.username}</div>
+                      <div style={{ fontSize: '0.8rem', color: tierColors[u.tier] }}>{u.tier}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : <p style={{ opacity: 0.5, textAlign: 'center' }}>검색 결과가 없습니다.</p>}
+            <button onClick={() => { setSearchResults(null); setSearchQuery(''); }} style={{ background: 'none', border: 'none', color: 'var(--color-4)', cursor: 'pointer', marginTop: '1.5rem', fontWeight: 800 }}>← 전체 랭킹 보기</button>
+          </div>
+        )}
+
+        {searchResults === null && (
+          <div className="problem-card" style={{ margin: 0 }}>
+            <h3 style={{ fontSize: '1.5rem', marginBottom: '2rem', textAlign: 'center', color: 'var(--color-4)' }}>Top 50 랭킹</h3>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-muted)' }}>
+                    <th style={{ padding: '1rem' }}>순위</th>
+                    <th style={{ padding: '1rem' }}>사용자</th>
+                    <th style={{ padding: '1rem' }}>티어</th>
+                    <th style={{ padding: '1rem' }}>레이팅</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ranks.map((u, i) => (
+                    <tr 
+                      key={i} 
+                      onClick={() => navigate(`/users/${u.id || 0}`)}
+                      style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s', cursor: 'pointer' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,0,0,0.02)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <td style={{ padding: '1.2rem 1rem', fontWeight: 800 }}>
+                        {i + 1 === 1 ? '🥇' : i + 1 === 2 ? '🥈' : i + 1 === 3 ? '🥉' : i + 1}
+                      </td>
+                      <td style={{ padding: '1.2rem 1rem', fontWeight: 600 }}>{u.username}</td>
+                      <td style={{ padding: '1.2rem 1rem' }}>
+                        <span style={{ 
+                          color: tierColors[u.tier], 
+                          fontWeight: 800, 
+                          fontSize: '0.9rem',
+                          textTransform: 'uppercase' 
+                        }}>
+                          {u.tier}
+                        </span>
+                      </td>
+                      <td style={{ padding: '1.2rem 1rem', fontWeight: 800 }}>{Math.round(u.rating).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+};
+
+const UserProfile: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const [profileData, setProfileData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    fetch(`/api/users/${id}/profile`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) {
+          alert(data.error);
+          navigate('/ranking');
+          return;
+        }
+        setProfileData(data);
+        setLoading(false);
+      })
+      .catch(() => {
+        alert('사용자 정보를 불러올 수 없습니다.');
+        navigate('/ranking');
+      });
+  }, [id, navigate]);
+
+  if (loading) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>로딩 중...</div>;
+
+  const { user: u, stats } = profileData;
+
+  const tierColors: { [key: string]: string } = {
+    'Bronze': '#cd7f32',
+    'Silver': '#c0c0c0',
+    'Gold': '#ffd700',
+    'Platinum': '#e5e4e2',
+    'Diamond': '#b9f2ff',
+    'Ruby': '#e0115f',
+    'Master': '#800080',
+    'God': '#ff4500',
+    'Hacker': '#00ff00'
+  };
+
+  return (
+    <main className="container" style={{ padding: '4rem 0' }}>
+      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+        <button onClick={() => navigate('/ranking')} style={{ background: 'none', border: 'none', color: 'var(--color-3)', cursor: 'pointer', marginBottom: '1rem', fontWeight: 800 }}>← 랭킹으로 돌아가기</button>
+        
+        <div className="problem-card" style={{ textAlign: 'center' }}>
+          <div style={{ position: 'relative', width: '120px', height: '120px', margin: '0 auto 2rem' }}>
+            {u.profile_image_url ? (
+              <img src={u.profile_image_url} alt="Profile" style={{ width: '120px', height: '120px', borderRadius: '50%', objectFit: 'cover', boxShadow: '0 0 20px rgba(0,0,0,0.2)' }} />
+            ) : (
+              <div style={{ 
+                width: '120px', height: '120px', borderRadius: '50%', 
+                background: tierColors[u.tier] || 'var(--color-3)', 
+                display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                fontSize: '3rem', boxShadow: '0 0 20px rgba(0,0,0,0.2)', color: 'white', fontWeight: 800
+              }}>
+                {u.username[0].toUpperCase()}
+              </div>
+            )}
+          </div>
+
+          <h2 style={{ fontSize: '2.5rem', marginBottom: '0.5rem', color: 'var(--color-4)' }}>{u.username}</h2>
+          <div style={{ 
+            fontSize: '1.5rem', fontWeight: 800, color: tierColors[u.tier], textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '1.5rem'
+          }}>
+            {u.tier} Rank
+          </div>
+
+          <div style={{ 
+            maxWidth: '500px', margin: '0 auto 2.5rem', padding: '1.5rem', 
+            background: 'rgba(0,0,0,0.03)', borderRadius: '1rem', fontSize: '1.1rem', 
+            lineHeight: 1.6, whiteSpace: 'pre-wrap', fontStyle: u.bio ? 'normal' : 'italic', opacity: u.bio ? 1 : 0.5 
+          }}>
+            {u.bio || "자기소개가 없습니다."}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '3rem' }}>
+            <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>레이팅</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{Math.round(u.rating).toLocaleString()}</div>
+            </div>
+            <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>해결 문제</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{stats.correctSubmissions}</div>
+            </div>
+            <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>정답률</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{Math.round(stats.accuracy)}%</div>
+            </div>
+          </div>
+
+          <div style={{ textAlign: 'center', opacity: 0.6, fontSize: '0.9rem' }}>
+            가입일: {new Date(u.created_at).toLocaleDateString()}
+          </div>
         </div>
       </div>
     </main>
@@ -679,6 +843,11 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [newProfileImageFile, setNewProfileImageFile] = useState<File | null>(null);
   const [isUpdatingImage, setIsUpdatingImage] = useState(false);
+  
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editedUsername, setEditedUsername] = useState('');
+  const [editedBio, setEditedBio] = useState('');
+
   const navigate = useNavigate();
 
   const fetchProfile = useCallback(() => {
@@ -688,7 +857,11 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
       headers: { 'Authorization': `Bearer ${token}` }
     })
     .then(res => res.json())
-    .then(data => setProfileData(data));
+    .then(data => {
+      setProfileData(data);
+      setEditedUsername(data.user.username);
+      setEditedBio(data.user.bio || '');
+    });
   }, [user]);
 
   useEffect(() => {
@@ -698,6 +871,30 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
     }
     fetchProfile();
   }, [user, navigate, fetchProfile]);
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = localStorage.getItem('token');
+    const res = await fetch('/api/users/profile', {
+      method: 'PATCH',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ username: editedUsername, bio: editedBio })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert('프로필이 업데이트되었습니다.');
+      setIsEditingProfile(false);
+      const updatedUser = { ...user!, username: editedUsername, bio: editedBio };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+      fetchProfile();
+    } else {
+      alert(data.error);
+    }
+  };
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -801,12 +998,56 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
           </form>
         )}
 
-        <h2 style={{ fontSize: '2.5rem', marginBottom: '0.5rem', color: 'var(--color-4)' }}>{u.username}</h2>
-        <div style={{ 
-          fontSize: '1.5rem', fontWeight: 800, color: tierColors[u.tier], textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '2rem'
-        }}>
-          {u.tier} Rank
-        </div>
+        {isEditingProfile ? (
+          <form onSubmit={handleUpdateProfile} style={{ maxWidth: '500px', margin: '0 auto 2rem' }}>
+            <div style={{ marginBottom: '1rem', textAlign: 'left' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', opacity: 0.7 }}>사용자 이름</label>
+              <input 
+                type="text" 
+                value={editedUsername}
+                onChange={e => setEditedUsername(e.target.value)}
+                style={{ width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)' }}
+                required
+              />
+            </div>
+            <div style={{ marginBottom: '1.5rem', textAlign: 'left' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', opacity: 0.7 }}>자기소개</label>
+              <textarea 
+                value={editedBio}
+                onChange={e => setEditedBio(e.target.value)}
+                placeholder="자신을 소개해주세요..."
+                style={{ width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', minHeight: '100px', resize: 'vertical' }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button type="submit" className="btn" style={{ background: 'var(--color-3)', color: 'white' }}>저장하기</button>
+              <button type="button" onClick={() => setIsEditingProfile(false)} className="btn" style={{ background: 'var(--border)', color: 'var(--text-main)' }}>취소</button>
+            </div>
+          </form>
+        ) : (
+          <>
+            <h2 style={{ fontSize: '2.5rem', marginBottom: '0.5rem', color: 'var(--color-4)' }}>{u.username}</h2>
+            <div style={{ 
+              fontSize: '1.5rem', fontWeight: 800, color: tierColors[u.tier], textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '1.5rem'
+            }}>
+              {u.tier} Rank
+            </div>
+            <div style={{ 
+              maxWidth: '500px', margin: '0 auto 2.5rem', padding: '1.5rem', 
+              background: 'rgba(0,0,0,0.03)', borderRadius: '1rem', fontSize: '1.1rem', 
+              lineHeight: 1.6, whiteSpace: 'pre-wrap', fontStyle: u.bio ? 'normal' : 'italic', opacity: u.bio ? 1 : 0.5 
+            }}>
+              {u.bio || "자기소개가 없습니다. 프로필을 수정하여 추가해보세요!"}
+            </div>
+            <button 
+              onClick={() => setIsEditingProfile(true)}
+              className="btn" 
+              style={{ width: 'auto', marginBottom: '3rem', padding: '0.6rem 2rem', background: 'var(--color-3)', color: 'white' }}
+            >
+              프로필 수정하기
+            </button>
+          </>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '3rem' }}>
           <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
@@ -1075,6 +1316,7 @@ const App: React.FC = () => {
       <Routes>
         <Route path="/" element={<ProblemList user={user} setUser={setUser} />} />
         <Route path="/ranking" element={<Ranking />} />
+        <Route path="/users/:id" element={<UserProfile />} />
         <Route path="/groups" element={<Groups user={user} />} />
         <Route path="/groups/:id" element={<GroupDetail user={user} />} />
         <Route path="/about" element={<About user={user} />} />
