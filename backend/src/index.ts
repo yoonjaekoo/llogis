@@ -430,7 +430,7 @@ app.post('/api/users/change-password', authenticateToken, async (req: any, res: 
 app.get('/api/users/ranking', async (req: Request, res: Response) => {
   try {
     const result = await pool.query(
-      'SELECT username, rating FROM users ORDER BY rating DESC LIMIT 50'
+      "SELECT id, username, rating FROM users WHERE username != 'admin' ORDER BY rating DESC LIMIT 50"
     );
     const users = result.rows.map(u => ({
       ...u,
