@@ -294,11 +294,14 @@ const Groups: React.FC<{ user: User | null }> = ({ user }) => {
               key={g.id} 
               className="problem-card" 
               onClick={() => navigate(`/groups/${g.id}`)}
-              style={{ margin: 0, display: 'flex', flexDirection: 'column', cursor: 'pointer', border: g.is_member ? '2px solid var(--color-3)' : '1px solid var(--border)' }}
+              style={{ margin: 0, display: 'flex', flexDirection: 'column', cursor: 'pointer', border: g.is_member ? '2px solid var(--color-3)' : g.is_pending ? '2px solid var(--color-2)' : '1px solid var(--border)' }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                 <h3 style={{ color: 'var(--color-3)', margin: 0 }}>{g.name}</h3>
-                {g.is_member && <span style={{ background: 'var(--color-3)', color: 'white', fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '1rem', fontWeight: 800 }}>참여 중</span>}
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  {g.is_member && <span style={{ background: 'var(--color-3)', color: 'white', fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '1rem', fontWeight: 800 }}>참여 중</span>}
+                  {g.is_pending && <span style={{ background: 'var(--color-2)', color: 'white', fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '1rem', fontWeight: 800 }}>가입 대기 중</span>}
+                </div>
               </div>
               <p style={{ fontSize: '0.9rem', opacity: 0.8, marginBottom: '1.5rem', flexGrow: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                 {g.description || '설명이 없습니다.'}
@@ -307,9 +310,14 @@ const Groups: React.FC<{ user: User | null }> = ({ user }) => {
                 <div>방장: <b>{g.creator_name}</b></div>
                 <div>멤버: <b>{g.member_count}명</b></div>
               </div>
-              {!g.is_member && (
+              {!g.is_member && !g.is_pending && (
                 <button onClick={(e) => handleJoin(e, g.id)} className="btn" style={{ background: 'var(--color-1)', color: 'white', width: '100%' }}>
-                  가입하기
+                  가입 신청하기
+                </button>
+              )}
+              {g.is_pending && (
+                <button disabled className="btn" style={{ background: 'var(--color-2)', color: 'white', width: '100%', opacity: 0.7, cursor: 'not-allowed' }}>
+                  승인 대기 중...
                 </button>
               )}
             </div>
@@ -324,17 +332,31 @@ const Groups: React.FC<{ user: User | null }> = ({ user }) => {
 const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
   const { id } = useParams<{ id: string }>();
   const [group, setGroup] = useState<any>(null);
+  const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   const fetchGroupDetail = useCallback(() => {
-    fetch(`/api/groups/${id}`)
+    const token = localStorage.getItem('token');
+    const headers: any = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    fetch(`/api/groups/${id}`, { headers })
       .then(res => res.json())
       .then(data => {
         setGroup(data);
         setLoading(false);
+        
+        // If owner, fetch join requests
+        if (user && data.creator_id === user.id) {
+          fetch(`/api/groups/${id}/requests`, { headers })
+            .then(res => res.json())
+            .then(reqs => {
+              if (Array.isArray(reqs)) setRequests(reqs);
+            });
+        }
       });
-  }, [id]);
+  }, [id, user]);
 
   useEffect(() => {
     fetchGroupDetail();
@@ -347,11 +369,11 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` }
     });
+    const data = await res.json();
     if (res.ok) {
-      alert('그룹에 가입되었습니다!');
+      alert(data.message || '가입 신청이 완료되었습니다!');
       fetchGroupDetail();
     } else {
-      const data = await res.json();
       alert(data.error);
     }
   };
@@ -371,11 +393,44 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
     }
   };
 
+  const handleApprove = async (requestId: number) => {
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/groups/${id}/requests/${requestId}/approve`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      alert('가입 신청을 승인했습니다.');
+      fetchGroupDetail();
+    } else {
+      const data = await res.json();
+      alert(data.error);
+    }
+  };
+
+  const handleReject = async (requestId: number) => {
+    if (!window.confirm('가입 신청을 거절하시겠습니까?')) return;
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/groups/${id}/requests/${requestId}/reject`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      alert('가입 신청을 거절했습니다.');
+      fetchGroupDetail();
+    } else {
+      const data = await res.json();
+      alert(data.error);
+    }
+  };
+
   if (loading) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>로딩 중...</div>;
   if (!group || group.error) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>그룹을 찾을 수 없습니다.</div>;
 
   const members = Array.isArray(group.members) ? group.members : [];
-  const isMember = user && members.some((m: any) => m.id === user.id);
+  const isMember = group.is_member;
+  const isPending = group.is_pending;
+  const isOwner = user && group.creator_id === user.id;
 
   return (
     <main className="container" style={{ padding: '4rem 0' }}>
@@ -387,8 +442,10 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
             <h2 style={{ color: 'var(--color-4)', fontSize: '2.5rem', margin: 0 }}>{group.name}</h2>
             {isMember ? (
               <button onClick={handleLeave} className="btn" style={{ background: '#ff7675', color: 'white', width: 'auto' }}>그룹 탈퇴</button>
+            ) : isPending ? (
+              <button disabled className="btn" style={{ background: 'var(--color-2)', color: 'white', width: 'auto', opacity: 0.7 }}>가입 대기 중</button>
             ) : (
-              <button onClick={handleJoin} className="btn" style={{ background: 'var(--color-1)', color: 'white', width: 'auto' }}>그룹 가입</button>
+              <button onClick={handleJoin} className="btn" style={{ background: 'var(--color-1)', color: 'white', width: 'auto' }}>가입 신청하기</button>
             )}
           </div>
           <p style={{ fontSize: '1.1rem', opacity: 0.9, marginBottom: '2rem', lineHeight: 1.6 }}>{group.description || '설명이 없습니다.'}</p>
@@ -396,6 +453,31 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
              방장: <b>{group.creator_name}</b> | 생성일: {new Date(group.created_at).toLocaleDateString()}
           </div>
         </div>
+
+        {isOwner && requests.length > 0 && (
+          <div className="problem-card" style={{ marginBottom: '2rem', border: '2px solid var(--color-4)' }}>
+            <h3 style={{ marginBottom: '1.5rem', color: 'var(--color-4)' }}>가입 신청 관리 ({requests.length})</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {requests.map((r: any) => (
+                <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', background: 'rgba(0,0,0,0.02)', borderRadius: '0.5rem', border: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--color-3)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+                      {r.profile_image_url ? <img src={r.profile_image_url} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} /> : r.username[0].toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800 }}>{r.username}</div>
+                      <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>{r.tier} | {Math.round(r.rating).toLocaleString()}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button onClick={() => handleApprove(r.id)} className="btn" style={{ padding: '0.5rem 1rem', width: 'auto', background: 'var(--color-3)', color: 'white', fontSize: '0.9rem' }}>승인</button>
+                    <button onClick={() => handleReject(r.id)} className="btn" style={{ padding: '0.5rem 1rem', width: 'auto', background: '#ff7675', color: 'white', fontSize: '0.9rem' }}>거절</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <h3 style={{ marginBottom: '1.5rem', color: 'var(--color-4)' }}>그룹 멤버 ({members.length})</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>

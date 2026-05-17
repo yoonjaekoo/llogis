@@ -91,6 +91,16 @@ const ensureSchema = async () => {
       PRIMARY KEY (group_id, user_id)
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS group_join_requests (
+      id SERIAL PRIMARY KEY,
+      group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      status VARCHAR(20) DEFAULT 'pending',
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(group_id, user_id)
+    )
+  `);
 };
 
 const authenticateToken = (req: any, res: any, next: NextFunction) => {
@@ -297,7 +307,8 @@ app.get('/api/groups', async (req: Request, res: Response) => {
   try {
     const query = `
       SELECT g.*, u.username as creator_name, COUNT(gm.user_id) as member_count,
-             EXISTS(SELECT 1 FROM group_members WHERE group_id = g.id AND user_id = $1) as is_member
+             EXISTS(SELECT 1 FROM group_members WHERE group_id = g.id AND user_id = $1) as is_member,
+             EXISTS(SELECT 1 FROM group_join_requests WHERE group_id = g.id AND user_id = $1 AND status = 'pending') as is_pending
       FROM groups g
       LEFT JOIN users u ON g.creator_id = u.id
       LEFT JOIN group_members gm ON g.id = gm.group_id
@@ -348,13 +359,26 @@ app.post('/api/groups', authenticateToken, async (req: any, res: Response) => {
 
 app.get('/api/groups/:id', async (req: Request, res: Response) => {
   const groupId = req.params.id;
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  let userId: number | null = null;
+
+  if (token) {
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      userId = decoded.id;
+    } catch (err) { }
+  }
+
   try {
     const groupResult = await pool.query(`
-      SELECT g.*, u.username as creator_name
+      SELECT g.*, u.username as creator_name,
+             EXISTS(SELECT 1 FROM group_members WHERE group_id = g.id AND user_id = $1) as is_member,
+             EXISTS(SELECT 1 FROM group_join_requests WHERE group_id = g.id AND user_id = $1 AND status = 'pending') as is_pending
       FROM groups g
       JOIN users u ON g.creator_id = u.id
-      WHERE g.id = $1
-    `, [groupId]);
+      WHERE g.id = $2
+    `, [userId || null, groupId]);
 
     if (groupResult.rows.length === 0) return res.status(404).json({ error: 'Group not found' });
 
@@ -379,13 +403,22 @@ app.post('/api/groups/:id/join', authenticateToken, async (req: any, res: Respon
   const userId = req.user.id;
 
   try {
-    await pool.query('INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)', [groupId, userId]);
-    res.json({ message: 'Joined group successfully' });
-  } catch (err) {
-    if ((err as any).code === '23505') {
+    // Check if already a member
+    const memberCheck = await pool.query('SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2', [groupId, userId]);
+    if (memberCheck.rows.length > 0) {
       return res.status(400).json({ error: 'Already a member of this group' });
     }
-    res.status(500).json({ error: 'Failed to join group' });
+
+    // Check if already has a pending request
+    const requestCheck = await pool.query('SELECT 1 FROM group_join_requests WHERE group_id = $1 AND user_id = $2 AND status = \'pending\'', [groupId, userId]);
+    if (requestCheck.rows.length > 0) {
+      return res.status(400).json({ error: 'Join request already sent and pending' });
+    }
+
+    await pool.query('INSERT INTO group_join_requests (group_id, user_id) VALUES ($1, $2)', [groupId, userId]);
+    res.json({ message: 'Join request sent successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to send join request' });
   }
 });
 
@@ -398,6 +431,77 @@ app.post('/api/groups/:id/leave', authenticateToken, async (req: any, res: Respo
     res.json({ message: 'Left group successfully' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to leave group' });
+  }
+});
+
+// Group Join Requests Management
+app.get('/api/groups/:id/requests', authenticateToken, async (req: any, res: Response) => {
+  const groupId = req.params.id;
+  const userId = req.user.id;
+
+  try {
+    // Check if user is the creator
+    const groupRes = await pool.query('SELECT creator_id FROM groups WHERE id = $1', [groupId]);
+    if (groupRes.rows.length === 0) return res.status(404).json({ error: 'Group not found' });
+    if (groupRes.rows[0].creator_id !== userId) return res.status(403).json({ error: 'Only group creator can view requests' });
+
+    const requestsRes = await pool.query(`
+      SELECT r.id, r.user_id, r.created_at, u.username, u.rating, u.profile_image_url
+      FROM group_join_requests r
+      JOIN users u ON r.user_id = u.id
+      WHERE r.group_id = $1 AND r.status = 'pending'
+      ORDER BY r.created_at ASC
+    `, [groupId]);
+
+    res.json(requestsRes.rows.map(r => ({ ...r, tier: getTier(r.rating) })));
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch requests' });
+  }
+});
+
+app.post('/api/groups/:id/requests/:requestId/approve', authenticateToken, async (req: any, res: Response) => {
+  const groupId = req.params.id;
+  const requestId = req.params.requestId;
+  const userId = req.user.id;
+
+  try {
+    // Check ownership
+    const groupRes = await pool.query('SELECT creator_id FROM groups WHERE id = $1', [groupId]);
+    if (groupRes.rows[0].creator_id !== userId) return res.status(403).json({ error: 'Only group creator can approve requests' });
+
+    // Get request details
+    const requestRes = await pool.query('SELECT user_id FROM group_join_requests WHERE id = $1 AND group_id = $2', [requestId, groupId]);
+    if (requestRes.rows.length === 0) return res.status(404).json({ error: 'Request not found' });
+
+    const targetUserId = requestRes.rows[0].user_id;
+
+    // Add to members and remove from requests
+    await pool.query('BEGIN');
+    await pool.query('INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)', [groupId, targetUserId]);
+    await pool.query('DELETE FROM group_join_requests WHERE id = $1', [requestId]);
+    await pool.query('COMMIT');
+
+    res.json({ message: 'Request approved successfully' });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    res.status(500).json({ error: 'Failed to approve request' });
+  }
+});
+
+app.post('/api/groups/:id/requests/:requestId/reject', authenticateToken, async (req: any, res: Response) => {
+  const groupId = req.params.id;
+  const requestId = req.params.requestId;
+  const userId = req.user.id;
+
+  try {
+    // Check ownership
+    const groupRes = await pool.query('SELECT creator_id FROM groups WHERE id = $1', [groupId]);
+    if (groupRes.rows[0].creator_id !== userId) return res.status(403).json({ error: 'Only group creator can reject requests' });
+
+    await pool.query('DELETE FROM group_join_requests WHERE id = $1 AND group_id = $2', [requestId, groupId]);
+    res.json({ message: 'Request rejected successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to reject request' });
   }
 });
 
