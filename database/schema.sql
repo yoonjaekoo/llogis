@@ -181,3 +181,24 @@ INSERT INTO problem_tags (problem_id, tag_id) SELECT id, (SELECT id FROM tags WH
 INSERT INTO problem_tags (problem_id, tag_id) SELECT id, (SELECT id FROM tags WHERE name = '일차함수') FROM problems WHERE title LIKE '%함수%';
 INSERT INTO problem_tags (problem_id, tag_id) SELECT id, (SELECT id FROM tags WHERE name = '식의계산') FROM problems WHERE title LIKE '%계산%';
 INSERT INTO problem_tags (problem_id, tag_id) SELECT id, (SELECT id FROM tags WHERE name = '도형') FROM problems WHERE title LIKE '%도형%';
+
+-- Groups Competitions
+CREATE TABLE IF NOT EXISTS group_competitions (
+    id SERIAL PRIMARY KEY,
+    group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE,
+    title VARCHAR(100) NOT NULL,
+    description TEXT,
+    duration_hours INTEGER NOT NULL,
+    start_time TIMESTAMP WITH TIME ZONE NOT NULL,
+    end_time TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Group Competition Participants
+CREATE TABLE IF NOT EXISTS group_competition_participants (
+    competition_id INTEGER REFERENCES group_competitions(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    initial_rating FLOAT NOT NULL,
+    PRIMARY KEY (competition_id, user_id)
+);
+

@@ -336,6 +336,16 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
+  // Competitions state
+  const [competitions, setCompetitions] = useState<any[]>([]);
+  const [activeCompId, setActiveCompId] = useState<number | null>(null);
+  const [compDetail, setCompDetail] = useState<any>(null);
+  const [showCreateComp, setShowCreateComp] = useState(false);
+  const [compTitle, setCompTitle] = useState('');
+  const [compDesc, setCompDesc] = useState('');
+  const [compDuration, setCompDuration] = useState('24'); // default 24 hours
+  const [activeTab, setActiveTab] = useState<'members' | 'competitions'>('members');
+
   const fetchGroupDetail = useCallback(() => {
     const token = localStorage.getItem('token');
     const headers: any = {};
@@ -358,9 +368,55 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
       });
   }, [id, user]);
 
+  const fetchCompetitions = useCallback(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    fetch(`/api/groups/${id}/competitions`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setCompetitions(data);
+      })
+      .catch(err => console.error(err));
+  }, [id]);
+
+  const fetchCompetitionDetail = useCallback((compId: number) => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    fetch(`/api/groups/${id}/competitions/${compId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (!data.error) setCompDetail(data);
+      })
+      .catch(err => console.error(err));
+  }, [id]);
+
   useEffect(() => {
     fetchGroupDetail();
   }, [fetchGroupDetail]);
+
+  useEffect(() => {
+    if (group && group.is_member) {
+      fetchCompetitions();
+    }
+  }, [group, fetchCompetitions]);
+
+  useEffect(() => {
+    let interval: any;
+    if (activeCompId) {
+      fetchCompetitionDetail(activeCompId);
+      // Auto refresh leaderboard every 10 seconds
+      interval = setInterval(() => {
+        fetchCompetitionDetail(activeCompId);
+      }, 10000);
+    }
+    return () => clearInterval(interval);
+  }, [activeCompId, fetchCompetitionDetail]);
 
   const handleJoin = async () => {
     if (!user) return navigate('/login');
@@ -424,6 +480,42 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
     }
   };
 
+  const handleCreateCompetition = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return navigate('/login');
+    const token = localStorage.getItem('token');
+
+    const res = await fetch(`/api/groups/${id}/competitions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        title: compTitle,
+        description: compDesc,
+        durationHours: compDuration
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      alert('경쟁이 시작되었습니다! 다른 멤버들과 경쟁해보세요.');
+      setCompTitle('');
+      setCompDesc('');
+      setCompDuration('24');
+      setShowCreateComp(false);
+      fetchCompetitions();
+    } else {
+      alert(data.error);
+    }
+  };
+
+  const handleCloseCompDetail = () => {
+    setActiveCompId(null);
+    setCompDetail(null);
+  };
+
   if (loading) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>로딩 중...</div>;
   if (!group || group.error) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>그룹을 찾을 수 없습니다.</div>;
 
@@ -438,7 +530,7 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
         <button onClick={() => navigate('/groups')} style={{ background: 'none', border: 'none', color: 'var(--color-3)', cursor: 'pointer', marginBottom: '1rem', fontWeight: 800 }}>← 목록으로 돌아가기</button>
         
         <div className="problem-card" style={{ marginBottom: '2rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
             <h2 style={{ color: 'var(--color-4)', fontSize: '2.5rem', margin: 0 }}>{group.name}</h2>
             {isMember ? (
               <button onClick={handleLeave} className="btn" style={{ background: '#ff7675', color: 'white', width: 'auto' }}>그룹 탈퇴</button>
@@ -459,7 +551,7 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
             <h3 style={{ marginBottom: '1.5rem', color: 'var(--color-4)' }}>가입 신청 관리 ({requests.length})</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {requests.map((r: any) => (
-                <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', background: 'rgba(0,0,0,0.02)', borderRadius: '0.5rem', border: '1px solid var(--border)' }}>
+                <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', background: 'rgba(0,0,0,0.02)', borderRadius: '0.5rem', border: '1px solid var(--border)', flexWrap: 'wrap', gap: '1rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--color-3)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
                       {r.profile_image_url ? <img src={r.profile_image_url} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} /> : r.username[0].toUpperCase()}
@@ -479,26 +571,268 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
           </div>
         )}
 
-        <h3 style={{ marginBottom: '1.5rem', color: 'var(--color-4)' }}>그룹 멤버 ({members.length})</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
-          {members.map((m: any) => (
-            <div key={m.id} onClick={() => navigate(`/users/${m.id}`)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--color-3)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, flexShrink: 0 }}>
-                {m.profile_image_url ? (
-                  <img src={m.profile_image_url} alt={m.username} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-                ) : m.username[0].toUpperCase()}
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.username}</div>
-                <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>{m.tier} | {Math.round(m.rating).toLocaleString()}</div>
-              </div>
-            </div>
-          ))}
+        {/* Tab Selection */}
+        <div style={{ display: 'flex', gap: '1rem', borderBottom: '2px solid var(--border)', marginBottom: '1.5rem', paddingBottom: '0.5rem' }}>
+          <button 
+            onClick={() => setActiveTab('members')} 
+            style={{ 
+              background: 'none', border: 'none', 
+              color: activeTab === 'members' ? 'var(--color-4)' : 'var(--text-muted)', 
+              fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer',
+              borderBottom: activeTab === 'members' ? '3px solid var(--color-4)' : 'none',
+              paddingBottom: '0.5rem', marginBottom: '-0.7rem'
+            }}
+          >
+            그룹 멤버 ({members.length})
+          </button>
+          {isMember && (
+            <button 
+              onClick={() => setActiveTab('competitions')} 
+              style={{ 
+                background: 'none', border: 'none', 
+                color: activeTab === 'competitions' ? 'var(--color-4)' : 'var(--text-muted)', 
+                fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer',
+                borderBottom: activeTab === 'competitions' ? '3px solid var(--color-4)' : 'none',
+                paddingBottom: '0.5rem', marginBottom: '-0.7rem'
+              }}
+            >
+              레이팅 경쟁 ({competitions.length})
+            </button>
+          )}
         </div>
+
+        {/* Tab Contents: Members */}
+        {activeTab === 'members' && (
+          <div>
+            <h3 style={{ marginBottom: '1.5rem', color: 'var(--color-4)' }}>그룹 멤버 ({members.length})</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
+              {members.map((m: any) => (
+                <div key={m.id} onClick={() => navigate(`/users/${m.id}`)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
+                  <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--color-3)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, flexShrink: 0 }}>
+                    {m.profile_image_url ? (
+                      <img src={m.profile_image_url} alt={m.username} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                    ) : m.username[0].toUpperCase()}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.username}</div>
+                    <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>{m.tier} | {Math.round(m.rating).toLocaleString()}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Tab Contents: Competitions */}
+        {activeTab === 'competitions' && isMember && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ margin: 0, color: 'var(--color-4)' }}>진행 중인 레이팅 경쟁</h3>
+              <button 
+                onClick={() => setShowCreateComp(!showCreateComp)} 
+                className="btn" 
+                style={{ background: 'var(--color-3)', color: 'var(--color-4)', width: 'auto', padding: '0.5rem 1.5rem', fontSize: '0.9rem' }}
+              >
+                {showCreateComp ? '생성 취소' : '경쟁 주최하기'}
+              </button>
+            </div>
+
+            {showCreateComp && (
+              <form onSubmit={handleCreateCompetition} className="problem-card" style={{ marginBottom: '2rem', border: '1px solid var(--color-3)' }}>
+                <h4 style={{ margin: '0 0 1rem 0', color: 'var(--color-4)' }}>새 경쟁 열기</h4>
+                <div style={{ marginBottom: '1rem' }}>
+                  <input 
+                    type="text" 
+                    placeholder="경쟁 제목 (예: 주말 레이팅 대격돌!)" 
+                    value={compTitle} 
+                    onChange={e => setCompTitle(e.target.value)} 
+                    style={{ width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)' }}
+                    required 
+                  />
+                </div>
+                <div style={{ marginBottom: '1rem' }}>
+                  <textarea 
+                    placeholder="경쟁 설명 또는 규칙" 
+                    value={compDesc} 
+                    onChange={e => setCompDesc(e.target.value)} 
+                    style={{ width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', minHeight: '80px' }}
+                  />
+                </div>
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', opacity: 0.8 }}>경쟁 제한 시간 (시간 단위)</label>
+                  <select 
+                    value={compDuration} 
+                    onChange={e => setCompDuration(e.target.value)} 
+                    style={{ width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)' }}
+                  >
+                    <option value="1">1시간</option>
+                    <option value="3">3시간</option>
+                    <option value="6">6시간</option>
+                    <option value="12">12시간</option>
+                    <option value="24">24시간 (하루)</option>
+                    <option value="48">48시간 (이틀)</option>
+                    <option value="72">72시간 (사흘)</option>
+                    <option value="168">168시간 (일주일)</option>
+                  </select>
+                </div>
+                <button type="submit" className="btn" style={{ background: 'var(--color-4)', color: 'white' }}>대회 시작하기 🚀</button>
+              </form>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
+              {competitions.map((comp: any) => {
+                const isOngoing = comp.status === 'ongoing';
+                const isPending = comp.status === 'pending';
+                const isEnded = comp.status === 'ended';
+
+                // Calculate time left
+                const endTime = new Date(comp.end_time).getTime();
+                const nowTime = new Date().getTime();
+                const diffMs = endTime - nowTime;
+                let timeLeftStr = '';
+
+                if (isOngoing && diffMs > 0) {
+                  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                  const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                  timeLeftStr = `종료까지 ${diffHours}시간 ${diffMins}분 남음`;
+                } else if (isEnded) {
+                  timeLeftStr = '경쟁 종료됨';
+                } else if (isPending) {
+                  timeLeftStr = '시작 대기 중';
+                }
+
+                return (
+                  <div 
+                    key={comp.id} 
+                    className="problem-card" 
+                    onClick={() => setActiveCompId(comp.id)}
+                    style={{ margin: 0, cursor: 'pointer', border: isOngoing ? '2px solid var(--color-4)' : '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                      <h4 style={{ margin: 0, color: 'var(--color-4)' }}>{comp.title}</h4>
+                      <span style={{ 
+                        fontSize: '0.75rem', padding: '0.2rem 0.5rem', borderRadius: '1rem', fontWeight: 800, color: 'white',
+                        background: isOngoing ? 'var(--color-1)' : isEnded ? 'var(--text-muted)' : 'var(--color-3)'
+                      }}>
+                        {isOngoing ? '진행 중' : isEnded ? '종료됨' : '대기 중'}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '0.9rem', opacity: 0.8, marginBottom: '1.5rem', flexGrow: 1 }}>
+                      {comp.description || '설명이 없습니다.'}
+                    </p>
+                    <div style={{ fontSize: '0.8rem', borderTop: '1px solid var(--border)', paddingTop: '0.8rem', opacity: 0.9 }}>
+                      <div>⏱️ <b>{timeLeftStr}</b></div>
+                      <div>👥 참가자: <b>{comp.participant_count}명</b></div>
+                    </div>
+                  </div>
+                );
+              })}
+              {competitions.length === 0 && (
+                <p style={{ opacity: 0.5, textAlign: 'center', gridColumn: '1 / -1', padding: '2rem 0' }}>아직 주최된 경쟁이 없습니다. 첫 경쟁을 주최해보세요!</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Realtime Leaderboard Modal */}
+        {activeCompId && compDetail && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+            background: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center',
+            zIndex: 1000, padding: '1rem', boxSizing: 'border-box'
+          }}>
+            <div className="problem-card" style={{
+              width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto',
+              margin: 0, position: 'relative', border: '2px solid var(--color-4)', boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+              background: 'var(--card-bg)'
+            }}>
+              <button 
+                onClick={handleCloseCompDetail}
+                style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                ✕
+              </button>
+
+              <h3 style={{ color: 'var(--color-4)', fontSize: '1.8rem', marginBottom: '0.5rem', paddingRight: '2rem' }}>
+                {compDetail.competition.title}
+              </h3>
+              <p style={{ opacity: 0.8, fontSize: '0.95rem', marginBottom: '1.5rem', lineHeight: 1.5 }}>
+                {compDetail.competition.description || '규칙 설명이 없습니다.'}
+              </p>
+
+              <div style={{ padding: '0.8rem', background: 'rgba(0,0,0,0.03)', borderRadius: '0.5rem', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+                상태: <b>{compDetail.competition.status === 'ongoing' ? '🔴 실시간 진행 중 (10초마다 자동 갱신)' : '🏁 대회 종료됨'}</b><br />
+                대회 기간: {new Date(compDetail.competition.start_time).toLocaleString()} ~ {new Date(compDetail.competition.end_time).toLocaleString()} ({compDetail.competition.duration_hours}시간)
+              </div>
+
+              <h4 style={{ color: 'var(--color-4)', marginBottom: '1rem' }}>실시간 순위표 (Leaderboard)</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {compDetail.leaderboard.map((player: any, idx: number) => {
+                  const rank = idx + 1;
+                  const isTop3 = rank <= 3;
+                  const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}`;
+                  const isGainPositive = player.rating_gain > 0;
+                  const isGainNegative = player.rating_gain < 0;
+
+                  return (
+                    <div 
+                      key={player.user_id}
+                      style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '0.8rem 1rem', background: 'var(--card-bg)', border: '1px solid var(--border)',
+                        borderRadius: '0.8rem', boxShadow: isTop3 ? '0 4px 10px rgba(92, 149, 255, 0.15)' : 'none',
+                        borderColor: rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? '#cd7f32' : 'var(--border)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0 }}>
+                        <span style={{ fontSize: isTop3 ? '1.5rem' : '1rem', fontWeight: 900, width: '30px', textAlign: 'center' }}>
+                          {medal}
+                        </span>
+                        <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--color-3)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, flexShrink: 0 }}>
+                          {player.profile_image_url ? (
+                            <img src={player.profile_image_url} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                          ) : player.username[0].toUpperCase()}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {player.username}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+                            {player.tier} | 현재 {Math.round(player.current_rating).toLocaleString()}점
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ 
+                          fontWeight: 900, fontSize: '1.1rem',
+                          color: isGainPositive ? '#2ecc71' : isGainNegative ? '#e74c3c' : 'var(--text-main)'
+                        }}>
+                          {isGainPositive ? `+${Math.round(player.rating_gain).toLocaleString()}` : Math.round(player.rating_gain).toLocaleString()} UP
+                        </div>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.6 }}>
+                          시작: {Math.round(player.initial_rating).toLocaleString()}점
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <button 
+                onClick={handleCloseCompDetail}
+                className="btn"
+                style={{ background: 'var(--color-4)', color: 'white', marginTop: '2rem' }}
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
 };
+
 
 const Ranking: React.FC = () => {
   const [ranks, setRanks] = useState<any[]>([]);
@@ -708,7 +1042,7 @@ const UserProfile: React.FC = () => {
             {u.bio || "자기소개가 없습니다."}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '3rem' }}>
+          <div className="profile-stats-grid">
             <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
               <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>레이팅</div>
               <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{Math.round(u.rating).toLocaleString()}</div>
@@ -1135,7 +1469,7 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
           </>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '3rem' }}>
+        <div className="profile-stats-grid">
           <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
             <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>현재 레이팅</div>
             <div style={{ fontSize: '1.8rem', fontWeight: 800 }}>{Math.round(u.rating).toLocaleString()}</div>
@@ -1241,8 +1575,8 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
   const selectedProblem = problems.find(p => p.id === selectedProblemId);
 
   return (
-    <main className="container" style={{ display: 'flex', gap: '2rem', padding: '2rem 0', maxWidth: '1400px' }}>
-      <div style={{ width: '300px', flexShrink: 0 }}>
+    <main className="container problem-layout">
+      <div className="problem-sidebar" style={{ width: '300px', flexShrink: 0 }}>
         <h3 style={{ marginBottom: '1rem', color: 'var(--color-4)' }}>문제 목록 ({problems.length})</h3>
         <div style={{ maxHeight: '70vh', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '1rem', background: 'var(--card-bg)' }}>
           {problems.map(p => (

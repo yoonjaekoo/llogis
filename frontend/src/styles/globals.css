@@ -233,3 +233,90 @@ nav a:hover {
 [data-theme='dark'] .katex {
   color: white;
 }
+
+/* ==========================================================================
+   Responsive & Mobile Optimization (768px or less)
+   ========================================================================== */
+
+/* Responsive Layout Utilities */
+.problem-layout {
+  display: flex;
+  gap: 2rem;
+  padding: 2rem 0;
+  max-width: 1400px;
+}
+
+.profile-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 3rem;
+}
+
+@media (max-width: 768px) {
+  /* Container adjustment */
+  .container {
+    padding: 0 1rem;
+  }
+
+  /* Header & Navigation */
+  header {
+    padding: 1rem 0;
+  }
+  
+  header .container {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    align-items: center;
+    text-align: center;
+  }
+
+  nav ul {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+  }
+
+  /* Problem List Page (Vertical split on mobile) */
+  .problem-layout {
+    flex-direction: column;
+    padding: 1rem 0;
+    gap: 1.5rem;
+  }
+
+  .problem-sidebar {
+    width: 100% !important;
+    max-height: 200px;
+  }
+
+  /* Profile Dashboard Grid */
+  .profile-stats-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+  }
+
+  /* Typography & Padding scaling */
+  .problem-card {
+    padding: 1.5rem;
+    border-radius: 1rem;
+  }
+
+  .math-content {
+    font-size: 1.3rem;
+    padding: 1.5rem 0;
+  }
+
+  .auth-form {
+    padding: 2rem 1.5rem;
+    margin: 2rem auto;
+  }
+
+  /* Buttons & Inputs */
+  .btn {
+    padding: 0.8rem 1.5rem;
+    font-size: 1rem;
+  }
+}
+

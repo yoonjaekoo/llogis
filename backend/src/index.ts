@@ -101,6 +101,26 @@ const ensureSchema = async () => {
       UNIQUE(group_id, user_id)
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS group_competitions (
+      id SERIAL PRIMARY KEY,
+      group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE,
+      title VARCHAR(100) NOT NULL,
+      description TEXT,
+      duration_hours INTEGER NOT NULL,
+      start_time TIMESTAMP WITH TIME ZONE NOT NULL,
+      end_time TIMESTAMP WITH TIME ZONE NOT NULL,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS group_competition_participants (
+      competition_id INTEGER REFERENCES group_competitions(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      initial_rating FLOAT NOT NULL,
+      PRIMARY KEY (competition_id, user_id)
+    )
+  `);
 };
 
 const authenticateToken = (req: any, res: any, next: NextFunction) => {
@@ -431,6 +451,169 @@ app.post('/api/groups/:id/leave', authenticateToken, async (req: any, res: Respo
     res.json({ message: 'Left group successfully' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to leave group' });
+  }
+});
+
+// Group Competition Endpoints
+app.post('/api/groups/:id/competitions', authenticateToken, async (req: any, res: Response) => {
+  const groupId = req.params.id;
+  const { title, description, durationHours } = req.body;
+  const userId = req.user.id;
+
+  if (!title || !durationHours) {
+    return res.status(400).json({ error: 'Title and duration are required' });
+  }
+
+  const hours = parseInt(durationHours);
+  if (isNaN(hours) || hours <= 0) {
+    return res.status(400).json({ error: 'Duration must be a positive integer' });
+  }
+
+  try {
+    // Check if user is a member of the group
+    const memberCheck = await pool.query('SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2', [groupId, userId]);
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Only group members can create competitions' });
+    }
+
+    await pool.query('BEGIN');
+
+    const startTime = new Date();
+    const endTime = new Date(startTime.getTime() + hours * 60 * 60 * 1000);
+    
+    const compResult = await pool.query(
+      'INSERT INTO group_competitions (group_id, title, description, duration_hours, start_time, end_time) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [groupId, title, description || null, hours, startTime, endTime]
+    );
+    const competition = compResult.rows[0];
+
+    // Fetch all current group members and their ratings
+    const membersRes = await pool.query(`
+      SELECT gm.user_id, u.rating 
+      FROM group_members gm
+      JOIN users u ON gm.user_id = u.id
+      WHERE gm.group_id = $1
+    `, [groupId]);
+
+    // Insert participants with current ratings
+    for (const member of membersRes.rows) {
+      await pool.query(
+        'INSERT INTO group_competition_participants (competition_id, user_id, initial_rating) VALUES ($1, $2, $3)',
+        [competition.id, member.user_id, member.rating]
+      );
+    }
+
+    await pool.query('COMMIT');
+    res.status(201).json({ message: 'Competition created successfully', competition });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Failed to create competition:', err);
+    res.status(500).json({ error: 'Failed to create competition' });
+  }
+});
+
+app.get('/api/groups/:id/competitions', authenticateToken, async (req: any, res: Response) => {
+  const groupId = req.params.id;
+  const userId = req.user.id;
+
+  try {
+    // Check if user is a member of the group
+    const memberCheck = await pool.query('SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2', [groupId, userId]);
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Only group members can view competitions' });
+    }
+
+    const compsRes = await pool.query(`
+      SELECT 
+        gc.*,
+        CASE 
+          WHEN NOW() < gc.start_time THEN 'pending'
+          WHEN NOW() BETWEEN gc.start_time AND gc.end_time THEN 'ongoing'
+          ELSE 'ended'
+        END as status,
+        (SELECT COUNT(*) FROM group_competition_participants WHERE competition_id = gc.id) as participant_count
+      FROM group_competitions gc
+      WHERE gc.group_id = $1
+      ORDER BY gc.created_at DESC
+    `, [groupId]);
+
+    res.json(compsRes.rows);
+  } catch (err) {
+    console.error('Failed to fetch competitions:', err);
+    res.status(500).json({ error: 'Failed to fetch competitions' });
+  }
+});
+
+app.get('/api/groups/:id/competitions/:compId', authenticateToken, async (req: any, res: Response) => {
+  const groupId = req.params.id;
+  const compId = req.params.compId;
+  const userId = req.user.id;
+
+  try {
+    // Check if user is a member of the group
+    const memberCheck = await pool.query('SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2', [groupId, userId]);
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Only group members can access this competition' });
+    }
+
+    // Check if competition exists
+    const compRes = await pool.query('SELECT * FROM group_competitions WHERE id = $1 AND group_id = $2', [compId, groupId]);
+    if (compRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Competition not found' });
+    }
+    const competition = compRes.rows[0];
+
+    // Check if current user is registered as a participant, if not, auto-register
+    const participantCheck = await pool.query(
+      'SELECT 1 FROM group_competition_participants WHERE competition_id = $1 AND user_id = $2',
+      [compId, userId]
+    );
+    if (participantCheck.rows.length === 0) {
+      const userRatingRes = await pool.query('SELECT rating FROM users WHERE id = $1', [userId]);
+      const currentRating = parseFloat(userRatingRes.rows[0].rating);
+      await pool.query(
+        'INSERT INTO group_competition_participants (competition_id, user_id, initial_rating) VALUES ($1, $2, $3)',
+        [compId, userId, currentRating]
+      );
+    }
+
+    // Fetch leaderboard
+    const leaderboardRes = await pool.query(`
+      SELECT 
+        u.id as user_id,
+        u.username,
+        u.profile_image_url,
+        gcp.initial_rating,
+        u.rating as current_rating,
+        (u.rating - gcp.initial_rating) as rating_gain
+      FROM group_competition_participants gcp
+      JOIN users u ON gcp.user_id = u.id
+      WHERE gcp.competition_id = $1
+      ORDER BY rating_gain DESC, u.rating DESC
+    `, [compId]);
+
+    const leaderboard = leaderboardRes.rows.map((row: any) => ({
+      ...row,
+      tier: getTier(parseFloat(row.current_rating))
+    }));
+
+    const now = new Date();
+    const start = new Date(competition.start_time);
+    const end = new Date(competition.end_time);
+    let status = 'ended';
+    if (now < start) status = 'pending';
+    else if (now >= start && now <= end) status = 'ongoing';
+
+    res.json({
+      competition: {
+        ...competition,
+        status
+      },
+      leaderboard
+    });
+  } catch (err) {
+    console.error('Failed to fetch competition leaderboard:', err);
+    res.status(500).json({ error: 'Failed to fetch competition leaderboard' });
   }
 });
 
