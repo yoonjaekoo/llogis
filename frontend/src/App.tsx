@@ -1122,6 +1122,11 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
   const [generating, setGenerating] = useState(false);
   const [category, setCategory] = useState('');
   const [cleaning, setCleaning] = useState(false);
+  const [problems, setProblems] = useState<any[]>([]);
+  const [problemsPage, setProblemsPage] = useState(1);
+  const [problemsTotalPages, setProblemsTotalPages] = useState(1);
+  const [loadingProblems, setLoadingProblems] = useState(false);
+  const [editingProblem, setEditingProblem] = useState<any>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -1178,6 +1183,58 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
     if (res.ok) fetchUsers();
   };
 
+  const fetchProblems = useCallback(async () => {
+    setLoadingProblems(true);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`/api/admin/problems?page=${problemsPage}&limit=50`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.problems) {
+        setProblems(data.problems);
+        setProblemsTotalPages(data.pagination.totalPages);
+      }
+    } catch {}
+    setLoadingProblems(false);
+  }, [problemsPage]);
+
+  const handleDeleteProblem = async (problemId: number) => {
+    if (!window.confirm('이 문제를 삭제하시겠습니까? 관련 제출 기록도 함께 삭제됩니다.')) return;
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/admin/problems/${problemId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    setMessage(data.message || data.error);
+    if (res.ok) fetchProblems();
+  };
+
+  const handleSaveProblem = async () => {
+    if (!editingProblem) return;
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/admin/problems/${editingProblem.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        title: editingProblem.title,
+        content: editingProblem.content,
+        answer: editingProblem.answer,
+        current_difficulty: editingProblem.current_difficulty,
+      })
+    });
+    const data = await res.json();
+    setMessage(data.message || data.error);
+    if (res.ok) {
+      setEditingProblem(null);
+      fetchProblems();
+    }
+  };
+
   const handleGenerateNim = async () => {
     setGenerating(true);
     setMessage('');
@@ -1222,12 +1279,19 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
     setCleaning(false);
   };
 
-  const handleDeleteUser = async (userId: number, username: string) => {
-    if (!window.confirm(`정말로 ${username} 계정을 삭제하시겠습니까?`)) return;
+  const handleUpdateRating = async (userId: number, currentRating: number) => {
+    const newRatingStr = window.prompt('새로운 레이팅을 입력하세요:', currentRating.toString());
+    if (newRatingStr === null) return;
+    const newRating = parseFloat(newRatingStr);
+    if (isNaN(newRating)) return alert('올바른 숫자를 입력해주세요.');
     const token = localStorage.getItem('token');
-    const res = await fetch(`/api/admin/users/${userId}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
+    const res = await fetch(`/api/admin/users/${userId}/rating`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ rating: newRating })
     });
     const data = await res.json();
     if (res.ok) {
@@ -1238,20 +1302,12 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
     }
   };
 
-  const handleUpdateRating = async (userId: number, currentRating: number) => {
-    const newRatingStr = window.prompt('새로운 레이팅을 입력하세요:', currentRating.toString());
-    if (newRatingStr === null) return;
-    const newRating = parseFloat(newRatingStr);
-    if (isNaN(newRating)) return alert('올바른 숫자를 입력해주세요.');
-
+  const handleDeleteUser = async (userId: number, username: string) => {
+    if (!window.confirm(`정말로 ${username} 계정을 삭제하시겠습니까?`)) return;
     const token = localStorage.getItem('token');
-    const res = await fetch(`/api/admin/users/${userId}/rating`, {
-      method: 'PATCH',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}` 
-      },
-      body: JSON.stringify({ rating: newRating })
+    const res = await fetch(`/api/admin/users/${userId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
     });
     const data = await res.json();
     if (res.ok) {
@@ -1378,6 +1434,91 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
             </div>
           )}
         </div>
+
+        {/* Problem Management */}
+        <div className="problem-card" style={{ margin: 0, marginTop: '2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <h3 style={{ margin: 0 }}>문제 관리 ({problems.length})</h3>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <button onClick={() => { setProblemsPage(p => Math.max(1, p - 1)); fetchProblems(); }} disabled={problemsPage <= 1} className="btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: 'var(--color-3)', color: 'white', opacity: problemsPage <= 1 ? 0.5 : 1 }}>←</button>
+              <span style={{ fontSize: '0.85rem' }}>{problemsPage} / {problemsTotalPages}</span>
+              <button onClick={() => { setProblemsPage(p => Math.min(problemsTotalPages, p + 1)); fetchProblems(); }} disabled={problemsPage >= problemsTotalPages} className="btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: 'var(--color-3)', color: 'white', opacity: problemsPage >= problemsTotalPages ? 0.5 : 1 }}>→</button>
+              <button onClick={() => fetchProblems()} className="btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: 'var(--color-2)', color: 'white' }}>새로고침</button>
+            </div>
+          </div>
+
+          {loadingProblems ? <p>로딩 중...</p> : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-muted)' }}>
+                    <th style={{ padding: '0.6rem' }}>ID</th>
+                    <th style={{ padding: '0.6rem' }}>제목</th>
+                    <th style={{ padding: '0.6rem' }}>정답</th>
+                    <th style={{ padding: '0.6rem' }}>난이도</th>
+                    <th style={{ padding: '0.6rem' }}>태그</th>
+                    <th style={{ padding: '0.6rem' }}>관리</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {problems.map((p: any) => (
+                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '0.6rem', fontWeight: 800 }}>{p.id}</td>
+                      <td style={{ padding: '0.6rem', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</td>
+                      <td style={{ padding: '0.6rem', fontWeight: 600, color: 'var(--color-3)' }}>{p.answer}</td>
+                      <td style={{ padding: '0.6rem' }}>{Math.round(p.current_difficulty).toLocaleString()}</td>
+                      <td style={{ padding: '0.6rem' }}>
+                        {Array.isArray(p.tags) && p.tags.map((t: string) => (
+                          <span key={t} style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: '0.5rem', background: 'var(--color-3)', color: 'white', marginRight: '0.3rem', fontWeight: 600 }}>{t}</span>
+                        ))}
+                      </td>
+                      <td style={{ padding: '0.6rem' }}>
+                        <div style={{ display: 'flex', gap: '0.3rem' }}>
+                          <button onClick={() => setEditingProblem({ ...p, _origContent: p.content })} className="btn" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', width: 'auto', background: 'var(--color-2)', color: 'white' }}>수정</button>
+                          <button onClick={() => handleDeleteProblem(p.id)} className="btn" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', width: 'auto', background: '#ff7675', color: 'white' }}>삭제</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Edit Problem Modal */}
+        {editingProblem && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+            background: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center',
+            zIndex: 1000, padding: '1rem', boxSizing: 'border-box'
+          }}>
+            <div className="problem-card" style={{ width: '100%', maxWidth: '700px', maxHeight: '90vh', overflowY: 'auto', margin: 0, position: 'relative' }}>
+              <button onClick={() => setEditingProblem(null)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: 'var(--text-muted)' }}>✕</button>
+              <h3 style={{ color: 'var(--color-4)', marginBottom: '1.5rem' }}>문제 수정 (ID: {editingProblem.id})</h3>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', opacity: 0.7 }}>제목</label>
+                <input type="text" value={editingProblem.title} onChange={e => setEditingProblem({ ...editingProblem, title: e.target.value })} style={{ width: '100%', padding: '0.7rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', opacity: 0.7 }}>내용 (LaTeX)</label>
+                <textarea value={editingProblem.content} onChange={e => setEditingProblem({ ...editingProblem, content: e.target.value })} rows={5} style={{ width: '100%', padding: '0.7rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box', resize: 'vertical' }} />
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', opacity: 0.7 }}>정답</label>
+                <input type="text" value={editingProblem.answer} onChange={e => setEditingProblem({ ...editingProblem, answer: e.target.value })} style={{ width: '100%', padding: '0.7rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', opacity: 0.7 }}>난이도</label>
+                <input type="number" value={editingProblem.current_difficulty} onChange={e => setEditingProblem({ ...editingProblem, current_difficulty: parseFloat(e.target.value) || 0 })} style={{ width: '100%', padding: '0.7rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button onClick={handleSaveProblem} className="btn" style={{ background: 'var(--color-4)', color: 'white' }}>저장</button>
+                <button onClick={() => setEditingProblem(null)} className="btn" style={{ background: 'var(--border)', color: 'var(--text-main)' }}>취소</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );

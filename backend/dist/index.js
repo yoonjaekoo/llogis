@@ -918,6 +918,94 @@ app.post('/api/admin/cleanup-tags', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Cleanup failed' });
     }
 });
+app.get('/api/admin/problems', authenticateToken, async (req, res) => {
+    if (req.user.username !== 'admin')
+        return res.status(403).json({ error: 'Admin only' });
+    const { page = '1', limit = '50' } = req.query;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit) || 50));
+    const offset = (pageNum - 1) * limitNum;
+    try {
+        const countRes = await pool.query('SELECT COUNT(*) FROM problems');
+        const total = parseInt(countRes.rows[0].count);
+        const result = await pool.query(`
+      SELECT p.id, p.title, p.content, p.answer, p.current_difficulty, p.created_at,
+             COALESCE(NULLIF(array_agg(t.name ORDER BY t.name), '{NULL}'), '{}') as tags
+      FROM problems p
+      LEFT JOIN problem_tags pt ON p.id = pt.problem_id
+      LEFT JOIN tags t ON pt.tag_id = t.id
+      GROUP BY p.id
+      ORDER BY p.created_at DESC
+      LIMIT $1 OFFSET $2
+    `, [limitNum, offset]);
+        res.json({
+            problems: result.rows,
+            pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
+        });
+    }
+    catch (err) {
+        console.error('Failed to fetch admin problems:', err);
+        res.status(500).json({ error: 'Failed to fetch problems' });
+    }
+});
+app.patch('/api/admin/problems/:id', authenticateToken, async (req, res) => {
+    if (req.user.username !== 'admin')
+        return res.status(403).json({ error: 'Admin only' });
+    const { id } = req.params;
+    const { title, content, answer, current_difficulty, tags } = req.body;
+    try {
+        const fields = [];
+        const params = [];
+        let idx = 1;
+        if (title !== undefined) {
+            fields.push(`title = $${idx++}`);
+            params.push(title);
+        }
+        if (content !== undefined) {
+            fields.push(`content = $${idx++}`);
+            params.push(content);
+        }
+        if (answer !== undefined) {
+            fields.push(`answer = $${idx++}`);
+            params.push(answer);
+        }
+        if (current_difficulty !== undefined) {
+            fields.push(`current_difficulty = $${idx++}`);
+            params.push(current_difficulty);
+        }
+        if (fields.length > 0) {
+            params.push(id);
+            await pool.query(`UPDATE problems SET ${fields.join(', ')} WHERE id = $${idx}`, params);
+        }
+        if (Array.isArray(tags)) {
+            await pool.query('DELETE FROM problem_tags WHERE problem_id = $1', [id]);
+            for (const tagName of tags) {
+                const tagRes = await pool.query('SELECT id FROM tags WHERE name = $1', [tagName]);
+                if (tagRes.rows.length > 0) {
+                    await pool.query('INSERT INTO problem_tags (problem_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, tagRes.rows[0].id]);
+                }
+            }
+        }
+        res.json({ message: '문제가 수정되었습니다.' });
+    }
+    catch (err) {
+        console.error('Failed to update problem:', err);
+        res.status(500).json({ error: 'Failed to update problem' });
+    }
+});
+app.delete('/api/admin/problems/:id', authenticateToken, async (req, res) => {
+    if (req.user.username !== 'admin')
+        return res.status(403).json({ error: 'Admin only' });
+    const { id } = req.params;
+    try {
+        await pool.query('DELETE FROM submissions WHERE problem_id = $1', [id]);
+        await pool.query('DELETE FROM problems WHERE id = $1', [id]);
+        res.json({ message: '문제가 삭제되었습니다.' });
+    }
+    catch (err) {
+        res.status(500).json({ error: 'Failed to delete problem' });
+    }
+});
 app.post('/api/admin/seed', authenticateToken, async (req, res) => {
     // Simple check if user is 'admin'
     if (req.user.username !== 'admin')
