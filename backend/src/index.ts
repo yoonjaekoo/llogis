@@ -921,8 +921,9 @@ app.get('/api/problems/public', async (req: Request, res: Response) => {
 });
 
 app.post('/api/problems/generate-nim', authenticateToken, async (req: any, res: Response) => {
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
   const userId = req.user.id;
-  const { count = 3 } = req.body;
+  const { category, count = 5 } = req.body;
 
   try {
     const userRes = await pool.query('SELECT nim_api_key FROM users WHERE id = $1', [userId]);
@@ -932,7 +933,7 @@ app.post('/api/problems/generate-nim', authenticateToken, async (req: any, res: 
       return res.status(400).json({ error: 'NVIDIA NIM API 키가 설정되지 않았습니다. 프로필에서 API 키를 먼저 등록해주세요.' });
     }
 
-    const generatedProblems = await generateNimProblems(apiKey, Math.min(count, 10));
+    const generatedProblems = await generateNimProblems(apiKey, Math.min(count, 10), category);
     const newProblems = [];
 
     for (const p of generatedProblems) {
@@ -1021,6 +1022,34 @@ app.post('/api/submissions', authenticateToken, async (req: any, res: any) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to process submission' });
+  }
+});
+
+app.post('/api/admin/cleanup-tags', authenticateToken, async (req: any, res: Response) => {
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const { tags } = req.body;
+  if (!Array.isArray(tags) || tags.length === 0) {
+    return res.status(400).json({ error: 'Tag names array required' });
+  }
+
+  try {
+    let deletedCount = 0;
+    for (const tagName of tags) {
+      const tagRes = await pool.query('SELECT id FROM tags WHERE name = $1', [tagName]);
+      if (tagRes.rows.length === 0) continue;
+      const tagId = tagRes.rows[0].id;
+
+      const problemIds = await pool.query('SELECT problem_id FROM problem_tags WHERE tag_id = $1', [tagId]);
+      for (const row of problemIds.rows) {
+        await pool.query('DELETE FROM submissions WHERE problem_id = $1', [row.problem_id]);
+        await pool.query('DELETE FROM problems WHERE id = $1', [row.problem_id]);
+        deletedCount++;
+      }
+    }
+    res.json({ message: `${deletedCount}개의 문제가 삭제되었습니다.`, deletedCount });
+  } catch (err) {
+    console.error('Cleanup error:', err);
+    res.status(500).json({ error: 'Cleanup failed' });
   }
 });
 

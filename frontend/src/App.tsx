@@ -70,7 +70,6 @@ const Navbar: React.FC<{
       <nav aria-label="주 메뉴">
         <ul>
           <li><Link to="/">문제</Link></li>
-          <li><Link to="/problems">AI 문제</Link></li>
           <li><Link to="/ranking">랭킹</Link></li>
           <li><Link to="/groups">그룹</Link></li>
           <li><Link to="/about">소개</Link></li>
@@ -1120,6 +1119,9 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
   const [message, setMessage] = useState('');
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [category, setCategory] = useState('');
+  const [cleaning, setCleaning] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -1174,6 +1176,50 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
     const data = await res.json();
     setMessage(data.message || data.error);
     if (res.ok) fetchUsers();
+  };
+
+  const handleGenerateNim = async () => {
+    setGenerating(true);
+    setMessage('');
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('/api/problems/generate-nim', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ count: 5, category: category.trim() || undefined })
+      });
+      const data = await res.json();
+      setMessage(data.message || data.error);
+      if (res.ok) fetchUsers();
+    } catch {
+      setMessage('AI 문제 생성에 실패했습니다.');
+    }
+    setGenerating(false);
+  };
+
+  const handleCleanup = async (tags: string[]) => {
+    if (!window.confirm(`"${tags.join(', ')}" 태그가 달린 모든 문제를 삭제하시겠습니까?`)) return;
+    setCleaning(true);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('/api/admin/cleanup-tags', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ tags })
+      });
+      const data = await res.json();
+      setMessage(data.message || data.error);
+      if (res.ok) fetchUsers();
+    } catch {
+      setMessage('삭제에 실패했습니다.');
+    }
+    setCleaning(false);
   };
 
   const handleDeleteUser = async (userId: number, username: string) => {
@@ -1232,6 +1278,31 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
             <p style={{ marginBottom: '1.5rem', opacity: 0.8 }}>데이터베이스에 새로운 문제 10개를 생성하여 추가합니다.</p>
             <button onClick={handleSeed} className="btn" style={{ background: 'var(--color-2)', color: 'white' }}>
               문제 10개 추가 생성
+            </button>
+          </div>
+          <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--color-4)', borderRadius: '1rem' }}>
+            <h3 style={{ marginBottom: '1rem', color: 'var(--color-4)' }}>AI 문제 생성 (NVIDIA NIM)</h3>
+            <p style={{ marginBottom: '1rem', opacity: 0.8 }}>NVIDIA NIM API로 AI 문제를 생성합니다. 프로필에서 API 키를 먼저 등록하세요.</p>
+            <input
+              type="text"
+              placeholder="카테고리 (자연어 입력, 예: 중학교 2학년 연립방정식)"
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+              style={{ width: '100%', padding: '0.7rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '1rem', boxSizing: 'border-box' }}
+            />
+            <button onClick={handleGenerateNim} disabled={generating} className="btn" style={{ background: 'var(--color-4)', color: 'white', opacity: generating ? 0.6 : 1 }}>
+              {generating ? '생성 중...' : '🤖 AI 문제 5개 생성'}
+            </button>
+          </div>
+
+          <div style={{ padding: '1.5rem', background: 'rgba(255, 200, 100, 0.1)', border: '1px solid #f0ad4e', borderRadius: '1rem' }}>
+            <h3 style={{ marginBottom: '1rem', color: '#f0ad4e' }}>태그별 문제 정리</h3>
+            <p style={{ marginBottom: '1.5rem', opacity: 0.8 }}>특정 태그가 달린 문제를 일괄 삭제합니다.</p>
+            <button onClick={() => handleCleanup(['확률'])} disabled={cleaning} className="btn" style={{ background: '#f0ad4e', color: 'white', opacity: cleaning ? 0.6 : 1, marginRight: '0.5rem', marginBottom: '0.5rem' }}>
+              {cleaning ? '삭제 중...' : '확률 문제 삭제'}
+            </button>
+            <button onClick={() => handleCleanup(['통계'])} disabled={cleaning} className="btn" style={{ background: '#f0ad4e', color: 'white', opacity: cleaning ? 0.6 : 1 }}>
+              통계 문제 삭제
             </button>
           </div>
 
@@ -1634,222 +1705,6 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
   );
 };
 
-const PublicProblems: React.FC<{ user: User | null }> = ({ user }) => {
-  const [problems, setProblems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [difficulty, setDifficulty] = useState('');
-  const [concept, setConcept] = useState('');
-  const [tags, setTags] = useState<string[]>([]);
-  const [generating, setGenerating] = useState(false);
-  const [hasNimKey, setHasNimKey] = useState(false);
-  const location = useLocation();
-
-  useEffect(() => {
-    if (user) {
-      const token = localStorage.getItem('token');
-      fetch('/api/users/nim-key/status', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.hasKey !== undefined) setHasNimKey(data.hasKey);
-      });
-    }
-  }, [user]);
-
-  const fetchTags = useCallback(async () => {
-    try {
-      const res = await fetch('/api/problems/tags');
-      if (res.ok) {
-        const data = await res.json();
-        setTags(data);
-      }
-    } catch {}
-  }, []);
-
-  const fetchProblems = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (page) params.set('page', String(page));
-      params.set('limit', '20');
-      if (difficulty) params.set('difficulty', difficulty);
-      if (concept) params.set('concept', concept);
-
-      const res = await fetch(`/api/problems/public?${params}`);
-      const data = await res.json();
-      if (data.problems) {
-        setProblems(data.problems);
-        setTotalPages(data.pagination.totalPages);
-      }
-    } catch {}
-    setLoading(false);
-  }, [page, difficulty, concept]);
-
-  useEffect(() => {
-    fetchTags();
-  }, [fetchTags]);
-
-  useEffect(() => {
-    fetchProblems();
-  }, [fetchProblems]);
-
-  const handleGenerateNim = async () => {
-    if (!user) return;
-    setGenerating(true);
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch('/api/problems/generate-nim', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ count: 3 })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        alert(`✅ ${data.message}`);
-        fetchProblems();
-      } else {
-        alert(data.error);
-      }
-    } catch {
-      alert('AI 문제 생성에 실패했습니다.');
-    }
-    setGenerating(false);
-  };
-
-  const handlePrevPage = () => {
-    if (page > 1) setPage(p => p - 1);
-  };
-
-  const handleNextPage = () => {
-    if (page < totalPages) setPage(p => p + 1);
-  };
-
-  const handleFilterChange = () => {
-    setPage(1);
-  };
-
-  useEffect(() => {
-    handleFilterChange();
-  }, [difficulty, concept]);
-
-  return (
-    <main className="container" style={{ padding: '4rem 0' }}>
-      <Helmet>
-        <title>AI 생성 문제 | Logis - 수학 문제 풀이 플랫폼</title>
-        <meta name="description" content="Logis의 AI 생성 문제를 풀어보세요. 다양한 난이도와 개념의 수학 문제를 도전하세요." />
-        <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
-      </Helmet>
-      <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
-          <div>
-            <h2 style={{ fontSize: '2.5rem', marginBottom: '0.5rem', color: 'var(--color-4)' }}>AI 생성 문제</h2>
-            <p style={{ opacity: 0.7 }}>AI로 생성된 다양한 수학 문제를 풀어보세요.</p>
-          </div>
-          {user && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-              {hasNimKey ? (
-                <button onClick={handleGenerateNim} disabled={generating} className="btn" style={{ background: 'var(--color-4)', color: 'white', width: 'auto', padding: '0.7rem 1.5rem', opacity: generating ? 0.6 : 1 }}>
-                  {generating ? '생성 중...' : '🤖 AI 문제 생성'}
-                </button>
-              ) : (
-                <Link to="/profile" style={{ fontSize: '0.85rem', color: 'var(--color-3)' }}>
-                  🔑 API 키 등록하기
-                </Link>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Filters */}
-        <div className="problem-card" style={{ marginBottom: '2rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ flex: '1 1 200px' }}>
-            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', opacity: 0.7 }}>난이도</label>
-            <select
-              value={difficulty}
-              onChange={e => setDifficulty(e.target.value)}
-              style={{ width: '100%', padding: '0.7rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)' }}
-            >
-              <option value="">전체</option>
-              <option value="bronze">Bronze</option>
-              <option value="silver">Silver</option>
-              <option value="gold">Gold</option>
-              <option value="platinum">Platinum</option>
-              <option value="diamond">Diamond</option>
-            </select>
-          </div>
-          <div style={{ flex: '1 1 200px' }}>
-            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', opacity: 0.7 }}>개념</label>
-            <select
-              value={concept}
-              onChange={e => setConcept(e.target.value)}
-              style={{ width: '100%', padding: '0.7rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)' }}
-            >
-              <option value="">전체</option>
-              {tags.map(t => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-          </div>
-          <button
-            onClick={() => { setDifficulty(''); setConcept(''); setPage(1); }}
-            className="btn"
-            style={{ background: 'var(--border)', color: 'var(--text-main)', width: 'auto', marginTop: '1.3rem', padding: '0.7rem 1.5rem' }}
-          >
-            필터 초기화
-          </button>
-        </div>
-
-        {/* Loading */}
-        {loading && <div style={{ textAlign: 'center', padding: '4rem' }}>로딩 중...</div>}
-
-        {/* Problem list */}
-        {!loading && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            {problems.map((p: any) => (
-              <div key={p.id} className="problem-card" style={{ margin: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.8rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <h3 style={{ margin: 0, color: 'var(--color-4)' }}>{p.title}</h3>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    {Array.isArray(p.tags) && p.tags.map((t: string) => (
-                      <span key={t} style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', borderRadius: '1rem', background: 'var(--color-3)', color: 'white', fontWeight: 600 }}>{t}</span>
-                    ))}
-                  </div>
-                </div>
-                <div className="math-content" style={{ fontSize: '1.4rem', marginBottom: '1rem' }}>{renderMath(p.content)}</div>
-                <div style={{ fontSize: '0.85rem', opacity: 0.6 }}>
-                  난이도: <b>{Math.round(p.current_difficulty).toLocaleString()}</b>
-                </div>
-              </div>
-            ))}
-            {problems.length === 0 && (
-              <p style={{ textAlign: 'center', opacity: 0.5, padding: '4rem 0' }}>조건에 맞는 문제가 없습니다.</p>
-            )}
-          </div>
-        )}
-
-        {/* Pagination */}
-        {!loading && totalPages > 1 && (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '2rem' }}>
-            <button onClick={handlePrevPage} disabled={page <= 1} className="btn" style={{ background: 'var(--color-3)', color: 'white', width: 'auto', padding: '0.6rem 1.5rem', opacity: page <= 1 ? 0.5 : 1, cursor: page <= 1 ? 'not-allowed' : 'pointer' }}>
-              ← 이전
-            </button>
-            <span style={{ fontWeight: 800, fontSize: '1.1rem' }}>{page} / {totalPages}</span>
-            <button onClick={handleNextPage} disabled={page >= totalPages} className="btn" style={{ background: 'var(--color-3)', color: 'white', width: 'auto', padding: '0.6rem 1.5rem', opacity: page >= totalPages ? 0.5 : 1, cursor: page >= totalPages ? 'not-allowed' : 'pointer' }}>
-              다음 →
-            </button>
-          </div>
-        )}
-      </div>
-    </main>
-  );
-};
-
 const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ user, setUser }) => {
   const [problems, setProblems] = useState<Problem[]>([]);
   const [selectedProblemId, setSelectedProblemId] = useState<number | null>(null);
@@ -2105,7 +1960,6 @@ const App: React.FC = () => {
       <div id="main-content" role="main">
         <Routes>
           <Route path="/" element={<ProblemList user={user} setUser={setUser} />} />
-          <Route path="/problems" element={<PublicProblems user={user} />} />
           <Route path="/ranking" element={<Ranking />} />
           <Route path="/users/:id" element={<UserProfile />} />
           <Route path="/groups" element={<Groups user={user} />} />
