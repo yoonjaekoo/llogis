@@ -962,9 +962,10 @@ app.post('/api/problems/generate-nim', authenticateToken, async (req: any, res: 
 
 app.post('/api/problems/generate', authenticateToken, async (req: Request, res: Response) => {
   try {
+    const { tags } = req.body; // Expecting an array of tag strings to filter by
     const newProblems = [];
     for (let i = 0; i < 5; i++) {
-      const p = generateProblem();
+      const p = generateProblem(tags);
       const result = await pool.query(
         'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
         [p.title, p.content, p.answer, p.difficulty, p.difficulty, 'Calculation']

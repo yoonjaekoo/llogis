@@ -112,10 +112,23 @@ export const templates: ProblemTemplate[] = [
   }
 ];
 
-export function generateProblem() {
-  const template = templates[Math.floor(Math.random() * templates.length)];
-  const variables: { [key: string]: number } = {};
+export function generateProblem(filterTags?: string[]) {
+  // Filter templates based on provided tags
+  let filteredTemplates = templates;
+  if (filterTags && filterTags.length > 0) {
+    filteredTemplates = templates.filter(template => 
+      template.tags.some(tag => filterTags.includes(tag))
+    );
+  }
   
+  // If no templates match the filter, fall back to all templates
+  if (filteredTemplates.length === 0) {
+    filteredTemplates = templates;
+  }
+  
+  const template = filteredTemplates[Math.floor(Math.random() * filteredTemplates.length)];
+  const variables: { [key: string]: number } = {};
+   
   // For linear equation, ensure (c-b) is divisible by a for integer answers
   if (template.title === '일차방정식 연습') {
       const a = Math.floor(Math.random() * (template.vars.a.max - template.vars.a.min + 1)) + template.vars.a.min;

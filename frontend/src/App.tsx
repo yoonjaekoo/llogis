@@ -1850,8 +1850,21 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
   const [problems, setProblems] = useState<Problem[]>([]);
   const [selectedProblemId, setSelectedProblemId] = useState<number | null>(null);
   const [answers, setAnswers] = useState<{[key: number]: string}>({});
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [allTags, setAllTags] = useState<string[]>([]);
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Fetch all available tags
+  useEffect(() => {
+    fetch('/api/problems/tags')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setAllTags(data);
+        }
+      });
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -1922,7 +1935,47 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
       </Helmet>
       <nav className="problem-sidebar" aria-label="문제 목록" style={{ width: '300px', flexShrink: 0 }}>
         <h3 style={{ marginBottom: '1rem', color: 'var(--color-4)' }}>문제 목록 ({problems.length})</h3>
-        <div role="listbox" aria-label="문제 선택" style={{ maxHeight: '70vh', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '1rem', background: 'var(--card-bg)' }}>
+        
+        {/* Tag Selection */}
+        {allTags.length > 0 && (
+          <div style={{ marginBottom: '1.5rem', padding: '1rem', background: 'var(--card-bg)', borderRadius: '0.5rem' }}>
+            <h4 style={{ marginBottom: '0.5rem', color: 'var(--color-4)' }}>문제 유형 선택</h4>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              {allTags.map(tag => (
+                <label key={tag} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.85rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedTags.includes(tag)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedTags([...selectedTags, tag]);
+                      } else {
+                        setSelectedTags(selectedTags.filter(t => t !== tag));
+                      }
+                    }}
+                  />
+                  <span>{tag}</span>
+                </label>
+              ))}
+            </div>
+            <button 
+              onClick={() => setSelectedTags([])}
+              style={{ 
+                marginTop: '0.5rem', 
+                padding: '0.25rem 0.5rem', 
+                fontSize: '0.75rem', 
+                background: 'none', 
+                border: '1px solid var(--border)', 
+                color: 'var(--text-muted)', 
+                borderRadius: '0.25rem'
+              }}
+            >
+              모두 해제
+            </button>
+          </div>
+        )}
+        
+        <div role="listbox" aria-label="문제 선택" style={{ maxHeight: '60vh', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '1rem', background: 'var(--card-bg)' }}>
           {problems.map(p => (
             <div 
               key={p.id} 
@@ -1943,7 +1996,11 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
               <button 
                 onClick={() => {
                   const token = localStorage.getItem('token');
-                  fetch('/api/problems/generate', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
+                  fetch('/api/problems/generate', { 
+                    method: 'POST', 
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ tags: selectedTags })
+                  })
                   .then(res => res.json())
                   .then(data => {
                     setProblems(data.problems);
