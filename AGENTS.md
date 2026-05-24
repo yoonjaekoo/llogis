@@ -41,3 +41,6 @@ Korean math problem-solving platform with Glicko-2 rating system. Three-part sta
 ## Dev server notes
 - Frontend Vite proxy routes `/api` and `/uploads` to `http://localhost:5000`
 - Nginx in production (Docker) proxies `/api/` and `/uploads/` to `backend:5000`
+
+## 필수 규칙
+- **작업 완료 후 반드시 `git add`, `git commit`, `git push`를 실행할 것** — 장기 저장소(lgit)에 수정사항이 반영되어야 함
