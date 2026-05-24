@@ -70,6 +70,7 @@ const Navbar: React.FC<{
       <nav aria-label="주 메뉴">
         <ul>
           <li><Link to="/">문제</Link></li>
+          <li><Link to="/problems">AI 문제</Link></li>
           <li><Link to="/ranking">랭킹</Link></li>
           <li><Link to="/groups">그룹</Link></li>
           <li><Link to="/about">소개</Link></li>
@@ -1323,6 +1324,11 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
   const [editedUsername, setEditedUsername] = useState('');
   const [editedBio, setEditedBio] = useState('');
 
+  // NVIDIA NIM API key state
+  const [nimApiKey, setNimApiKey] = useState('');
+  const [isEditingNimKey, setIsEditingNimKey] = useState(false);
+  const [hasNimKey, setHasNimKey] = useState(false);
+
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -1337,6 +1343,14 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
       setProfileData(data);
       setEditedUsername(data.user.username);
       setEditedBio(data.user.bio || '');
+    });
+
+    fetch('/api/users/nim-key/status', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.hasKey !== undefined) setHasNimKey(data.hasKey);
     });
   }, [user]);
 
@@ -1367,6 +1381,27 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setUser(updatedUser);
       fetchProfile();
+    } else {
+      alert(data.error);
+    }
+  };
+
+  const handleSaveNimKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = localStorage.getItem('token');
+    const res = await fetch('/api/users/nim-key', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ nimApiKey })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert('NVIDIA NIM API 키가 저장되었습니다.');
+      setHasNimKey(true);
+      setIsEditingNimKey(false);
     } else {
       alert(data.error);
     }
@@ -1565,7 +1600,252 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
             </form>
           )}
         </div>
+
+        {/* NVIDIA NIM API Key Section */}
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '2rem', marginTop: '2rem' }}>
+          <h3 style={{ marginBottom: '0.5rem', color: 'var(--color-4)' }}>NVIDIA NIM API 키</h3>
+          <p style={{ fontSize: '0.85rem', opacity: 0.7, marginBottom: '1rem' }}>
+            {hasNimKey ? '✅ API 키가 등록되어 있습니다. AI 문제 생성 기능을 사용할 수 있습니다.' : 'AI 문제 생성 기능을 사용하려면 NVIDIA NIM API 키를 등록하세요.'}
+          </p>
+          <button 
+            onClick={() => setIsEditingNimKey(!isEditingNimKey)}
+            className="btn"
+            style={{ background: 'var(--color-3)', color: 'white', width: 'auto', padding: '0.6rem 1.5rem' }}
+          >
+            {isEditingNimKey ? '취소' : hasNimKey ? 'API 키 변경하기' : 'API 키 등록하기'}
+          </button>
+
+          {isEditingNimKey && (
+            <form onSubmit={handleSaveNimKey} style={{ marginTop: '1.5rem', maxWidth: '500px', margin: '1.5rem auto 0' }}>
+              <input 
+                type="password" 
+                placeholder="NVIDIA NIM API 키를 입력하세요 (nvapi-...)" 
+                value={nimApiKey} 
+                onChange={e => setNimApiKey(e.target.value)} 
+                style={{ width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '1rem' }} 
+                required 
+              />
+              <button type="submit" className="btn" style={{ background: 'var(--color-4)', color: 'white' }}>저장</button>
+            </form>
+          )}
+        </div>
       </article>
+    </main>
+  );
+};
+
+const PublicProblems: React.FC<{ user: User | null }> = ({ user }) => {
+  const [problems, setProblems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [difficulty, setDifficulty] = useState('');
+  const [concept, setConcept] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
+  const [generating, setGenerating] = useState(false);
+  const [hasNimKey, setHasNimKey] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => {
+    if (user) {
+      const token = localStorage.getItem('token');
+      fetch('/api/users/nim-key/status', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.hasKey !== undefined) setHasNimKey(data.hasKey);
+      });
+    }
+  }, [user]);
+
+  const fetchTags = useCallback(async () => {
+    try {
+      const res = await fetch('/api/problems/tags');
+      if (res.ok) {
+        const data = await res.json();
+        setTags(data);
+      }
+    } catch {}
+  }, []);
+
+  const fetchProblems = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (page) params.set('page', String(page));
+      params.set('limit', '20');
+      if (difficulty) params.set('difficulty', difficulty);
+      if (concept) params.set('concept', concept);
+
+      const res = await fetch(`/api/problems/public?${params}`);
+      const data = await res.json();
+      if (data.problems) {
+        setProblems(data.problems);
+        setTotalPages(data.pagination.totalPages);
+      }
+    } catch {}
+    setLoading(false);
+  }, [page, difficulty, concept]);
+
+  useEffect(() => {
+    fetchTags();
+  }, [fetchTags]);
+
+  useEffect(() => {
+    fetchProblems();
+  }, [fetchProblems]);
+
+  const handleGenerateNim = async () => {
+    if (!user) return;
+    setGenerating(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/problems/generate-nim', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ count: 3 })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`✅ ${data.message}`);
+        fetchProblems();
+      } else {
+        alert(data.error);
+      }
+    } catch {
+      alert('AI 문제 생성에 실패했습니다.');
+    }
+    setGenerating(false);
+  };
+
+  const handlePrevPage = () => {
+    if (page > 1) setPage(p => p - 1);
+  };
+
+  const handleNextPage = () => {
+    if (page < totalPages) setPage(p => p + 1);
+  };
+
+  const handleFilterChange = () => {
+    setPage(1);
+  };
+
+  useEffect(() => {
+    handleFilterChange();
+  }, [difficulty, concept]);
+
+  return (
+    <main className="container" style={{ padding: '4rem 0' }}>
+      <Helmet>
+        <title>AI 생성 문제 | Logis - 수학 문제 풀이 플랫폼</title>
+        <meta name="description" content="Logis의 AI 생성 문제를 풀어보세요. 다양한 난이도와 개념의 수학 문제를 도전하세요." />
+        <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
+      </Helmet>
+      <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h2 style={{ fontSize: '2.5rem', marginBottom: '0.5rem', color: 'var(--color-4)' }}>AI 생성 문제</h2>
+            <p style={{ opacity: 0.7 }}>AI로 생성된 다양한 수학 문제를 풀어보세요.</p>
+          </div>
+          {user && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+              {hasNimKey ? (
+                <button onClick={handleGenerateNim} disabled={generating} className="btn" style={{ background: 'var(--color-4)', color: 'white', width: 'auto', padding: '0.7rem 1.5rem', opacity: generating ? 0.6 : 1 }}>
+                  {generating ? '생성 중...' : '🤖 AI 문제 생성'}
+                </button>
+              ) : (
+                <Link to="/profile" style={{ fontSize: '0.85rem', color: 'var(--color-3)' }}>
+                  🔑 API 키 등록하기
+                </Link>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Filters */}
+        <div className="problem-card" style={{ marginBottom: '2rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ flex: '1 1 200px' }}>
+            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', opacity: 0.7 }}>난이도</label>
+            <select
+              value={difficulty}
+              onChange={e => setDifficulty(e.target.value)}
+              style={{ width: '100%', padding: '0.7rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)' }}
+            >
+              <option value="">전체</option>
+              <option value="bronze">Bronze</option>
+              <option value="silver">Silver</option>
+              <option value="gold">Gold</option>
+              <option value="platinum">Platinum</option>
+              <option value="diamond">Diamond</option>
+            </select>
+          </div>
+          <div style={{ flex: '1 1 200px' }}>
+            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', opacity: 0.7 }}>개념</label>
+            <select
+              value={concept}
+              onChange={e => setConcept(e.target.value)}
+              style={{ width: '100%', padding: '0.7rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)' }}
+            >
+              <option value="">전체</option>
+              {tags.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={() => { setDifficulty(''); setConcept(''); setPage(1); }}
+            className="btn"
+            style={{ background: 'var(--border)', color: 'var(--text-main)', width: 'auto', marginTop: '1.3rem', padding: '0.7rem 1.5rem' }}
+          >
+            필터 초기화
+          </button>
+        </div>
+
+        {/* Loading */}
+        {loading && <div style={{ textAlign: 'center', padding: '4rem' }}>로딩 중...</div>}
+
+        {/* Problem list */}
+        {!loading && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {problems.map((p: any) => (
+              <div key={p.id} className="problem-card" style={{ margin: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.8rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <h3 style={{ margin: 0, color: 'var(--color-4)' }}>{p.title}</h3>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {Array.isArray(p.tags) && p.tags.map((t: string) => (
+                      <span key={t} style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', borderRadius: '1rem', background: 'var(--color-3)', color: 'white', fontWeight: 600 }}>{t}</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="math-content" style={{ fontSize: '1.4rem', marginBottom: '1rem' }}>{renderMath(p.content)}</div>
+                <div style={{ fontSize: '0.85rem', opacity: 0.6 }}>
+                  난이도: <b>{Math.round(p.current_difficulty).toLocaleString()}</b>
+                </div>
+              </div>
+            ))}
+            {problems.length === 0 && (
+              <p style={{ textAlign: 'center', opacity: 0.5, padding: '4rem 0' }}>조건에 맞는 문제가 없습니다.</p>
+            )}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {!loading && totalPages > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '2rem' }}>
+            <button onClick={handlePrevPage} disabled={page <= 1} className="btn" style={{ background: 'var(--color-3)', color: 'white', width: 'auto', padding: '0.6rem 1.5rem', opacity: page <= 1 ? 0.5 : 1, cursor: page <= 1 ? 'not-allowed' : 'pointer' }}>
+              ← 이전
+            </button>
+            <span style={{ fontWeight: 800, fontSize: '1.1rem' }}>{page} / {totalPages}</span>
+            <button onClick={handleNextPage} disabled={page >= totalPages} className="btn" style={{ background: 'var(--color-3)', color: 'white', width: 'auto', padding: '0.6rem 1.5rem', opacity: page >= totalPages ? 0.5 : 1, cursor: page >= totalPages ? 'not-allowed' : 'pointer' }}>
+              다음 →
+            </button>
+          </div>
+        )}
+      </div>
     </main>
   );
 };
@@ -1825,6 +2105,7 @@ const App: React.FC = () => {
       <div id="main-content" role="main">
         <Routes>
           <Route path="/" element={<ProblemList user={user} setUser={setUser} />} />
+          <Route path="/problems" element={<PublicProblems user={user} />} />
           <Route path="/ranking" element={<Ranking />} />
           <Route path="/users/:id" element={<UserProfile />} />
           <Route path="/groups" element={<Groups user={user} />} />
