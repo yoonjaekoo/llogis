@@ -1852,6 +1852,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
   const [answers, setAnswers] = useState<{[key: number]: string}>({});
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -1923,6 +1924,28 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
     });
   };
 
+  const handleGenerate = () => {
+    setShowGenerateModal(true);
+  };
+
+  const confirmGenerate = () => {
+    const token = localStorage.getItem('token');
+    fetch('/api/problems/generate', { 
+      method: 'POST', 
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ tags: selectedTags })
+    })
+    .then(res => res.json())
+    .then(data => {
+      setProblems(data.problems);
+      if (data.problems.length > 0) setSelectedProblemId(data.problems[0].id);
+      setShowGenerateModal(false);
+    });
+  };
+
   const selectedProblem = problems.find(p => p.id === selectedProblemId);
 
   return (
@@ -1934,46 +1957,12 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
         <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
       </Helmet>
       <nav className="problem-sidebar" aria-label="문제 목록" style={{ width: '300px', flexShrink: 0 }}>
-        <h3 style={{ marginBottom: '1rem', color: 'var(--color-4)' }}>문제 목록 ({problems.length})</h3>
-        
-        {/* Tag Selection */}
-        {allTags.length > 0 && (
-          <div style={{ marginBottom: '1.5rem', padding: '1rem', background: 'var(--card-bg)', borderRadius: '0.5rem' }}>
-            <h4 style={{ marginBottom: '0.5rem', color: 'var(--color-4)' }}>문제 유형 선택</h4>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-              {allTags.map(tag => (
-                <label key={tag} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.85rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedTags.includes(tag)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedTags([...selectedTags, tag]);
-                      } else {
-                        setSelectedTags(selectedTags.filter(t => t !== tag));
-                      }
-                    }}
-                  />
-                  <span>{tag}</span>
-                </label>
-              ))}
-            </div>
-            <button 
-              onClick={() => setSelectedTags([])}
-              style={{ 
-                marginTop: '0.5rem', 
-                padding: '0.25rem 0.5rem', 
-                fontSize: '0.75rem', 
-                background: 'none', 
-                border: '1px solid var(--border)', 
-                color: 'var(--text-muted)', 
-                borderRadius: '0.25rem'
-              }}
-            >
-              모두 해제
-            </button>
-          </div>
-        )}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h3 style={{ color: 'var(--color-4)', margin: 0 }}>문제 목록 ({problems.length})</h3>
+          <button onClick={handleGenerate} className="btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem', width: 'auto', background: 'var(--color-2)', color: 'white' }}>
+            생성하기
+          </button>
+        </div>
         
         <div role="listbox" aria-label="문제 선택" style={{ maxHeight: '60vh', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '1rem', background: 'var(--card-bg)' }}>
           {problems.map(p => (
@@ -1993,24 +1982,6 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
           {problems.length === 0 && (
             <div style={{ padding: '2rem', textAlign: 'center' }}>
               <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>모든 문제를 풀었습니다!</p>
-              <button 
-                onClick={() => {
-                  const token = localStorage.getItem('token');
-                  fetch('/api/problems/generate', { 
-                    method: 'POST', 
-                    headers: { 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ tags: selectedTags })
-                  })
-                  .then(res => res.json())
-                  .then(data => {
-                    setProblems(data.problems);
-                    if (data.problems.length > 0) setSelectedProblemId(data.problems[0].id);
-                  });
-                }}
-                className="btn" style={{ background: 'var(--color-2)', color: 'white' }}
-              >
-                새 문제 생성
-              </button>
             </div>
           )}
         </div>
@@ -2028,6 +1999,58 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
           </div>
         ) : <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-muted)' }}>문제를 선택해주세요.</div>}
       </section>
+
+      {/* 생성 모달 */}
+      {showGenerateModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+          background: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center',
+          zIndex: 1000, padding: '1rem', boxSizing: 'border-box'
+        }}>
+          <div className="problem-card" style={{
+            width: '100%', maxWidth: '450px', margin: 0, position: 'relative',
+            background: 'var(--card-bg)'
+          }}>
+            <h3 style={{ marginBottom: '1.5rem', color: 'var(--color-4)' }}>문제 생성</h3>
+            <p style={{ marginBottom: '1rem', opacity: 0.8, fontSize: '0.9rem' }}>생성할 문제 유형을 선택하세요. (선택하지 않으면 전체 유형)</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', marginBottom: '1.5rem' }}>
+              {allTags.map(tag => (
+                <label key={tag} style={{
+                  display: 'flex', alignItems: 'center', gap: '0.4rem',
+                  padding: '0.5rem 0.8rem', borderRadius: '0.5rem',
+                  background: selectedTags.includes(tag) ? 'var(--color-3)' : 'var(--card-bg)',
+                  border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.85rem'
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedTags.includes(tag)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedTags([...selectedTags, tag]);
+                      } else {
+                        setSelectedTags(selectedTags.filter(t => t !== tag));
+                      }
+                    }}
+                    style={{ accentColor: 'var(--color-4)' }}
+                  />
+                  <span>{tag}</span>
+                </label>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => { setShowGenerateModal(false); setSelectedTags([]); }}
+                className="btn" style={{ background: 'var(--text-muted)', color: 'white', width: 'auto' }}
+              >
+                취소
+              </button>
+              <button onClick={confirmGenerate} className="btn" style={{ background: 'var(--color-2)', color: 'white', width: 'auto' }}>
+                5개 생성
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 };
