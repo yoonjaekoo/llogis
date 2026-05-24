@@ -15,7 +15,7 @@ export const templates: ProblemTemplate[] = [
     answerFormula: (v) => ((v.c - v.b) / v.a).toString(),
     vars: {
       a: { min: 2, max: 10 },
-      b: { min: 1, max: 20 },
+      b: { min: -15, max: 20 },
       c: { min: 21, max: 50 }
     },
     tags: ['일차방정식', '계산'],
@@ -132,12 +132,19 @@ export function generateProblem(filterTags?: string[]) {
   // For linear equation, ensure (c-b) is divisible by a for integer answers
   if (template.title === '일차방정식 연습') {
       const a = Math.floor(Math.random() * (template.vars.a.max - template.vars.a.min + 1)) + template.vars.a.min;
-      const x = Math.floor(Math.random() * 10) + 1; // target answer
-      const b = Math.floor(Math.random() * (template.vars.b.max - template.vars.b.min + 1)) + template.vars.b.min;
-      const c = a * x + b;
-      variables['a'] = a;
-      variables['b'] = b;
-      variables['c'] = c;
+      let x, b, c;
+      do {
+          x = Math.floor(Math.random() * 10) + 1;
+          b = Math.floor(Math.random() * (template.vars.b.max - template.vars.b.min + 1)) + template.vars.b.min;
+          c = a * x + b;
+      } while (c < template.vars.c.min);
+      const bSign = b >= 0 ? '+' : '-';
+      const bAbs = Math.abs(b);
+      const content = `$${a}x ${bSign} ${bAbs} = ${c}$ 의 해는?`;
+      return {
+          title: template.title, content, answer: String(x),
+          difficulty: template.difficulty, tags: template.tags
+      };
   } else if (template.title === '연립방정식 연습') {
       // Ensure a+b is even for integer answer
       const x = Math.floor(Math.random() * 20) + 5;

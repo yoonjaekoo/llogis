@@ -76,7 +76,7 @@ VALUES
 ('admin', 'admin@logis.com', '$2b$10$ocxbuGqhp0/2NJ9uPZ.SsOFRXXFWAaPjrn0mmKO0UiLmQJ7LYvH3G', 200000, 350, 0.06);
 
 -- 태그 등록
-INSERT INTO tags (name) VALUES ('일차방정식'), ('연립방정식'), ('부등식'), ('일차함수'), ('식의계산'), ('도형');
+INSERT INTO tags (name) VALUES ('일차방정식'), ('이차방정식'), ('연립방정식'), ('부등식'), ('일차함수'), ('식의계산'), ('도형');
 
 -- 100문제 데이터 생성 (일차방정식, 연립방정식, 부등식, 함수 등)
 INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type, estimated_time) VALUES
