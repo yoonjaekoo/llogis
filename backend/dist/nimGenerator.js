@@ -64,7 +64,7 @@ async function verifyAnswer(apiKey, problemContent, expectedAnswer) {
     }
 }
 async function generateNimProblems(apiKey, count = 5, category) {
-    const tagsList = ['일차방정식', '연립방정식', '부등식', '일차함수', '식의계산', '도형', '지수법칙'];
+    const tagsList = ['일차방정식', '이차방정식', '연립방정식', '부등식', '일차함수', '식의계산', '도형', '지수법칙', '인수분해'];
     let categoryInstruction = '';
     if (category && category.trim()) {
         categoryInstruction = `Focus on the following topic/category: ${category.trim()}\n`;

@@ -68,7 +68,7 @@ async function verifyAnswer(apiKey: string, problemContent: string, expectedAnsw
 }
 
 export async function generateNimProblems(apiKey: string, count: number = 5, category?: string): Promise<any[]> {
-  const tagsList = ['일차방정식', '연립방정식', '부등식', '일차함수', '식의계산', '도형', '지수법칙'];
+  const tagsList = ['일차방정식', '이차방정식', '연립방정식', '부등식', '일차함수', '식의계산', '도형', '지수법칙', '인수분해'];
 
   let categoryInstruction = '';
   if (category && category.trim()) {
