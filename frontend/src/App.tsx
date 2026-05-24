@@ -1959,9 +1959,11 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
       <nav className="problem-sidebar" aria-label="문제 목록" style={{ width: '300px', flexShrink: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <h3 style={{ color: 'var(--color-4)', margin: 0 }}>문제 목록 ({problems.length})</h3>
-          <button onClick={handleGenerate} className="btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem', width: 'auto', background: 'var(--color-2)', color: 'white' }}>
-            생성하기
-          </button>
+          {user?.username === 'admin' && (
+            <button onClick={handleGenerate} className="btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem', width: 'auto', background: 'var(--color-2)', color: 'white' }}>
+              생성하기
+            </button>
+          )}
         </div>
         
         <div role="listbox" aria-label="문제 선택" style={{ maxHeight: '60vh', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '1rem', background: 'var(--card-bg)' }}>

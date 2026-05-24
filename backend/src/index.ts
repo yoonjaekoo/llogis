@@ -960,7 +960,8 @@ app.post('/api/problems/generate-nim', authenticateToken, async (req: any, res: 
   }
 });
 
-app.post('/api/problems/generate', authenticateToken, async (req: Request, res: Response) => {
+app.post('/api/problems/generate', authenticateToken, async (req: any, res: Response) => {
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
   try {
     const { tags } = req.body; // Expecting an array of tag strings to filter by
     const newProblems = [];
