@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
 import './styles/globals.css';
 import 'katex/dist/katex.min.css';
 import { InlineMath, BlockMath } from 'react-katex';
@@ -58,15 +59,15 @@ const Navbar: React.FC<{
   theme: string; 
   toggleTheme: () => void 
 }> = ({ user, onLogout, theme, toggleTheme }) => (
-  <header>
+  <header role="banner">
     <div className="container">
       <h1 style={{ margin: 0 }}>
-        <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', color: 'white', textDecoration: 'none' }}>
-          <img src="/logo.png" alt="Logis Logo" style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover' }} />
+        <Link to="/" aria-label="Logis 홈으로 이동" style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', color: 'white', textDecoration: 'none' }}>
+          <img src="/logo.png" alt="Logis 로고" width="40" height="40" style={{ borderRadius: '8px', objectFit: 'cover' }} />
           <span style={{ letterSpacing: '-1px' }}>Logis</span>
         </Link>
       </h1>
-      <nav>
+      <nav aria-label="주 메뉴">
         <ul>
           <li><Link to="/">문제</Link></li>
           <li><Link to="/ranking">랭킹</Link></li>
@@ -76,18 +77,18 @@ const Navbar: React.FC<{
             <>
               {user.username === 'admin' && <li><Link to="/admin" style={{ color: '#fab1a0', fontWeight: 800 }}>관리</Link></li>}
               <li>
-                <Link to="/profile" style={{ color: 'var(--color-3)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Link to="/profile" aria-label={`${user.username} 프로필`} style={{ color: 'var(--color-3)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   {user.profile_image_url ? (
-                    <img src={user.profile_image_url} alt="Profile" style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }} />
+                    <img src={user.profile_image_url} alt={`${user.username} 프로필`} width="24" height="24" loading="lazy" style={{ borderRadius: '50%', objectFit: 'cover' }} />
                   ) : (
-                    <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'var(--color-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: 'white' }}>
+                    <div aria-hidden="true" style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'var(--color-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: 'white' }}>
                       {user.username[0].toUpperCase()}
                     </div>
                   )}
                   {user.username} <span style={{ fontSize: '0.8rem', opacity: 0.8 }}>({user.tier})</span> <b style={{ color: 'white' }}>{Math.round(user.rating).toLocaleString()}</b>
                 </Link>
               </li>
-              <li><button onClick={onLogout} style={{ background: 'none', border: 'none', color: '#ff7675', cursor: 'pointer', fontWeight: 800 }}>로그아웃</button></li>
+              <li><button onClick={onLogout} aria-label="로그아웃" style={{ background: 'none', border: 'none', color: '#ff7675', cursor: 'pointer', fontWeight: 800 }}>로그아웃</button></li>
             </>
           ) : (
             <>
@@ -96,7 +97,7 @@ const Navbar: React.FC<{
             </>
           )}
           <li>
-            <button onClick={toggleTheme} className="theme-toggle">
+            <button onClick={toggleTheme} className="theme-toggle" aria-label={theme === 'light' ? '다크 모드로 전환' : '라이트 모드로 전환'}>
               {theme === 'light' ? '🌙' : '☀️'}
             </button>
           </li>
@@ -121,12 +122,33 @@ const About: React.FC<{ user: User | null }> = ({ user }) => {
 
   return (
     <main className="container" style={{ padding: '4rem 0', maxWidth: '800px' }}>
-      <div className="problem-card" style={{ textAlign: 'center' }}>
-        <img src="/logo.png" alt="Logis Logo" style={{ width: '80px', height: '80px', borderRadius: '1.5rem', marginBottom: '1.5rem', boxShadow: 'var(--card-shadow)' }} />
+      <Helmet>
+        <title>소개 | Logis - 수학 문제 풀이 플랫폼</title>
+        <meta name="description" content="Logis는 수학 문제를 풀고 레이팅을 올리는 재미있는 수학 학습 플랫폼입니다. 다양한 난이도의 문제를 도전하고 글로벌 랭킹에 도전하세요." />
+        <meta property="og:title" content="소개 | Logis - 수학 문제 풀이 플랫폼" />
+        <link rel="canonical" href="https://llogis.xyz/about" />
+        <script type="application/ld+json">{JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [{
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Logis",
+            "item": "https://llogis.xyz"
+          }, {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "소개",
+            "item": "https://llogis.xyz/about"
+          }]
+        })}</script>
+      </Helmet>
+      <article className="problem-card" style={{ textAlign: 'center' }}>
+        <img src="/logo.png" alt="Logis 로고" loading="lazy" style={{ width: '80px', height: '80px', borderRadius: '1.5rem', marginBottom: '1.5rem', boxShadow: 'var(--card-shadow)' }} />
         <h2 style={{ color: 'var(--color-4)', marginBottom: '1.5rem' }}>About Logis</h2>
         <p style={{ marginBottom: '2rem' }}>수학 문제를 풀고 레이팅을 올리는 재미있는 수학 학습 플랫폼입니다.</p>
         
-        <div style={{ marginBottom: '2rem' }}>
+        <section aria-label="랭크 기준">
           <h3 style={{ marginBottom: '1rem' }}>랭크 기준</h3>
           <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '2rem', textAlign: 'center' }}>
             <thead>
@@ -144,20 +166,20 @@ const About: React.FC<{ user: User | null }> = ({ user }) => {
               ))}
             </tbody>
           </table>
-        </div>
+        </section>
 
-        <div style={{ marginBottom: '2rem' }}>
+        <section aria-label="기여자">
           <h3 style={{ marginBottom: '0.5rem' }}>Contributors</h3>
           <p>yoonjaekoo, 13ksh</p>
-        </div>
+        </section>
 
         {user && (
-          <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+          <section aria-label="내 정보" style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
             <h3 style={{ marginBottom: '0.5rem' }}>내 랭크 및 레이팅</h3>
             <p style={{ fontSize: '1.2rem', fontWeight: 800 }}>{user.tier} Rank, {Math.round(user.rating).toLocaleString()}</p>
-          </div>
+          </section>
         )}
-      </div>
+      </article>
     </main>
   );
 };
@@ -169,6 +191,7 @@ const Groups: React.FC<{ user: User | null }> = ({ user }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const navigate = useNavigate();
+  const location = useLocation();
 
   const fetchGroups = useCallback(() => {
     const token = localStorage.getItem('token');
@@ -244,8 +267,14 @@ const Groups: React.FC<{ user: User | null }> = ({ user }) => {
 
   return (
     <main className="container" style={{ padding: '4rem 0' }}>
+      <Helmet>
+        <title>그룹 | Logis - 수학 문제 풀이 플랫폼</title>
+        <meta name="description" content="Logis에서 다른 유저들과 그룹을 만들어 함께 수학 문제를 풀고 경쟁해보세요. 그룹 레이팅 경쟁에 참여하세요!" />
+        <meta property="og:title" content="그룹 | Logis - 수학 문제 풀이 플랫폼" />
+        <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
+      </Helmet>
       <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+        <section aria-label="그룹 헤더" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
           <div>
             <h2 style={{ color: 'var(--color-4)', fontSize: '2.5rem', marginBottom: '0.5rem' }}>유저 그룹</h2>
             <p style={{ opacity: 0.7 }}>다른 유저들과 함께 학습하고 경쟁해보세요.</p>
@@ -263,12 +292,11 @@ const Groups: React.FC<{ user: User | null }> = ({ user }) => {
               그룹 생성은 <b>Silver</b> 티어 이상부터 가능합니다.
             </div>
           )}
-        </div>
-
+        </section>
         {showCreate && (
-          <div className="problem-card" style={{ marginBottom: '2rem' }}>
-            <h3 style={{ marginBottom: '1.5rem' }}>새 그룹 생성</h3>
-            <form onSubmit={handleCreate}>
+            <div className="problem-card" style={{ marginBottom: '2rem' }}>
+              <h3 style={{ marginBottom: '1.5rem' }}>새 그룹 생성</h3>
+              <form onSubmit={handleCreate}>
               <input 
                 type="text" 
                 placeholder="그룹 이름" 
@@ -288,7 +316,7 @@ const Groups: React.FC<{ user: User | null }> = ({ user }) => {
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
+        <section aria-label="그룹 목록" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
           {groups.map(g => (
             <div 
               key={g.id} 
@@ -323,7 +351,7 @@ const Groups: React.FC<{ user: User | null }> = ({ user }) => {
             </div>
           ))}
           {groups.length === 0 && <p style={{ textAlign: 'center', gridColumn: '1 / -1', opacity: 0.5 }}>아직 생성된 그룹이 없습니다.</p>}
-        </div>
+        </section>
       </div>
     </main>
   );
@@ -335,6 +363,7 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Competitions state
   const [competitions, setCompetitions] = useState<any[]>([]);
@@ -526,6 +555,12 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
 
   return (
     <main className="container" style={{ padding: '4rem 0' }}>
+      <Helmet>
+        <title>{group.name} | Logis - 수학 문제 풀이 플랫폼</title>
+        <meta name="description" content={`${group.name} 그룹 - ${group.description || '설명이 없습니다.'} Logis에서 그룹 멤버들과 함께 수학을 학습하세요.`} />
+        <meta property="og:title" content={`${group.name} | Logis`} />
+        <link rel="canonical" href={`https://llogis.xyz/groups/${id}`} />
+      </Helmet>
       <div style={{ maxWidth: '800px', margin: '0 auto' }}>
         <button onClick={() => navigate('/groups')} style={{ background: 'none', border: 'none', color: 'var(--color-3)', cursor: 'pointer', marginBottom: '1rem', fontWeight: 800 }}>← 목록으로 돌아가기</button>
         
@@ -840,6 +875,7 @@ const Ranking: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[] | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     fetch('/api/users/ranking')
@@ -877,6 +913,12 @@ const Ranking: React.FC = () => {
 
   return (
     <main className="container" style={{ padding: '4rem 0' }}>
+      <Helmet>
+        <title>랭킹 | Logis - 수학 문제 풀이 플랫폼</title>
+        <meta name="description" content="Logis 사용자 랭킹을 확인하고 검색하세요. Bronze부터 Hacker까지 다양한 티어의 유저들을 만나보세요." />
+        <meta property="og:title" content="랭킹 | Logis - 수학 문제 풀이 플랫폼" />
+        <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
+      </Helmet>
       <div style={{ maxWidth: '800px', margin: '0 auto' }}>
         <h2 style={{ fontSize: '2.5rem', marginBottom: '2rem', textAlign: 'center', color: 'var(--color-4)' }}>사용자 랭킹 및 검색</h2>
         
@@ -971,6 +1013,7 @@ const UserProfile: React.FC = () => {
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     fetch(`/api/users/${id}/profile`)
@@ -1008,15 +1051,21 @@ const UserProfile: React.FC = () => {
 
   return (
     <main className="container" style={{ padding: '4rem 0' }}>
+      <Helmet>
+        <title>{u.username} 프로필 | Logis - 수학 문제 풀이 플랫폼</title>
+        <meta name="description" content={`${u.username}님의 Logis 프로필 - ${u.tier} Rank, ${Math.round(u.rating).toLocaleString()}점, 정답률 ${Math.round(stats.accuracy)}%`} />
+        <meta property="og:title" content={`${u.username} | Logis`} />
+        <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
+      </Helmet>
       <div style={{ maxWidth: '800px', margin: '0 auto' }}>
         <button onClick={() => navigate('/ranking')} style={{ background: 'none', border: 'none', color: 'var(--color-3)', cursor: 'pointer', marginBottom: '1rem', fontWeight: 800 }}>← 랭킹으로 돌아가기</button>
         
-        <div className="problem-card" style={{ textAlign: 'center' }}>
+        <article className="problem-card" style={{ textAlign: 'center' }}>
           <div style={{ position: 'relative', width: '120px', height: '120px', margin: '0 auto 2rem' }}>
             {u.profile_image_url ? (
-              <img src={u.profile_image_url} alt="Profile" style={{ width: '120px', height: '120px', borderRadius: '50%', objectFit: 'cover', boxShadow: '0 0 20px rgba(0,0,0,0.2)' }} />
+              <img src={u.profile_image_url} alt={`${u.username} 프로필 사진`} loading="lazy" style={{ width: '120px', height: '120px', borderRadius: '50%', objectFit: 'cover', boxShadow: '0 0 20px rgba(0,0,0,0.2)' }} />
             ) : (
-              <div style={{ 
+              <div role="img" aria-label={`${u.username} 프로필 이미지`} style={{ 
                 width: '120px', height: '120px', borderRadius: '50%', 
                 background: tierColors[u.tier] || 'var(--color-3)', 
                 display: 'flex', alignItems: 'center', justifyContent: 'center', 
@@ -1042,7 +1091,7 @@ const UserProfile: React.FC = () => {
             {u.bio || "자기소개가 없습니다."}
           </div>
 
-          <div className="profile-stats-grid">
+          <section aria-label="통계" className="profile-stats-grid">
             <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
               <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>레이팅</div>
               <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{Math.round(u.rating).toLocaleString()}</div>
@@ -1055,12 +1104,12 @@ const UserProfile: React.FC = () => {
               <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>정답률</div>
               <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{Math.round(stats.accuracy)}%</div>
             </div>
-          </div>
+          </section>
 
           <div style={{ textAlign: 'center', opacity: 0.6, fontSize: '0.9rem' }}>
             가입일: {new Date(u.created_at).toLocaleDateString()}
           </div>
-        </div>
+        </article>
       </div>
     </main>
   );
@@ -1071,6 +1120,7 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const fetchUsers = useCallback(() => {
     setLoadingUsers(true);
@@ -1167,6 +1217,11 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
 
   return (
     <main className="container" style={{ padding: '4rem 0' }}>
+      <Helmet>
+        <title>관리자 패널 | Logis</title>
+        <meta name="robots" content="noindex, nofollow" />
+        <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
+      </Helmet>
       <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
         <h2 style={{ color: 'var(--color-4)', marginBottom: '2rem', fontSize: '2.5rem' }}>관리자 패널</h2>
         
@@ -1269,6 +1324,7 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
   const [editedBio, setEditedBio] = useState('');
 
   const navigate = useNavigate();
+  const location = useLocation();
 
   const fetchProfile = useCallback(() => {
     if (!user) return;
@@ -1383,7 +1439,12 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
 
   return (
     <main className="container" style={{ padding: '4rem 0' }}>
-      <div className="problem-card" style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center' }}>
+      <Helmet>
+        <title>내 프로필 | Logis - 수학 문제 풀이 플랫폼</title>
+        <meta name="robots" content="noindex, nofollow" />
+        <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
+      </Helmet>
+      <article className="problem-card" style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center' }}>
         <div style={{ position: 'relative', width: '120px', height: '120px', margin: '0 auto 2rem' }}>
           {u.profile_image_url ? (
             <img src={u.profile_image_url} alt="Profile" style={{ width: '120px', height: '120px', borderRadius: '50%', objectFit: 'cover', boxShadow: '0 0 20px rgba(0,0,0,0.2)' }} />
@@ -1504,7 +1565,7 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
             </form>
           )}
         </div>
-      </div>
+      </article>
     </main>
   );
 };
@@ -1514,6 +1575,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
   const [selectedProblemId, setSelectedProblemId] = useState<number | null>(null);
   const [answers, setAnswers] = useState<{[key: number]: string}>({});
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -1576,9 +1638,15 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
 
   return (
     <main className="container problem-layout">
-      <div className="problem-sidebar" style={{ width: '300px', flexShrink: 0 }}>
+      <Helmet>
+        <title>문제 풀기 | Logis - 수학 문제 풀이 플랫폼</title>
+        <meta name="description" content="Logis에서 다양한 수학 문제를 풀고 레이팅을 올리세요. 선형방정식, 연립방정식, 부등식, 함수 등 다양한 문제를 도전하세요." />
+        <meta property="og:title" content="문제 풀기 | Logis - 수학 문제 풀이 플랫폼" />
+        <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
+      </Helmet>
+      <nav className="problem-sidebar" aria-label="문제 목록" style={{ width: '300px', flexShrink: 0 }}>
         <h3 style={{ marginBottom: '1rem', color: 'var(--color-4)' }}>문제 목록 ({problems.length})</h3>
-        <div style={{ maxHeight: '70vh', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '1rem', background: 'var(--card-bg)' }}>
+        <div role="listbox" aria-label="문제 선택" style={{ maxHeight: '70vh', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '1rem', background: 'var(--card-bg)' }}>
           {problems.map(p => (
             <div 
               key={p.id} 
@@ -1613,9 +1681,9 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
             </div>
           )}
         </div>
-      </div>
+      </nav>
 
-      <div style={{ flexGrow: 1 }}>
+      <section aria-label="선택된 문제" style={{ flexGrow: 1 }}>
         {selectedProblem ? (
           <div className="problem-card" style={{ margin: 0 }}>
             <h3 style={{ marginBottom: '1.5rem', color: 'var(--color-4)' }}>{selectedProblem.title}</h3>
@@ -1626,7 +1694,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
             </div>
           </div>
         ) : <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-muted)' }}>문제를 선택해주세요.</div>}
-      </div>
+      </section>
     </main>
   );
 };
@@ -1635,6 +1703,7 @@ const Login: React.FC<{ onLogin: (token: string, user: User) => void }> = ({ onL
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1652,17 +1721,23 @@ const Login: React.FC<{ onLogin: (token: string, user: User) => void }> = ({ onL
 
   return (
     <main className="container">
-      <div className="auth-form">
+      <Helmet>
+        <title>로그인 | Logis - 수학 문제 풀이 플랫폼</title>
+        <meta name="description" content="Logis에 로그인하여 수학 문제를 풀고 레이팅을 올려보세요." />
+        <meta name="robots" content="noindex, nofollow" />
+        <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
+      </Helmet>
+      <section aria-label="로그인" className="auth-form">
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <img src="/logo.png" alt="Logis Logo" style={{ width: '80px', height: '80px', borderRadius: '1.5rem', boxShadow: 'var(--card-shadow)' }} />
+          <img src="/logo.png" alt="Logis 로고" loading="lazy" style={{ width: '80px', height: '80px', borderRadius: '1.5rem', boxShadow: 'var(--card-shadow)' }} />
         </div>
         <h2 style={{ color: 'var(--color-4)' }}>로그인</h2>
         <form onSubmit={handleSubmit}>
-          <input type="text" placeholder="아이디/이메일" value={email} onChange={e => setEmail(e.target.value)} required />
-          <input type="password" placeholder="비밀번호" value={password} onChange={e => setPassword(e.target.value)} required />
-          <button type="submit">로그인</button>
+          <input type="text" placeholder="아이디/이메일" value={email} onChange={e => setEmail(e.target.value)} required aria-label="아이디 또는 이메일" />
+          <input type="password" placeholder="비밀번호" value={password} onChange={e => setPassword(e.target.value)} required aria-label="비밀번호" />
+          <button type="submit" aria-label="로그인 제출">로그인</button>
         </form>
-      </div>
+      </section>
     </main>
   );
 };
@@ -1672,6 +1747,7 @@ const Signup: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1691,18 +1767,24 @@ const Signup: React.FC = () => {
 
   return (
     <main className="container">
-      <div className="auth-form">
+      <Helmet>
+        <title>회원가입 | Logis - 수학 문제 풀이 플랫폼</title>
+        <meta name="description" content="Logis에 가입하여 수학 문제 풀이를 시작하고 레이팅을 올려보세요." />
+        <meta name="robots" content="noindex, nofollow" />
+        <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
+      </Helmet>
+      <section aria-label="회원가입" className="auth-form">
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <img src="/logo.png" alt="Logis Logo" style={{ width: '80px', height: '80px', borderRadius: '1.5rem', boxShadow: 'var(--card-shadow)' }} />
+          <img src="/logo.png" alt="Logis 로고" loading="lazy" style={{ width: '80px', height: '80px', borderRadius: '1.5rem', boxShadow: 'var(--card-shadow)' }} />
         </div>
         <h2 style={{ color: 'var(--color-4)' }}>가입하기</h2>
         <form onSubmit={handleSubmit}>
-          <input type="text" placeholder="이름" value={username} onChange={e => setUsername(e.target.value)} required />
-          <input type="email" placeholder="이메일" value={email} onChange={e => setEmail(e.target.value)} required />
-          <input type="password" placeholder="비밀번호" value={password} onChange={e => setPassword(e.target.value)} required />
-          <button type="submit">가입</button>
+          <input type="text" placeholder="이름" value={username} onChange={e => setUsername(e.target.value)} required aria-label="사용자 이름" />
+          <input type="email" placeholder="이메일" value={email} onChange={e => setEmail(e.target.value)} required aria-label="이메일 주소" />
+          <input type="password" placeholder="비밀번호" value={password} onChange={e => setPassword(e.target.value)} required aria-label="비밀번호" />
+          <button type="submit" aria-label="회원가입 제출">가입</button>
         </form>
-      </div>
+      </section>
     </main>
   );
 };
@@ -1738,19 +1820,25 @@ const App: React.FC = () => {
 
   return (
     <Router>
+      <a href="#main-content" className="skip-link" style={{ position: 'absolute', left: '-9999px', top: 0, zIndex: 9999, padding: '1rem', background: '#5c95ff', color: 'white' }} onFocus={e => e.currentTarget.style.left = '0'} onBlur={e => e.currentTarget.style.left = '-9999px'}>본문으로 바로가기</a>
       <Navbar user={user} onLogout={handleLogout} theme={theme} toggleTheme={toggleTheme} />
-      <Routes>
-        <Route path="/" element={<ProblemList user={user} setUser={setUser} />} />
-        <Route path="/ranking" element={<Ranking />} />
-        <Route path="/users/:id" element={<UserProfile />} />
-        <Route path="/groups" element={<Groups user={user} />} />
-        <Route path="/groups/:id" element={<GroupDetail user={user} />} />
-        <Route path="/about" element={<About user={user} />} />
-        <Route path="/login" element={<Login onLogin={handleLogin} />} />
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
-        <Route path="/admin" element={<Admin user={user} />} />
-      </Routes>
+      <div id="main-content" role="main">
+        <Routes>
+          <Route path="/" element={<ProblemList user={user} setUser={setUser} />} />
+          <Route path="/ranking" element={<Ranking />} />
+          <Route path="/users/:id" element={<UserProfile />} />
+          <Route path="/groups" element={<Groups user={user} />} />
+          <Route path="/groups/:id" element={<GroupDetail user={user} />} />
+          <Route path="/about" element={<About user={user} />} />
+          <Route path="/login" element={<Login onLogin={handleLogin} />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
+          <Route path="/admin" element={<Admin user={user} />} />
+        </Routes>
+      </div>
+      <footer role="contentinfo" style={{ textAlign: 'center', padding: '2rem 1rem', fontSize: '0.85rem', opacity: 0.6, borderTop: '1px solid var(--border)', marginTop: '2rem' }}>
+        <p>&copy; {new Date().getFullYear()} Logis. All rights reserved. | <Link to="/about" style={{ color: 'var(--color-4)', textDecoration: 'none' }}>소개</Link> | <Link to="/ranking" style={{ color: 'var(--color-4)', textDecoration: 'none' }}>랭킹</Link></p>
+      </footer>
     </Router>
   );
 };

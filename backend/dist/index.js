@@ -55,7 +55,13 @@ const pool = new pg_1.Pool({
 });
 app.use((0, cors_1.default)());
 app.use(express_1.default.json());
-app.use('/uploads', express_1.default.static(uploadsDir));
+app.disable('x-powered-by');
+app.use('/uploads', express_1.default.static(uploadsDir, {
+    maxAge: '30d',
+    setHeaders: (res) => {
+        res.setHeader('Cache-Control', 'public, immutable, max-age=2592000');
+    }
+}));
 const ensureSchema = async () => {
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_url TEXT');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT');
@@ -820,6 +826,76 @@ app.delete('/api/admin/users/:id', authenticateToken, async (req, res) => {
     }
     catch (err) {
         res.status(500).json({ error: 'Failed to delete user' });
+    }
+});
+// --- 404 Handler for API routes ---
+app.use('/api/*', (req, res) => {
+    res.status(404).json({ error: 'API endpoint not found' });
+});
+// --- Sitemap ---
+app.get('/api/sitemap.xml', async (req, res) => {
+    const SITE_URL = 'https://llogis.xyz';
+    try {
+        // Get all public users for user pages
+        const usersResult = await pool.query("SELECT id, updated_at FROM users WHERE username != 'admin' ORDER BY id");
+        // Get all groups
+        const groupsResult = await pool.query('SELECT id, created_at FROM groups ORDER BY id');
+        const now = new Date().toISOString();
+        let urls = `
+  <url>
+    <loc>${SITE_URL}/</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+    <lastmod>${now}</lastmod>
+  </url>
+  <url>
+    <loc>${SITE_URL}/ranking</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.9</priority>
+    <lastmod>${now}</lastmod>
+  </url>
+  <url>
+    <loc>${SITE_URL}/about</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <lastmod>${now}</lastmod>
+  </url>
+  <url>
+    <loc>${SITE_URL}/groups</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+    <lastmod>${now}</lastmod>
+  </url>`;
+        for (const user of usersResult.rows) {
+            urls += `
+  <url>
+    <loc>${SITE_URL}/users/${user.id}</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+    <lastmod>${user.updated_at ? new Date(user.updated_at).toISOString() : now}</lastmod>
+  </url>`;
+        }
+        for (const group of groupsResult.rows) {
+            urls += `
+  <url>
+    <loc>${SITE_URL}/groups/${group.id}</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.6</priority>
+    <lastmod>${group.created_at ? new Date(group.created_at).toISOString() : now}</lastmod>
+  </url>`;
+        }
+        const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+${urls}
+</urlset>`;
+        res.header('Content-Type', 'application/xml; charset=utf-8');
+        res.send(sitemap);
+    }
+    catch (err) {
+        console.error('Failed to generate sitemap:', err);
+        res.status(500).send('<?xml version="1.0" encoding="UTF-8"?><error>Failed to generate sitemap</error>');
     }
 });
 ensureSchema()
