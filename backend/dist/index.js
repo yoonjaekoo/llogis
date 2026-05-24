@@ -11,6 +11,7 @@ const bcrypt_1 = __importDefault(require("bcrypt"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const ratingService_1 = require("./rating/ratingService");
 const problemGenerator_1 = require("./problemGenerator");
+const nimGenerator_1 = require("./nimGenerator");
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const multer_1 = __importDefault(require("multer"));
@@ -65,6 +66,7 @@ app.use('/uploads', express_1.default.static(uploadsDir, {
 const ensureSchema = async () => {
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_url TEXT');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS nim_api_key TEXT');
     await pool.query(`
     CREATE TABLE IF NOT EXISTS groups (
       id SERIAL PRIMARY KEY,
@@ -603,6 +605,31 @@ app.post('/api/groups/:id/requests/:requestId/reject', authenticateToken, async 
         res.status(500).json({ error: 'Failed to reject request' });
     }
 });
+app.patch('/api/users/nim-key', authenticateToken, async (req, res) => {
+    const { nimApiKey } = req.body;
+    const userId = req.user.id;
+    if (!nimApiKey || typeof nimApiKey !== 'string') {
+        return res.status(400).json({ error: 'NVIDIA NIM API 키를 입력해주세요.' });
+    }
+    try {
+        await pool.query('UPDATE users SET nim_api_key = $1 WHERE id = $2', [nimApiKey, userId]);
+        res.json({ message: 'NVIDIA NIM API 키가 저장되었습니다.' });
+    }
+    catch (err) {
+        res.status(500).json({ error: 'API 키 저장에 실패했습니다.' });
+    }
+});
+app.get('/api/users/nim-key/status', authenticateToken, async (req, res) => {
+    const userId = req.user.id;
+    try {
+        const result = await pool.query('SELECT nim_api_key FROM users WHERE id = $1', [userId]);
+        const hasKey = !!(result.rows[0]?.nim_api_key);
+        res.json({ hasKey });
+    }
+    catch (err) {
+        res.status(500).json({ error: 'Failed to check API key status' });
+    }
+});
 app.post('/api/users/change-password', authenticateToken, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     const userId = req.user.id;
@@ -687,6 +714,124 @@ app.get('/api/problems', async (req, res) => {
     catch (err) {
         console.error('Error fetching problems:', err);
         res.status(500).json({ error: 'Failed to fetch problems' });
+    }
+});
+app.get('/api/problems/tags', async (_req, res) => {
+    try {
+        const result = await pool.query('SELECT name FROM tags ORDER BY name');
+        res.json(result.rows.map(r => r.name));
+    }
+    catch (err) {
+        res.status(500).json({ error: 'Failed to fetch tags' });
+    }
+});
+app.get('/api/problems/public', async (req, res) => {
+    const { difficulty, concept, page = '1', limit = '20' } = req.query;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const offset = (pageNum - 1) * limitNum;
+    const conditions = [];
+    const params = [];
+    let paramIndex = 1;
+    // Difficulty filter (tier name → rating range)
+    const difficultyRanges = {
+        'bronze': [0, 100000],
+        'silver': [100000, 300000],
+        'gold': [300000, 800000],
+        'platinum': [800000, 2000000],
+        'diamond': [2000000, 5000000],
+        'ruby': [5000000, 12000000],
+        'master': [12000000, 30000000],
+        'god': [30000000, 70000000],
+        'hacker': [70000000, Infinity],
+    };
+    if (difficulty && typeof difficulty === 'string') {
+        const key = difficulty.toLowerCase();
+        const range = difficultyRanges[key];
+        if (range) {
+            conditions.push(`p.current_difficulty >= $${paramIndex}`);
+            params.push(range[0]);
+            paramIndex++;
+            if (range[1] !== Infinity) {
+                conditions.push(`p.current_difficulty < $${paramIndex}`);
+                params.push(range[1]);
+                paramIndex++;
+            }
+        }
+    }
+    // Concept filter (tag name)
+    if (concept && typeof concept === 'string') {
+        conditions.push(`t.name = $${paramIndex}`);
+        params.push(concept);
+        paramIndex++;
+    }
+    const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+    try {
+        // Get total count
+        const countQuery = `
+      SELECT COUNT(DISTINCT p.id)
+      FROM problems p
+      LEFT JOIN problem_tags pt ON p.id = pt.problem_id
+      LEFT JOIN tags t ON pt.tag_id = t.id
+      ${whereClause}
+    `;
+        const countResult = await pool.query(countQuery, params);
+        const total = parseInt(countResult.rows[0].count);
+        // Get paginated problems
+        const query = `
+      SELECT p.id, p.title, p.content, p.current_difficulty, p.created_at,
+             COALESCE(NULLIF(array_agg(t.name ORDER BY t.name), '{NULL}'), '{}') as tags
+      FROM problems p
+      LEFT JOIN problem_tags pt ON p.id = pt.problem_id
+      LEFT JOIN tags t ON pt.tag_id = t.id
+      ${whereClause}
+      GROUP BY p.id
+      ORDER BY p.created_at DESC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+    `;
+        const result = await pool.query(query, [...params, limitNum, offset]);
+        res.json({
+            problems: result.rows,
+            pagination: {
+                page: pageNum,
+                limit: limitNum,
+                total,
+                totalPages: Math.ceil(total / limitNum),
+            },
+        });
+    }
+    catch (err) {
+        console.error('Error fetching public problems:', err);
+        res.status(500).json({ error: 'Failed to fetch problems' });
+    }
+});
+app.post('/api/problems/generate-nim', authenticateToken, async (req, res) => {
+    const userId = req.user.id;
+    const { count = 3 } = req.body;
+    try {
+        const userRes = await pool.query('SELECT nim_api_key FROM users WHERE id = $1', [userId]);
+        const apiKey = userRes.rows[0]?.nim_api_key;
+        if (!apiKey) {
+            return res.status(400).json({ error: 'NVIDIA NIM API 키가 설정되지 않았습니다. 프로필에서 API 키를 먼저 등록해주세요.' });
+        }
+        const generatedProblems = await (0, nimGenerator_1.generateNimProblems)(apiKey, Math.min(count, 10));
+        const newProblems = [];
+        for (const p of generatedProblems) {
+            const result = await pool.query('INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type) VALUES ($1, $2, $3, $4, $4, $5) RETURNING id', [p.title, p.content, p.answer, p.difficulty, 'Calculation']);
+            const problemId = result.rows[0].id;
+            for (const tagName of p.tags) {
+                const tagRes = await pool.query('SELECT id FROM tags WHERE name = $1', [tagName]);
+                if (tagRes.rows.length > 0) {
+                    await pool.query('INSERT INTO problem_tags (problem_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [problemId, tagRes.rows[0].id]);
+                }
+            }
+            newProblems.push({ id: problemId, title: p.title, content: p.content, tags: p.tags, difficulty: p.difficulty });
+        }
+        res.json({ message: `${newProblems.length}개의 문제가 AI로 생성되었습니다!`, problems: newProblems });
+    }
+    catch (err) {
+        console.error('NIM generation error:', err);
+        res.status(500).json({ error: err.message || 'AI 문제 생성에 실패했습니다.' });
     }
 });
 app.post('/api/problems/generate', authenticateToken, async (req, res) => {
