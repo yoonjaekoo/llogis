@@ -1,5 +1,12 @@
 import { Pool } from 'pg';
-import { Glicko2Engine, Rating } from './glicko2';
+import { Glicko2Engine } from './glicko2';
+import { 
+  checkAndRepairStreak, 
+  handleDailyReset, 
+  updateStreak, 
+  updateTokens, 
+  updateQuests 
+} from './gameSystemService';
 
 const pool = new Pool({
   user: process.env.DB_USER || 'mathuser',
@@ -32,6 +39,13 @@ export const processSubmission = async (userId: number, problemId: number, isCor
   try {
     await client.query('BEGIN');
 
+    // 1. 일일 초기화 및 새 퀘스트 배정 검사
+    await handleDailyReset(userId, client);
+
+    // 2. 스트릭 만료 검사 및 자동 스트릭 복구 시도
+    const repairResult = await checkAndRepairStreak(userId, client);
+
+    // 3. 기존 레이팅 계산 로직 실행
     const userRes = await client.query(
       'SELECT rating FROM users WHERE id = $1 FOR UPDATE',
       [userId]
@@ -49,15 +63,47 @@ export const processSubmission = async (userId: number, problemId: number, isCor
       [finalRating, userId]
     );
 
+    // 4. 스트릭 및 토큰 지급 로직 실행
+    let streakResult = { newStreak: 0, bonusTokens: 0 };
+    let finalTokens = 0;
+
+    if (isCorrect) {
+      // 스트릭 업데이트 및 보너스 토큰
+      streakResult = await updateStreak(userId, client);
+      // 기본 토큰 지급 (+1)
+      finalTokens = await updateTokens(userId, client, isCorrect);
+      // 퀘스트 업데이트 ('solve' 및 최초 일일 스트릭 보상 액션 체크)
+      await updateQuests(userId, client, 'solve');
+      await updateQuests(userId, client, 'streak');
+    } else {
+      // 오답인 경우 시도(attempt)만 기록하여 정확도 퀘스트 갱신
+      await updateQuests(userId, client, 'attempt');
+    }
+
+    // 5. 제출 기록 저장
     await client.query(
       'INSERT INTO submissions (user_id, problem_id, is_correct) VALUES ($1, $2, $3)',
       [userId, problemId, isCorrect]
     );
 
+    // 6. 업데이트 완료된 최신 유저 정보 조회
+    const finalUserRes = await client.query(
+      'SELECT streak, tokens, xp, quests, last_active_date, streak_repaired FROM users WHERE id = $1',
+      [userId]
+    );
+    const finalUser = finalUserRes.rows[0];
+
     await client.query('COMMIT');
+
     return { 
       newUserRating: finalRating,
-      tier: getTier(finalRating)
+      tier: getTier(finalRating),
+      streak: finalUser.streak,
+      tokens: finalUser.tokens,
+      xp: finalUser.xp,
+      quests: finalUser.quests,
+      streakRepaired: repairResult.repaired,
+      streakRepairedFlag: finalUser.streak_repaired
     };
   } catch (err) {
     await client.query('ROLLBACK');

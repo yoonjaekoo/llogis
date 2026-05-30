@@ -5,6 +5,7 @@ import { Pool } from 'pg';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { processSubmission, getTier } from './rating/ratingService';
+import { checkAndRepairStreak, handleDailyReset } from './rating/gameSystemService';
 import { generateProblem } from './problemGenerator';
 import { generateNimProblems } from './nimGenerator';
 import path from 'path';
@@ -82,6 +83,12 @@ const ensureSchema = async () => {
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_url TEXT');
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT');
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS nim_api_key TEXT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak INTEGER DEFAULT 0');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS tokens INTEGER DEFAULT 0');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS xp INTEGER DEFAULT 0');
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_date VARCHAR(10) DEFAULT ''");
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_repaired BOOLEAN DEFAULT FALSE');
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS quests JSONB DEFAULT '[]'");
   await pool.query("INSERT INTO tags (name) VALUES ('이차방정식') ON CONFLICT (name) DO NOTHING");
   await pool.query(`
     CREATE TABLE IF NOT EXISTS groups (
@@ -165,42 +172,78 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
 
 app.post('/api/auth/login', async (req: Request, res: Response) => {
   const { email, password } = req.body;
+  const client = await pool.connect();
   try {
     // Try to find user by email or username
-    const userResult = await pool.query('SELECT * FROM users WHERE email = $1 OR username = $1', [email]);
+    const userResult = await client.query('SELECT * FROM users WHERE email = $1 OR username = $1', [email]);
     const user = userResult.rows[0];
-    if (!user || !(await bcrypt.compare(password, user.password_hash))) return res.status(401).json({ error: 'Invalid credentials' });
-    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
+    if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+      client.release();
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // 트랜잭션 내부에서 리셋 및 복구 수행
+    await client.query('BEGIN');
+    await handleDailyReset(user.id, client);
+    const repairResult = await checkAndRepairStreak(user.id, client);
+    await client.query('COMMIT');
+
+    // 최신 정보로 유저 재조회
+    const updatedUserResult = await client.query('SELECT * FROM users WHERE id = $1', [user.id]);
+    const updatedUser = updatedUserResult.rows[0];
+
+    const token = jwt.sign({ id: updatedUser.id, username: updatedUser.username }, JWT_SECRET, { expiresIn: '24h' });
     res.json({ 
       token, 
       user: { 
-        id: user.id, 
-        username: user.username, 
-        rating: user.rating,
-        profile_image_url: user.profile_image_url,
-        bio: user.bio,
-        tier: getTier(user.rating)
+        id: updatedUser.id, 
+        username: updatedUser.username, 
+        rating: updatedUser.rating,
+        profile_image_url: updatedUser.profile_image_url,
+        bio: updatedUser.bio,
+        tier: getTier(updatedUser.rating),
+        streak: updatedUser.streak,
+        tokens: updatedUser.tokens,
+        xp: updatedUser.xp,
+        quests: updatedUser.quests,
+        streakRepaired: repairResult.repaired,
+        streakRepairedFlag: updatedUser.streak_repaired
       } 
     });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Login error:', err);
     res.status(500).json({ error: 'Login failed' });
+  } finally {
+    client.release();
   }
 });
 
 app.get('/api/users/profile', authenticateToken, async (req: any, res: Response) => {
+  const client = await pool.connect();
   try {
     const userId = req.user.id;
-    const userResult = await pool.query(
-      'SELECT id, username, email, rating, profile_image_url, bio, created_at FROM users WHERE id = $1',
+
+    // 데일리 리셋 및 스트릭 자동 복구 수행
+    await client.query('BEGIN');
+    await handleDailyReset(userId, client);
+    const repairResult = await checkAndRepairStreak(userId, client);
+    await client.query('COMMIT');
+
+    const userResult = await client.query(
+      'SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, created_at FROM users WHERE id = $1',
       [userId]
     );
 
-    if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    if (userResult.rows.length === 0) {
+      client.release();
+      return res.status(404).json({ error: 'User not found' });
+    }
 
     const user = userResult.rows[0];
 
     // Get submission statistics
-    const statsResult = await pool.query(
+    const statsResult = await client.query(
       'SELECT COUNT(*) as total, SUM(CASE WHEN is_correct THEN 1 ELSE 0 END) as correct FROM submissions WHERE user_id = $1',
       [userId]
     );
@@ -209,7 +252,9 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
     res.json({
       user: {
         ...user,
-        tier: getTier(user.rating)
+        tier: getTier(parseFloat(user.rating)),
+        streakRepaired: repairResult.repaired,
+        streakRepairedFlag: user.streak_repaired
       },
       stats: {
         totalSubmissions: parseInt(stats.total),
@@ -218,7 +263,11 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
       }
     });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Failed to fetch profile:', err);
     res.status(500).json({ error: 'Failed to fetch profile' });
+  } finally {
+    client.release();
   }
 });
 
