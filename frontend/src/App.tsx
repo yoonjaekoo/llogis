@@ -1777,18 +1777,78 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
           </>
         )}
 
-        <div className="profile-stats-grid">
-          <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
-            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>현재 레이팅</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800 }}>{Math.round(u.rating).toLocaleString()}</div>
+        {/* 게이머 프로필 스탯 보드 */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
+          <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '0.6rem', textAlign: 'center', boxShadow: 'var(--card-shadow)' }}>
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>✨ 현재 레이팅</div>
+            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--color-4)' }}>{Math.round(u.rating).toLocaleString()}</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>등급: {u.tier}</div>
           </div>
-          <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
-            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>해결한 문제</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800 }}>{stats.correctSubmissions}</div>
+          <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '0.6rem', textAlign: 'center', boxShadow: 'var(--card-shadow)' }}>
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>🔥 연속 학습 스트릭</div>
+            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#f87575' }}>{u.streak || 0}일 연속</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+              {u.streakRepairedFlag ? '🩹 오늘 스트릭이 토큰으로 보호됨' : '매일 1문제씩 풀어 스트릭을 유지하세요!'}
+            </div>
           </div>
-          <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
-            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>정답률</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800 }}>{Math.round(stats.accuracy)}%</div>
+          <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '0.6rem', textAlign: 'center', boxShadow: 'var(--card-shadow)' }}>
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>🪙 보유 토큰</div>
+            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffa9a3' }}>{u.tokens || 0} 토큰</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>스트릭 수리에 3 토큰 자동 소모</div>
+          </div>
+          <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '0.6rem', textAlign: 'center', boxShadow: 'var(--card-shadow)' }}>
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>⚡ 총 경험치 (XP)</div>
+            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffd700' }}>{(u.xp || 0).toLocaleString()} XP</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>퀘스트 완료 시 대량 획득</div>
+          </div>
+          <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '0.6rem', textAlign: 'center', boxShadow: 'var(--card-shadow)' }}>
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>✅ 해결한 문제 / 정답률</div>
+            <div style={{ fontSize: '1.8rem', fontWeight: 800 }}>{stats.correctSubmissions}문제</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>총 제출 중 {Math.round(stats.accuracy)}% 정답</div>
+          </div>
+        </div>
+
+        {/* 일일 퀘스트 섹션 */}
+        <div style={{ padding: '2rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '0.6rem', textAlign: 'left', marginBottom: '3rem', boxShadow: 'var(--card-shadow)' }}>
+          <h3 style={{ margin: '0 0 1.5rem 0', color: 'var(--color-4)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            📅 오늘의 일일 퀘스트
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {Array.isArray(u.quests) && u.quests.length > 0 ? (
+              u.quests.map((quest: any) => {
+                const percentage = Math.min(100, Math.round((quest.current / quest.target) * 100)) || 0;
+                return (
+                  <div key={quest.id} style={{ 
+                    padding: '1rem', border: '1px solid var(--border)', borderRadius: '0.4rem', 
+                    background: quest.completed ? 'rgba(92, 149, 255, 0.05)' : 'transparent',
+                    position: 'relative', overflow: 'hidden'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', position: 'relative', zIndex: 2 }}>
+                      <span style={{ fontWeight: 800, fontSize: '1rem', textDecoration: quest.completed ? 'line-through' : 'none', color: quest.completed ? 'var(--text-muted)' : 'var(--text-main)' }}>
+                        {quest.completed ? '✅' : '🎯'} {quest.title}
+                      </span>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                        {quest.current} / {quest.target} {quest.type === 'accuracy' ? '%' : ''}
+                      </span>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px', overflow: 'hidden', position: 'relative', zIndex: 2 }}>
+                      <div style={{ width: `${percentage}%`, height: '100%', background: quest.completed ? '#5c95ff' : 'var(--color-1)', transition: 'width 0.4s ease' }} />
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '0.5rem', fontSize: '0.8rem', opacity: 0.8, position: 'relative', zIndex: 2 }}>
+                      <span>✨ +{quest.xpReward} XP</span>
+                      {quest.tokenReward > 0 && <span>🪙 +{quest.tokenReward} 토큰</span>}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <p style={{ color: 'var(--text-muted)', fontStyle: 'italic', margin: 0 }}>
+                오늘의 퀘스트가 아직 생성되지 않았습니다. 문제를 풀면 퀘스트가 자동으로 시작됩니다!
+              </p>
+            )}
           </div>
         </div>
 
