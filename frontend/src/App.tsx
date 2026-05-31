@@ -183,6 +183,144 @@ const About: React.FC<{ user: User | null }> = ({ user }) => {
     </main>
   );
 };
+const Landing: React.FC<{ user: User | null }> = ({ user }) => {
+  const navigate = useNavigate();
+  const tierColors: { [key: string]: string } = {
+    'Bronze': '#cd7f32', 'Silver': '#a8b8c8', 'Gold': '#ffd700',
+    'Platinum': '#8eb4cf', 'Diamond': '#5bcefa', 'Ruby': '#e0115f',
+    'Master': '#9b59b6', 'God': '#ff6b35', 'Hacker': '#00e676'
+  };
+  const tier = user ? (user as any).tier || 'Bronze' : null;
+
+  return (
+    <main>
+      <Helmet>
+        <title>홈 | Logis - 수학 문제 풀이 플랫폼</title>
+        <meta name="description" content="Logis에서 수학 실력을 키우세요. Glicko-2 레이팅, 스트릭, 일일 퀘스트, 토큰 시스템으로 매일 성장합니다." />
+      </Helmet>
+
+      {/* ── Hero ── */}
+      <section className="landing-hero">
+        <div style={{ position: 'relative', zIndex: 1, maxWidth: '720px' }}>
+          {user ? (
+            <div style={{ marginBottom: '1.5rem' }}>
+              <div className="stats-chip-row">
+                <span className="stats-chip" style={{ borderColor: tierColors[tier] || 'var(--border)', color: tierColors[tier] || 'var(--text-main)' }}>
+                  🏅 {tier}
+                </span>
+                <span className="stats-chip">✨ {Math.round(user.rating).toLocaleString()} RP</span>
+                <span className="stats-chip">🔥 {(user as any).streak ?? 0}일 연속</span>
+                <span className="stats-chip">🪙 {(user as any).tokens ?? 0} 토큰</span>
+              </div>
+            </div>
+          ) : null}
+
+          <h1 className="landing-hero-title">
+            {user ? `어서 오세요,\n${user.username}!` : '수학 실력을\n레이팅으로 증명하세요'}
+          </h1>
+          <p className="landing-hero-sub">
+            {user
+              ? '오늘의 퀘스트를 완료하고 스트릭을 이어가세요. 매일 문제를 풀면 레이팅이 오릅니다.'
+              : 'Glicko-2 레이팅으로 나의 수준을 객관적으로 파악하고, 매일 문제를 풀어 성장하세요.'}
+          </p>
+
+          <div className="landing-cta-group">
+            <button
+              onClick={() => navigate('/solve')}
+              className="btn-hero btn-hero-primary"
+            >
+              🧮 문제 풀기
+            </button>
+            {!user && (
+              <button
+                onClick={() => navigate('/signup')}
+                className="btn-hero btn-hero-secondary"
+              >
+                무료로 시작하기
+              </button>
+            )}
+            {user && (
+              <button
+                onClick={() => navigate('/profile')}
+                className="btn-hero btn-hero-secondary"
+              >
+                내 대시보드
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Stats strip ── */}
+      <div className="landing-stats-strip">
+        <div className="landing-stats-grid">
+          <div className="landing-stat-item">
+            <div className="landing-stat-number">100+</div>
+            <div className="landing-stat-label">수학 문제</div>
+          </div>
+          <div className="landing-stat-item">
+            <div className="landing-stat-number">9개</div>
+            <div className="landing-stat-label">티어 등급</div>
+          </div>
+          <div className="landing-stat-item">
+            <div className="landing-stat-number">AI</div>
+            <div className="landing-stat-label">문제 자동 생성</div>
+          </div>
+          <div className="landing-stat-item">
+            <div className="landing-stat-number">∞</div>
+            <div className="landing-stat-label">성장의 가능성</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Features ── */}
+      <section className="landing-features">
+        <div style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-4)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            왜 Logis인가?
+          </span>
+        </div>
+        <h2 style={{ textAlign: 'center', fontSize: 'clamp(1.8rem, 4vw, 2.8rem)', fontWeight: 900, margin: '0.5rem 0 0', letterSpacing: '-1px', color: 'var(--text-main)' }}>
+          게임처럼 수학을 즐기세요
+        </h2>
+
+        <div className="landing-features-grid">
+          {[
+            { icon: '📈', title: 'Glicko-2 레이팅', desc: '체스 세계에서 검증된 Glicko-2 알고리즘으로 나의 수학 실력을 정밀하게 측정합니다.' },
+            { icon: '🔥', title: '연속 스트릭', desc: '매일 1문제 이상 풀면 스트릭이 쌓입니다. 토큰으로 긴급 수리도 가능해요!' },
+            { icon: '🪙', title: '토큰 경제', desc: '정답을 맞힐 때마다 토큰을 획득하세요. 스트릭 수리, 혜택 등에 활용할 수 있습니다.' },
+            { icon: '📅', title: '일일 퀘스트', desc: '매일 새로운 퀘스트가 갱신됩니다. 완료하면 XP와 토큰을 대량으로 획득할 수 있어요.' },
+            { icon: '🏆', title: '티어 시스템', desc: 'Bronze부터 Hacker까지 — 레이팅이 오를수록 더 높은 티어를 달성하세요.' },
+            { icon: '🤖', title: 'AI 문제 생성', desc: 'NVIDIA NIM 기반 AI가 원하는 단원의 문제를 즉시 만들어 드립니다.' },
+          ].map(f => (
+            <div key={f.title} className="feature-card">
+              <span className="feature-icon">{f.icon}</span>
+              <h3 className="feature-title">{f.title}</h3>
+              <p className="feature-desc">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Bottom CTA ── */}
+      {!user && (
+        <section style={{ textAlign: 'center', padding: '5rem 1.5rem', background: 'var(--card-bg)', borderTop: '1px solid var(--border)' }}>
+          <h2 style={{ fontSize: '2rem', fontWeight: 900, marginBottom: '1rem', color: 'var(--color-4)' }}>
+            지금 바로 시작하세요
+          </h2>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', fontSize: '1.05rem' }}>
+            무료로 가입하고 수학 문제 풀이를 시작하세요.
+          </p>
+          <div className="landing-cta-group">
+            <button onClick={() => navigate('/signup')} className="btn-hero btn-hero-primary">🚀 무료 가입</button>
+            <button onClick={() => navigate('/login')} className="btn-hero btn-hero-secondary">로그인</button>
+          </div>
+        </section>
+      )}
+    </main>
+  );
+};
+
 
 const Groups: React.FC<{ user: User | null }> = ({ user }) => {
   const [groups, setGroups] = useState<any[]>([]);
@@ -1673,235 +1811,239 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
   const { user: u, stats } = profileData;
 
   const tierColors: { [key: string]: string } = {
-    'Bronze': '#cd7f32',
-    'Silver': '#c0c0c0',
-    'Gold': '#ffd700',
-    'Platinum': '#e5e4e2',
-    'Diamond': '#b9f2ff',
-    'Ruby': '#e0115f',
-    'Master': '#800080',
-    'God': '#ff4500',
-    'Hacker': '#00ff00'
+    'Bronze': '#cd7f32', 'Silver': '#a8b8c8', 'Gold': '#ffd700',
+    'Platinum': '#8eb4cf', 'Diamond': '#5bcefa', 'Ruby': '#e0115f',
+    'Master': '#9b59b6', 'God': '#ff6b35', 'Hacker': '#00e676'
   };
 
   return (
-    <main className="container" style={{ padding: '4rem 0' }}>
+    <main className="container" style={{ padding: '3rem 0 5rem', maxWidth: '860px', margin: '0 auto' }}>
       <Helmet>
         <title>내 프로필 | Logis - 수학 문제 풀이 플랫폼</title>
         <meta name="robots" content="noindex, nofollow" />
         <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
       </Helmet>
-      <article className="problem-card" style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center' }}>
-        <div style={{ position: 'relative', width: '120px', height: '120px', margin: '0 auto 2rem' }}>
+
+      {/* ─── 프로필 헤더 카드 ─── */}
+      <div className="problem-card" style={{ textAlign: 'center', marginBottom: '1.5rem', position: 'relative', overflow: 'hidden' }}>
+        {/* 배경 그라데이션 accent */}
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, height: '6px',
+          background: `linear-gradient(90deg, ${tierColors[u.tier] || 'var(--color-4)'}, var(--color-4))`
+        }} />
+
+        {/* 아바타 */}
+        <div style={{ position: 'relative', width: '100px', height: '100px', margin: '1rem auto 1.5rem' }}>
           {u.profile_image_url ? (
-            <img src={u.profile_image_url} alt="Profile" style={{ width: '120px', height: '120px', borderRadius: '50%', objectFit: 'cover', boxShadow: '0 0 20px rgba(0,0,0,0.2)' }} />
+            <img src={u.profile_image_url} alt="프로필" style={{ width: '100px', height: '100px', borderRadius: '1.5rem', objectFit: 'cover', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }} />
           ) : (
-            <div style={{ 
-              width: '120px', height: '120px', borderRadius: '50%', 
-              background: tierColors[u.tier] || 'var(--color-3)', 
-              display: 'flex', alignItems: 'center', justifyContent: 'center', 
-              fontSize: '3rem', boxShadow: '0 0 20px rgba(0,0,0,0.2)', color: 'white', fontWeight: 800
+            <div style={{
+              width: '100px', height: '100px', borderRadius: '1.5rem',
+              background: `linear-gradient(135deg, ${tierColors[u.tier] || 'var(--color-3)'}, var(--color-4))`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '2.5rem', color: 'white', fontWeight: 900,
+              boxShadow: '0 6px 20px rgba(0,0,0,0.2)'
             }}>
               {u.username[0].toUpperCase()}
             </div>
           )}
-          <button 
+          <button
             onClick={() => setIsUpdatingImage(!isUpdatingImage)}
-            style={{ position: 'absolute', bottom: 0, right: 0, background: 'var(--color-4)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}
+            style={{ position: 'absolute', bottom: -4, right: -4, background: 'var(--color-4)', border: '2px solid var(--card-bg)', borderRadius: '0.6rem', width: '30px', height: '30px', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }}
+            title="프로필 사진 변경"
           >
             📷
           </button>
         </div>
 
         {isUpdatingImage && (
-          <form onSubmit={handleUpdateProfileImage} style={{ marginBottom: '2rem', maxWidth: '400px', margin: '0 auto 2rem' }}>
-            <input 
-              type="file" 
-              accept="image/jpeg,image/png,image/gif"
-              onChange={e => setNewProfileImageFile(e.target.files?.[0] ?? null)} 
-              style={{ width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '0.5rem' }}
-              required 
+          <form onSubmit={handleUpdateProfileImage} style={{ marginBottom: '1.5rem', maxWidth: '380px', margin: '0 auto 1.5rem' }}>
+            <input
+              type="file" accept="image/jpeg,image/png,image/gif"
+              onChange={e => setNewProfileImageFile(e.target.files?.[0] ?? null)}
+              style={{ width: '100%', padding: '0.7rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '0.5rem', boxSizing: 'border-box' }}
+              required
             />
-            <button type="submit" className="btn" style={{ background: 'var(--color-2)', color: 'white', fontSize: '0.9rem', padding: '0.5rem' }}>변경 적용</button>
+            <button type="submit" className="btn" style={{ background: 'var(--color-4)', color: 'white', padding: '0.6rem', fontSize: '0.9rem' }}>변경 적용</button>
           </form>
         )}
 
         {isEditingProfile ? (
-          <form onSubmit={handleUpdateProfile} style={{ maxWidth: '500px', margin: '0 auto 2rem' }}>
+          <form onSubmit={handleUpdateProfile} style={{ maxWidth: '480px', margin: '0 auto 1.5rem' }}>
             <div style={{ marginBottom: '1rem', textAlign: 'left' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', opacity: 0.7 }}>사용자 이름</label>
-              <input 
-                type="text" 
-                value={editedUsername}
-                onChange={e => setEditedUsername(e.target.value)}
-                style={{ width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)' }}
-                required
-              />
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>사용자 이름</label>
+              <input type="text" value={editedUsername} onChange={e => setEditedUsername(e.target.value)}
+                style={{ width: '100%', padding: '0.8rem 1rem', borderRadius: 'var(--radius-md)', border: '1.5px solid var(--border)', background: 'var(--bg-color)', color: 'var(--text-main)', boxSizing: 'border-box', fontSize: '1rem' }} required />
             </div>
             <div style={{ marginBottom: '1.5rem', textAlign: 'left' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', opacity: 0.7 }}>자기소개</label>
-              <textarea 
-                value={editedBio}
-                onChange={e => setEditedBio(e.target.value)}
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>자기소개</label>
+              <textarea value={editedBio} onChange={e => setEditedBio(e.target.value)}
                 placeholder="자신을 소개해주세요..."
-                style={{ width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', minHeight: '100px', resize: 'vertical' }}
-              />
+                style={{ width: '100%', padding: '0.8rem 1rem', borderRadius: 'var(--radius-md)', border: '1.5px solid var(--border)', background: 'var(--bg-color)', color: 'var(--text-main)', minHeight: '90px', resize: 'vertical', boxSizing: 'border-box', fontSize: '1rem' }} />
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button type="submit" className="btn" style={{ background: 'var(--color-3)', color: 'white' }}>저장하기</button>
+            <div style={{ display: 'flex', gap: '0.6rem' }}>
+              <button type="submit" className="btn" style={{ background: 'var(--color-4)', color: 'white' }}>저장</button>
               <button type="button" onClick={() => setIsEditingProfile(false)} className="btn" style={{ background: 'var(--border)', color: 'var(--text-main)' }}>취소</button>
             </div>
           </form>
         ) : (
           <>
-            <h2 style={{ fontSize: '2.5rem', marginBottom: '0.5rem', color: 'var(--color-4)' }}>{u.username}</h2>
-            <div style={{ 
-              fontSize: '1.5rem', fontWeight: 800, color: tierColors[u.tier], textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '1.5rem'
-            }}>
-              {u.tier} Rank
+            <h2 style={{ fontSize: '2rem', fontWeight: 900, marginBottom: '0.3rem', color: 'var(--text-main)' }}>{u.username}</h2>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.3rem 0.9rem', borderRadius: '99px', background: `${tierColors[u.tier] || '#888'}22`, border: `1.5px solid ${tierColors[u.tier] || '#888'}`, color: tierColors[u.tier] || '#888', fontWeight: 800, fontSize: '0.9rem', marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              🏅 {u.tier}
             </div>
-            <div style={{ 
-              maxWidth: '500px', margin: '0 auto 2.5rem', padding: '1.5rem', 
-              background: 'rgba(0,0,0,0.03)', borderRadius: '1rem', fontSize: '1.1rem', 
-              lineHeight: 1.6, whiteSpace: 'pre-wrap', fontStyle: u.bio ? 'normal' : 'italic', opacity: u.bio ? 1 : 0.5 
-            }}>
-              {u.bio || "자기소개가 없습니다. 프로필을 수정하여 추가해보세요!"}
+            {u.bio && (
+              <p style={{ maxWidth: '480px', margin: '0 auto 1rem', fontSize: '0.95rem', lineHeight: 1.65, color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{u.bio}</p>
+            )}
+            <div>
+              <button
+                onClick={() => setIsEditingProfile(true)}
+                className="btn"
+                style={{ width: 'auto', padding: '0.5rem 1.6rem', background: 'transparent', border: '1.5px solid var(--color-4)', color: 'var(--color-4)', fontSize: '0.9rem' }}
+              >
+                ✏️ 프로필 수정
+              </button>
             </div>
-            <button 
-              onClick={() => setIsEditingProfile(true)}
-              className="btn" 
-              style={{ width: 'auto', marginBottom: '3rem', padding: '0.6rem 2rem', background: 'var(--color-3)', color: 'white' }}
-            >
-              프로필 수정하기
-            </button>
           </>
         )}
+      </div>
 
-        {/* 게이머 프로필 스탯 보드 */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
-          <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '0.6rem', textAlign: 'center', boxShadow: 'var(--card-shadow)' }}>
-            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>✨ 현재 레이팅</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--color-4)' }}>{Math.round(u.rating).toLocaleString()}</div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>등급: {u.tier}</div>
-          </div>
-          <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '0.6rem', textAlign: 'center', boxShadow: 'var(--card-shadow)' }}>
-            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>🔥 연속 학습 스트릭</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#f87575' }}>{u.streak || 0}일 연속</div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-              {u.streakRepairedFlag ? '🩹 오늘 스트릭이 토큰으로 보호됨' : '매일 1문제씩 풀어 스트릭을 유지하세요!'}
-            </div>
-          </div>
-          <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '0.6rem', textAlign: 'center', boxShadow: 'var(--card-shadow)' }}>
-            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>🪙 보유 토큰</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffa9a3' }}>{u.tokens || 0} 토큰</div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>스트릭 수리에 3 토큰 자동 소모</div>
-          </div>
-          <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '0.6rem', textAlign: 'center', boxShadow: 'var(--card-shadow)' }}>
-            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>⚡ 총 경험치 (XP)</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffd700' }}>{(u.xp || 0).toLocaleString()} XP</div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>퀘스트 완료 시 대량 획득</div>
-          </div>
-          <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '0.6rem', textAlign: 'center', boxShadow: 'var(--card-shadow)' }}>
-            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>✅ 해결한 문제 / 정답률</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800 }}>{stats.correctSubmissions}문제</div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>총 제출 중 {Math.round(stats.accuracy)}% 정답</div>
-          </div>
+      {/* ─── 스탯 카드 그리드 ─── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+
+        <div className="stat-card">
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(90deg, var(--color-4), #7b5ff5)' }} />
+          <span className="stat-card-icon">✨</span>
+          <div className="stat-card-label">레이팅</div>
+          <div className="stat-card-value" style={{ color: 'var(--color-4)' }}>{Math.round(u.rating).toLocaleString()}</div>
+          <div className="stat-card-sub">{u.tier} 등급</div>
         </div>
 
-        {/* 일일 퀘스트 섹션 */}
-        <div style={{ padding: '2rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '0.6rem', textAlign: 'left', marginBottom: '3rem', boxShadow: 'var(--card-shadow)' }}>
-          <h3 style={{ margin: '0 0 1.5rem 0', color: 'var(--color-4)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            📅 오늘의 일일 퀘스트
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {Array.isArray(u.quests) && u.quests.length > 0 ? (
-              u.quests.map((quest: any) => {
-                const percentage = Math.min(100, Math.round((quest.current / quest.target) * 100)) || 0;
-                return (
-                  <div key={quest.id} style={{ 
-                    padding: '1rem', border: '1px solid var(--border)', borderRadius: '0.4rem', 
-                    background: quest.completed ? 'rgba(92, 149, 255, 0.05)' : 'transparent',
-                    position: 'relative', overflow: 'hidden'
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', position: 'relative', zIndex: 2 }}>
-                      <span style={{ fontWeight: 800, fontSize: '1rem', textDecoration: quest.completed ? 'line-through' : 'none', color: quest.completed ? 'var(--text-muted)' : 'var(--text-main)' }}>
-                        {quest.completed ? '✅' : '🎯'} {quest.title}
-                      </span>
-                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                        {quest.current} / {quest.target} {quest.type === 'accuracy' ? '%' : ''}
-                      </span>
-                    </div>
+        <div className="stat-card">
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(90deg, #f87575, #ffa9a3)' }} />
+          <span className="stat-card-icon">🔥</span>
+          <div className="stat-card-label">연속 스트릭</div>
+          <div className="stat-card-value" style={{ color: '#f87575' }}>{u.streak || 0}일</div>
+          <div className="stat-card-sub">{u.streak_repaired ? '🩹 토큰으로 수리됨' : '스트릭 유지 중'}</div>
+        </div>
 
-                    {/* Progress Bar */}
-                    <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px', overflow: 'hidden', position: 'relative', zIndex: 2 }}>
-                      <div style={{ width: `${percentage}%`, height: '100%', background: quest.completed ? '#5c95ff' : 'var(--color-1)', transition: 'width 0.4s ease' }} />
-                    </div>
+        <div className="stat-card">
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(90deg, #ffd700, #ffb347)' }} />
+          <span className="stat-card-icon">🪙</span>
+          <div className="stat-card-label">보유 토큰</div>
+          <div className="stat-card-value" style={{ color: '#e6a800' }}>{u.tokens || 0}</div>
+          <div className="stat-card-sub">수리 1회에 15토큰</div>
+        </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '0.5rem', fontSize: '0.8rem', opacity: 0.8, position: 'relative', zIndex: 2 }}>
-                      <span>✨ +{quest.xpReward} XP</span>
-                      {quest.tokenReward > 0 && <span>🪙 +{quest.tokenReward} 토큰</span>}
-                    </div>
+        <div className="stat-card">
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(90deg, #00e676, #00bcd4)' }} />
+          <span className="stat-card-icon">⚡</span>
+          <div className="stat-card-label">총 XP</div>
+          <div className="stat-card-value" style={{ color: '#00b360', fontSize: '1.6rem' }}>{(u.xp || 0).toLocaleString()}</div>
+          <div className="stat-card-sub">퀘스트 완료 시 획득</div>
+        </div>
+
+        <div className="stat-card">
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(90deg, var(--color-3), var(--color-4))' }} />
+          <span className="stat-card-icon">✅</span>
+          <div className="stat-card-label">정답 문제</div>
+          <div className="stat-card-value">{stats.correctSubmissions}</div>
+          <div className="stat-card-sub">정답률 {Math.round(stats.accuracy)}%</div>
+        </div>
+      </div>
+
+      {/* ─── 일일 퀘스트 ─── */}
+      <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
+        <h3 style={{ margin: '0 0 1.2rem', color: 'var(--color-4)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          📅 오늘의 퀘스트
+        </h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {Array.isArray(u.quests) && u.quests.length > 0 ? (
+            u.quests.map((quest: any) => {
+              const pct = Math.min(100, Math.round((quest.current / quest.target) * 100)) || 0;
+              return (
+                <div key={quest.id} className={`quest-card${quest.completed ? ' completed' : ''}`}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 800, fontSize: '0.95rem', textDecoration: quest.completed ? 'line-through' : 'none', color: quest.completed ? 'var(--text-muted)' : 'var(--text-main)' }}>
+                      {quest.completed ? '✅' : '🎯'} {quest.title}
+                    </span>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                      {quest.current} / {quest.target}{quest.type === 'accuracy' ? '%' : ''}
+                    </span>
                   </div>
-                );
-              })
-            ) : (
-              <p style={{ color: 'var(--text-muted)', fontStyle: 'italic', margin: 0 }}>
-                오늘의 퀘스트가 아직 생성되지 않았습니다. 문제를 풀면 퀘스트가 자동으로 시작됩니다!
-              </p>
-            )}
-          </div>
+                  <div className="progress-bar">
+                    <div className="progress-fill" style={{ width: `${pct}%`, background: quest.completed ? 'var(--color-4)' : 'var(--color-1)' }} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.8rem', fontSize: '0.78rem', opacity: 0.75 }}>
+                    <span>✨ +{quest.xpReward} XP</span>
+                    {quest.tokenReward > 0 && <span>🪙 +{quest.tokenReward} 토큰</span>}
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <p style={{ color: 'var(--text-muted)', fontStyle: 'italic', margin: 0, fontSize: '0.95rem' }}>
+              오늘의 퀘스트가 아직 생성되지 않았습니다. 문제를 풀면 퀘스트가 자동으로 시작됩니다!
+            </p>
+          )}
         </div>
+      </div>
 
-        <div style={{ textAlign: 'left', opacity: 0.6, fontSize: '0.9rem', marginBottom: '3rem' }}>
+      {/* ─── 계정 설정 ─── */}
+      <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
+        <h3 style={{ margin: '0 0 1.2rem', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          🔐 계정 설정
+        </h3>
+
+        <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
           가입일: {new Date(u.created_at).toLocaleDateString()}
         </div>
 
-        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
-          <button 
-            onClick={() => setIsChangingPassword(!isChangingPassword)}
-            style={{ background: 'none', border: 'none', color: 'var(--color-3)', cursor: 'pointer', fontWeight: 800, fontSize: '1rem' }}
-          >
-            {isChangingPassword ? '취소' : '비밀번호 변경하기'}
-          </button>
+        <button
+          onClick={() => setIsChangingPassword(!isChangingPassword)}
+          style={{ background: 'none', border: 'none', color: 'var(--color-4)', cursor: 'pointer', fontWeight: 800, fontSize: '0.95rem', padding: 0, textDecoration: 'underline' }}
+        >
+          {isChangingPassword ? '취소' : '비밀번호 변경'}
+        </button>
 
-          {isChangingPassword && (
-            <form onSubmit={handleChangePassword} style={{ marginTop: '1.5rem', maxWidth: '400px', margin: '1.5rem auto 0' }}>
-              <input type="password" placeholder="현재 비밀번호" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} style={{ width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '0.75rem' }} required />
-              <input type="password" placeholder="새 비밀번호" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={{ width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '1rem' }} required />
-              <button type="submit" className="btn" style={{ background: 'var(--color-4)', color: 'white' }}>변경 확인</button>
-            </form>
-          )}
-        </div>
+        {isChangingPassword && (
+          <form onSubmit={handleChangePassword} style={{ marginTop: '1.2rem', maxWidth: '380px' }}>
+            <input type="password" placeholder="현재 비밀번호" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)}
+              style={{ width: '100%', padding: '0.8rem 1rem', borderRadius: 'var(--radius-md)', border: '1.5px solid var(--border)', background: 'var(--bg-color)', color: 'var(--text-main)', marginBottom: '0.6rem', boxSizing: 'border-box' }} required />
+            <input type="password" placeholder="새 비밀번호" value={newPassword} onChange={e => setNewPassword(e.target.value)}
+              style={{ width: '100%', padding: '0.8rem 1rem', borderRadius: 'var(--radius-md)', border: '1.5px solid var(--border)', background: 'var(--bg-color)', color: 'var(--text-main)', marginBottom: '0.8rem', boxSizing: 'border-box' }} required />
+            <button type="submit" className="btn" style={{ background: 'var(--color-4)', color: 'white', padding: '0.7rem' }}>변경 확인</button>
+          </form>
+        )}
+      </div>
 
-        {/* NVIDIA NIM API Key Section */}
-        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '2rem', marginTop: '2rem' }}>
-          <h3 style={{ marginBottom: '0.5rem', color: 'var(--color-4)' }}>NVIDIA NIM API 키</h3>
-          <p style={{ fontSize: '0.85rem', opacity: 0.7, marginBottom: '1rem' }}>
-            {hasNimKey ? '✅ API 키가 등록되어 있습니다. AI 문제 생성 기능을 사용할 수 있습니다.' : 'AI 문제 생성 기능을 사용하려면 NVIDIA NIM API 키를 등록하세요.'}
-          </p>
-          <button 
-            onClick={() => setIsEditingNimKey(!isEditingNimKey)}
-            className="btn"
-            style={{ background: 'var(--color-3)', color: 'white', width: 'auto', padding: '0.6rem 1.5rem' }}
-          >
-            {isEditingNimKey ? '취소' : hasNimKey ? 'API 키 변경하기' : 'API 키 등록하기'}
-          </button>
-
-          {isEditingNimKey && (
-            <form onSubmit={handleSaveNimKey} style={{ marginTop: '1.5rem', maxWidth: '500px', margin: '1.5rem auto 0' }}>
-              <input 
-                type="password" 
-                placeholder="NVIDIA NIM API 키를 입력하세요 (nvapi-...)" 
-                value={nimApiKey} 
-                onChange={e => setNimApiKey(e.target.value)} 
-                style={{ width: '100%', padding: '0.8rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '1rem' }} 
-                required 
-              />
-              <button type="submit" className="btn" style={{ background: 'var(--color-4)', color: 'white' }}>저장</button>
-            </form>
-          )}
-        </div>
-      </article>
+      {/* ─── NVIDIA NIM API 키 ─── */}
+      <div className="problem-card">
+        <h3 style={{ margin: '0 0 0.5rem', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          🤖 NVIDIA NIM API 키
+        </h3>
+        <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', margin: '0 0 1rem' }}>
+          {hasNimKey ? '✅ API 키가 등록되어 있습니다. AI 문제 생성 기능을 사용할 수 있습니다.' : 'AI 문제 생성 기능을 사용하려면 NVIDIA NIM API 키를 등록하세요.'}
+        </p>
+        <button
+          onClick={() => setIsEditingNimKey(!isEditingNimKey)}
+          className="btn"
+          style={{ background: 'var(--card-bg)', border: '1.5px solid var(--color-3)', color: 'var(--color-4)', width: 'auto', padding: '0.55rem 1.4rem', fontSize: '0.9rem' }}
+        >
+          {isEditingNimKey ? '취소' : hasNimKey ? 'API 키 변경' : 'API 키 등록'}
+        </button>
+        {isEditingNimKey && (
+          <form onSubmit={handleSaveNimKey} style={{ marginTop: '1.2rem', maxWidth: '480px' }}>
+            <input
+              type="password" placeholder="NVIDIA NIM API 키 (nvapi-...)"
+              value={nimApiKey} onChange={e => setNimApiKey(e.target.value)}
+              style={{ width: '100%', padding: '0.8rem 1rem', borderRadius: 'var(--radius-md)', border: '1.5px solid var(--border)', background: 'var(--bg-color)', color: 'var(--text-main)', marginBottom: '0.8rem', boxSizing: 'border-box' }}
+              required
+            />
+            <button type="submit" className="btn" style={{ background: 'var(--color-4)', color: 'white', padding: '0.7rem' }}>저장</button>
+          </form>
+        )}
+      </div>
     </main>
   );
 };
@@ -2241,18 +2383,20 @@ const App: React.FC = () => {
       <a href="#main-content" className="skip-link" style={{ position: 'absolute', left: '-9999px', top: 0, zIndex: 9999, padding: '1rem', background: '#5c95ff', color: 'white' }} onFocus={e => e.currentTarget.style.left = '0'} onBlur={e => e.currentTarget.style.left = '-9999px'}>본문으로 바로가기</a>
       <Navbar user={user} onLogout={handleLogout} theme={theme} toggleTheme={toggleTheme} />
       <div id="main-content" role="main">
-        <Routes>
-          <Route path="/" element={<ProblemList user={user} setUser={setUser} />} />
-          <Route path="/ranking" element={<Ranking />} />
-          <Route path="/users/:id" element={<UserProfile />} />
-          <Route path="/groups" element={<Groups user={user} />} />
-          <Route path="/groups/:id" element={<GroupDetail user={user} />} />
-          <Route path="/about" element={<About user={user} />} />
-          <Route path="/login" element={<Login onLogin={handleLogin} />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
-          <Route path="/admin" element={<Admin user={user} />} />
-        </Routes>
+              <Routes>
+        <Route path="/" element={<Landing user={user} />} />
+        <Route path="/solve" element={<ProblemList user={user} setUser={setUser} />} />
+        <Route path="/ranking" element={<Ranking />} />
+        <Route path="/users/:id" element={<UserProfile />} />
+        <Route path="/groups" element={<Groups user={user} />} />
+        <Route path="/groups/:id" element={<GroupDetail user={user} />} />
+        <Route path="/about" element={<About user={user} />} />
+        <Route path="/login" element={<Login onLogin={handleLogin} />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
+        <Route path="/admin" element={<Admin user={user} />} />
+      </Routes>
+
       </div>
       <footer role="contentinfo" style={{ textAlign: 'center', padding: '2rem 1rem', fontSize: '0.85rem', opacity: 0.6, borderTop: '1px solid var(--border)', marginTop: '2rem' }}>
         <p>&copy; {new Date().getFullYear()} Logis. All rights reserved. | <Link to="/about" style={{ color: 'var(--color-4)', textDecoration: 'none' }}>소개</Link> | <Link to="/ranking" style={{ color: 'var(--color-4)', textDecoration: 'none' }}>랭킹</Link></p>

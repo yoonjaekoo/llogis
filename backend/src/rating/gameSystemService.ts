@@ -101,9 +101,9 @@ export const checkAndRepairStreak = async (userId: number, client: PoolClient): 
 
   // 날짜 차이가 2일인 경우 (어제 안 풀고 그저께 풀었음 -> 스트릭 브레이크 위기)
   if (diff === 2) {
-    if (tokens >= 3 && !user.streak_repaired) {
+    if (tokens >= 15 && !user.streak_repaired) {
       // 자동 스트릭 복구
-      tokens -= 3;
+      tokens -= 15;
       repaired = true;
       // 스트릭은 기존 스트릭 유지 (오늘 풀면 +1이 됨)
       await client.query(
