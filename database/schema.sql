@@ -13,6 +13,7 @@ CREATE TABLE users (
     rating_deviation FLOAT DEFAULT 350.0 NOT NULL,
     volatility FLOAT DEFAULT 0.06 NOT NULL,
     profile_image_url TEXT,
+    can_generate_problems BOOLEAN DEFAULT FALSE NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -70,10 +71,10 @@ CREATE TABLE group_members (
 );
 
 -- 초기 사용자
-INSERT INTO users (username, email, password_hash, rating, rating_deviation, volatility) 
+INSERT INTO users (username, email, password_hash, rating, rating_deviation, volatility, can_generate_problems) 
 VALUES 
-('math_pro', 'pro@logis.com', '$2b$10$w/y055HsTmmkZHrvDINxSe5xxS8E59E1/vk6AOcjlzhFmuXZMKkAu', 150000, 350, 0.06),
-('admin', 'admin@logis.com', '$2b$10$ocxbuGqhp0/2NJ9uPZ.SsOFRXXFWAaPjrn0mmKO0UiLmQJ7LYvH3G', 200000, 350, 0.06);
+('math_pro', 'pro@logis.com', '$2b$10$w/y055HsTmmkZHrvDINxSe5xxS8E59E1/vk6AOcjlzhFmuXZMKkAu', 150000, 350, 0.06, FALSE),
+('admin', 'admin@logis.com', '$2b$10$ocxbuGqhp0/2NJ9uPZ.SsOFRXXFWAaPjrn0mmKO0UiLmQJ7LYvH3G', 200000, 350, 0.06, TRUE);
 
 -- 태그 등록
 INSERT INTO tags (name) VALUES ('일차방정식'), ('이차방정식'), ('연립방정식'), ('부등식'), ('일차함수'), ('식의계산'), ('도형');

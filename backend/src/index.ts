@@ -88,7 +88,9 @@ const ensureSchema = async () => {
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS xp INTEGER DEFAULT 0');
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_date VARCHAR(10) DEFAULT ''");
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_repaired BOOLEAN DEFAULT FALSE');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS can_generate_problems BOOLEAN DEFAULT FALSE');
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS quests JSONB DEFAULT '[]'");
+  await pool.query("UPDATE users SET can_generate_problems = TRUE WHERE username = 'admin'");
   await pool.query("INSERT INTO tags (name) VALUES ('이차방정식') ON CONFLICT (name) DO NOTHING");
   await pool.query(`
     CREATE TABLE IF NOT EXISTS groups (
@@ -150,6 +152,12 @@ const authenticateToken = (req: any, res: any, next: NextFunction) => {
   });
 };
 
+const canGenerateProblems = async (userId: number) => {
+  const result = await pool.query('SELECT username, can_generate_problems FROM users WHERE id = $1', [userId]);
+  const user = result.rows[0];
+  return !!user && (user.username === 'admin' || user.can_generate_problems === true);
+};
+
 app.post('/api/auth/signup', async (req: Request, res: Response) => {
   const { username, email, password } = req.body;
   if (!username || !email || !password) return res.status(400).json({ error: 'All fields are required' });
@@ -182,13 +190,13 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // 트랜잭션 내부에서 리셋 및 복구 수행
+    // ?몃옖??뀡 ?대??먯꽌 由ъ뀑 諛?蹂듦뎄 ?섑뻾
     await client.query('BEGIN');
     await handleDailyReset(user.id, client);
     const repairResult = await checkAndRepairStreak(user.id, client);
     await client.query('COMMIT');
 
-    // 최신 정보로 유저 재조회
+    // 理쒖떊 ?뺣낫濡??좎? ?ъ“??
     const updatedUserResult = await client.query('SELECT * FROM users WHERE id = $1', [user.id]);
     const updatedUser = updatedUserResult.rows[0];
 
@@ -206,6 +214,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         tokens: updatedUser.tokens,
         xp: updatedUser.xp,
         quests: updatedUser.quests,
+        can_generate_problems: updatedUser.can_generate_problems,
         streakRepaired: repairResult.repaired,
         streakRepairedFlag: updatedUser.streak_repaired
       } 
@@ -224,14 +233,14 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
   try {
     const userId = req.user.id;
 
-    // 데일리 리셋 및 스트릭 자동 복구 수행
+    // ?곗씪由?由ъ뀑 諛??ㅽ듃由??먮룞 蹂듦뎄 ?섑뻾
     await client.query('BEGIN');
     await handleDailyReset(userId, client);
     const repairResult = await checkAndRepairStreak(userId, client);
     await client.query('COMMIT');
 
     const userResult = await client.query(
-      'SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, created_at FROM users WHERE id = $1',
+      'SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, created_at FROM users WHERE id = $1',
       [userId]
     );
 
@@ -752,14 +761,14 @@ app.patch('/api/users/nim-key', authenticateToken, async (req: any, res: Respons
   const userId = req.user.id;
 
   if (!nimApiKey || typeof nimApiKey !== 'string') {
-    return res.status(400).json({ error: 'NVIDIA NIM API 키를 입력해주세요.' });
+    return res.status(400).json({ error: 'NVIDIA NIM API ?ㅻ? ?낅젰?댁＜?몄슂.' });
   }
 
   try {
     await pool.query('UPDATE users SET nim_api_key = $1 WHERE id = $2', [nimApiKey, userId]);
-    res.json({ message: 'NVIDIA NIM API 키가 저장되었습니다.' });
+    res.json({ message: 'NVIDIA NIM API ?ㅺ? ??λ릺?덉뒿?덈떎.' });
   } catch (err) {
-    res.status(500).json({ error: 'API 키 저장에 실패했습니다.' });
+    res.status(500).json({ error: 'API ????μ뿉 ?ㅽ뙣?덉뒿?덈떎.' });
   }
 });
 
@@ -892,7 +901,7 @@ app.get('/api/problems/public', async (req: Request, res: Response) => {
   const params: any[] = [];
   let paramIndex = 1;
 
-  // Difficulty filter (tier name → rating range)
+  // Difficulty filter (tier name ??rating range)
   const difficultyRanges: Record<string, [number, number]> = {
     'bronze': [0, 100000],
     'silver': [100000, 300000],
@@ -971,7 +980,7 @@ app.get('/api/problems/public', async (req: Request, res: Response) => {
 });
 
 app.post('/api/problems/generate-nim', authenticateToken, async (req: any, res: Response) => {
-  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (!(await canGenerateProblems(req.user.id))) return res.status(403).json({ error: '문제 생성 권한이 없습니다.' });
   const userId = req.user.id;
   const { category, count = 5 } = req.body;
 
@@ -980,10 +989,11 @@ app.post('/api/problems/generate-nim', authenticateToken, async (req: any, res: 
     const apiKey = userRes.rows[0]?.nim_api_key;
 
     if (!apiKey) {
-      return res.status(400).json({ error: 'NVIDIA NIM API 키가 설정되지 않았습니다. 프로필에서 API 키를 먼저 등록해주세요.' });
+      return res.status(400).json({ error: 'NVIDIA NIM API 키가 설정되어 있지 않습니다. 프로필에서 API 키를 먼저 등록해주세요.' });
     }
 
-    const generatedProblems = await generateNimProblems(apiKey, Math.min(count, 10), category);
+    const generationCount = Math.min(10, Math.max(1, parseInt(count) || 5));
+    const generatedProblems = await generateNimProblems(apiKey, generationCount, category);
     const newProblems = [];
 
     for (const p of generatedProblems) {
@@ -1011,11 +1021,12 @@ app.post('/api/problems/generate-nim', authenticateToken, async (req: any, res: 
 });
 
 app.post('/api/problems/generate', authenticateToken, async (req: any, res: Response) => {
-  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (!(await canGenerateProblems(req.user.id))) return res.status(403).json({ error: '문제 생성 권한이 없습니다.' });
   try {
-    const { tags } = req.body; // Expecting an array of tag strings to filter by
+    const { tags, count = 5 } = req.body;
+    const generationCount = Math.min(50, Math.max(1, parseInt(count) || 5));
     const newProblems = [];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < generationCount; i++) {
       const p = generateProblem(tags);
       const result = await pool.query(
         'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
@@ -1033,19 +1044,18 @@ app.post('/api/problems/generate', authenticateToken, async (req: any, res: Resp
       const { answer, ...problemWithoutAnswer } = p;
       newProblems.push({ id: problemId, ...problemWithoutAnswer });
     }
-    res.json({ message: '5 new problems generated!', problems: newProblems });
+    res.json({ message: `${generationCount}개의 문제가 생성되었습니다!`, problems: newProblems });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to generate problems' });
   }
 });
-
 app.post('/api/submissions', authenticateToken, async (req: any, res: any) => {
   const { problemId, userAnswer } = req.body;
   const userId = req.user.id;
 
   try {
-    // 이미 맞힌 문제인지 확인
+    // ?대? 留욏엺 臾몄젣?몄? ?뺤씤
     const existingSubmission = await pool.query(
       'SELECT id FROM submissions WHERE user_id = $1 AND problem_id = $2 AND is_correct = true',
       [userId, problemId]
@@ -1055,12 +1065,12 @@ app.post('/api/submissions', authenticateToken, async (req: any, res: any) => {
       return res.status(400).json({ error: 'Already solved this problem correctly!' });
     }
 
-    // DB에서 실제 정답 가져오기
+    // DB?먯꽌 ?ㅼ젣 ?뺣떟 媛?몄삤湲?
     const problemRes = await pool.query('SELECT answer FROM problems WHERE id = $1', [problemId]);
     if (problemRes.rows.length === 0) return res.status(404).json({ error: 'Problem not found' });
 
     const correctAnswer = problemRes.rows[0].answer;
-    // 공백 전체 제거 및 소문자 변환 후 비교 (더 견고한 체크)
+    // 怨듬갚 ?꾩껜 ?쒓굅 諛??뚮Ц??蹂????鍮꾧탳 (??寃ш퀬??泥댄겕)
     const normalizedUserAnswer = userAnswer.replace(/\s+/g, '').toLowerCase();
     const normalizedCorrectAnswer = correctAnswer.replace(/\s+/g, '').toLowerCase();
     const isCorrect = normalizedUserAnswer === normalizedCorrectAnswer;
@@ -1069,7 +1079,7 @@ app.post('/api/submissions', authenticateToken, async (req: any, res: any) => {
     res.json({ 
       message: isCorrect ? 'Correct answer!' : 'Wrong answer.',
       isCorrect,
-      correctAnswer: isCorrect ? undefined : correctAnswer, // 틀렸을 때만 정답 공개 (선택 사항)
+      correctAnswer: isCorrect ? undefined : correctAnswer, // ??몄쓣 ?뚮쭔 ?뺣떟 怨듦컻 (?좏깮 ?ы빆)
       ...updateResult 
     });
   } catch (err) {
@@ -1098,7 +1108,7 @@ app.post('/api/admin/cleanup-tags', authenticateToken, async (req: any, res: Res
         deletedCount++;
       }
     }
-    res.json({ message: `${deletedCount}개의 문제가 삭제되었습니다.`, deletedCount });
+    res.json({ message: `${deletedCount}媛쒖쓽 臾몄젣媛 ??젣?섏뿀?듬땲??`, deletedCount });
   } catch (err) {
     console.error('Cleanup error:', err);
     res.status(500).json({ error: 'Cleanup failed' });
@@ -1167,7 +1177,7 @@ app.patch('/api/admin/problems/:id', authenticateToken, async (req: any, res: Re
       }
     }
 
-    res.json({ message: '문제가 수정되었습니다.' });
+    res.json({ message: '臾몄젣媛 ?섏젙?섏뿀?듬땲??' });
   } catch (err) {
     console.error('Failed to update problem:', err);
     res.status(500).json({ error: 'Failed to update problem' });
@@ -1181,7 +1191,7 @@ app.delete('/api/admin/problems/:id', authenticateToken, async (req: any, res: R
   try {
     await pool.query('DELETE FROM submissions WHERE problem_id = $1', [id]);
     await pool.query('DELETE FROM problems WHERE id = $1', [id]);
-    res.json({ message: '문제가 삭제되었습니다.' });
+    res.json({ message: '臾몄젣媛 ??젣?섏뿀?듬땲??' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete problem' });
   }
@@ -1227,7 +1237,7 @@ app.get('/api/admin/users', authenticateToken, async (req: any, res: Response) =
   
   try {
     const result = await pool.query(`
-      SELECT u.id, u.username, u.email, u.rating, u.created_at,
+      SELECT u.id, u.username, u.email, u.rating, u.created_at, u.can_generate_problems,
              COUNT(s.id) as total_submissions,
              SUM(CASE WHEN s.is_correct THEN 1 ELSE 0 END) as correct_submissions
       FROM users u
@@ -1239,7 +1249,8 @@ app.get('/api/admin/users', authenticateToken, async (req: any, res: Response) =
       ...u,
       tier: getTier(parseFloat(u.rating)),
       total_submissions: parseInt(u.total_submissions),
-      correct_submissions: parseInt(u.correct_submissions || 0)
+      correct_submissions: parseInt(u.correct_submissions || 0),
+      can_generate_problems: u.can_generate_problems === true
     }));
     res.json(users);
   } catch (err) {
@@ -1261,6 +1272,23 @@ app.patch('/api/admin/users/:id/rating', authenticateToken, async (req: any, res
     res.json({ message: 'Rating updated successfully', user: result.rows[0] });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update rating' });
+  }
+});
+
+app.patch('/api/admin/users/:id/problem-generation', authenticateToken, async (req: any, res: Response) => {
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const { id } = req.params;
+  const { canGenerateProblems: canGenerate } = req.body;
+
+  try {
+    const result = await pool.query(
+      'UPDATE users SET can_generate_problems = $1 WHERE id = $2 RETURNING id, username, can_generate_problems',
+      [!!canGenerate, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    res.json({ message: '臾몄젣 ?앹꽦 沅뚰븳???낅뜲?댄듃?섏뿀?듬땲??', user: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update problem generation permission' });
   }
 });
 

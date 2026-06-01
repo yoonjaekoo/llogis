@@ -21,6 +21,13 @@ interface User {
   tier: string;
   profile_image_url?: string;
   bio?: string;
+  streak?: number;
+  tokens?: number;
+  xp?: number;
+  quests?: any[];
+  streak_repaired?: boolean;
+  can_generate_problems?: boolean;
+  created_at?: string;
 }
 
 // LaTeX Helper
@@ -1259,6 +1266,7 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [category, setCategory] = useState('');
+  const [nimGenerationCount, setNimGenerationCount] = useState(5);
   const [cleaning, setCleaning] = useState(false);
   const [problems, setProblems] = useState<any[]>([]);
   const [problemsPage, setProblemsPage] = useState(1);
@@ -1384,7 +1392,7 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ count: 5, category: category.trim() || undefined })
+        body: JSON.stringify({ count: nimGenerationCount, category: category.trim() || undefined })
       });
       const data = await res.json();
       setMessage(data.message || data.error);
@@ -1440,6 +1448,25 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
     }
   };
 
+  const handleToggleProblemGeneration = async (userId: number, currentValue: boolean) => {
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/admin/users/${userId}/problem-generation`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ canGenerateProblems: !currentValue })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(data.message);
+      fetchUsers();
+    } else {
+      alert(data.error);
+    }
+  };
+
   const handleDeleteUser = async (userId: number, username: string) => {
     if (!window.confirm(`정말로 ${username} 계정을 삭제하시겠습니까?`)) return;
     const token = localStorage.getItem('token');
@@ -1484,8 +1511,16 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
               onChange={e => setCategory(e.target.value)}
               style={{ width: '100%', padding: '0.7rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '1rem', boxSizing: 'border-box' }}
             />
+            <input
+              type="number"
+              min={1}
+              max={10}
+              value={nimGenerationCount}
+              onChange={e => setNimGenerationCount(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+              style={{ width: '100%', padding: '0.7rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '1rem', boxSizing: 'border-box' }}
+            />
             <button onClick={handleGenerateNim} disabled={generating} className="btn" style={{ background: 'var(--color-4)', color: 'white', opacity: generating ? 0.6 : 1 }}>
-              {generating ? '생성 중...' : '🤖 AI 문제 5개 생성'}
+              {generating ? '생성 중...' : `🤖 AI 문제 ${nimGenerationCount}개 생성`}
             </button>
           </div>
 
@@ -1529,6 +1564,7 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
                     <th style={{ padding: '1rem' }}>사용자</th>
                     <th style={{ padding: '1rem' }}>레이팅</th>
                     <th style={{ padding: '1rem' }}>정답수</th>
+                    <th style={{ padding: '1rem' }}>문제 생성 권한</th>
                     <th style={{ padding: '1rem' }}>관리</th>
                   </tr>
                 </thead>
@@ -1545,6 +1581,15 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
                         <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>{u.tier}</div>
                       </td>
                       <td style={{ padding: '1rem' }}>{u.correct_submissions} / {u.total_submissions}</td>
+                      <td style={{ padding: '1rem' }}>
+                        <button
+                          onClick={() => handleToggleProblemGeneration(u.id, !!u.can_generate_problems)}
+                          className="btn"
+                          style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: u.can_generate_problems ? '#00b894' : 'var(--border)', color: u.can_generate_problems ? 'white' : 'var(--text-main)' }}
+                        >
+                          {u.can_generate_problems ? '허용 중' : '권한 부여'}
+                        </button>
+                      </td>
                       <td style={{ padding: '1rem' }}>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                           <button 
@@ -1693,6 +1738,9 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
       setProfileData(data);
       setEditedUsername(data.user.username);
       setEditedBio(data.user.bio || '');
+      if (data.user) {
+        setUser({ ...user!, ...data.user });
+      }
     });
 
     fetch('/api/users/nim-key/status', {
@@ -1815,6 +1863,9 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
     'Platinum': '#8eb4cf', 'Diamond': '#5bcefa', 'Ruby': '#e0115f',
     'Master': '#9b59b6', 'God': '#ff6b35', 'Hacker': '#00e676'
   };
+  const streak = u.streak || 0;
+  const streakGridSize = Math.min(140, Math.max(28, Math.ceil(Math.max(streak, 1) / 7) * 7));
+  const streakDots = Array.from({ length: streakGridSize }, (_, index) => index >= streakGridSize - Math.min(streak, streakGridSize));
 
   return (
     <main className="container" style={{ padding: '3rem 0 5rem', maxWidth: '860px', margin: '0 auto' }}>
@@ -1892,6 +1943,11 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.3rem 0.9rem', borderRadius: '99px', background: `${tierColors[u.tier] || '#888'}22`, border: `1.5px solid ${tierColors[u.tier] || '#888'}`, color: tierColors[u.tier] || '#888', fontWeight: 800, fontSize: '0.9rem', marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               🏅 {u.tier}
             </div>
+            {u.can_generate_problems && (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.35rem 0.75rem', borderRadius: '999px', background: 'rgba(122, 209, 81, 0.16)', border: '1px solid rgba(122, 209, 81, 0.4)', color: '#5fae35', fontWeight: 800, fontSize: '0.82rem', marginBottom: '1rem' }}>
+                문제 생성 권한 보유
+              </div>
+            )}
             {u.bio && (
               <p style={{ maxWidth: '480px', margin: '0 auto 1rem', fontSize: '0.95rem', lineHeight: 1.65, color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{u.bio}</p>
             )}
@@ -1949,6 +2005,35 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
           <div className="stat-card-label">정답 문제</div>
           <div className="stat-card-value">{stats.correctSubmissions}</div>
           <div className="stat-card-sub">정답률 {Math.round(stats.accuracy)}%</div>
+        </div>
+      </div>
+
+      <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
+        <h3 style={{ margin: '0 0 0.75rem', color: '#5fae35', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          스트릭 달력
+        </h3>
+        <p style={{ margin: '0 0 1rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+          연속 {streak}일을 연두/초록 점으로 표시합니다.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '0.45rem' }}>
+          {streakDots.map((active, index) => (
+            <div
+              key={index}
+              title={`${index + 1}일차`}
+              style={{
+                aspectRatio: '1 / 1',
+                borderRadius: '999px',
+                border: active ? '1px solid rgba(95, 174, 53, 0.45)' : '1px solid var(--border)',
+                background: active ? 'linear-gradient(135deg, #dff7a6, #7ad151)' : 'transparent',
+                boxShadow: active ? '0 0 10px rgba(122, 209, 81, 0.28)' : 'none',
+                opacity: active ? 1 : 0.45
+              }}
+            />
+          ))}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+          <span>시작</span>
+          <span>오늘</span>
         </div>
       </div>
 
@@ -2055,6 +2140,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [generationCount, setGenerationCount] = useState(5);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -2138,7 +2224,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ tags: selectedTags })
+      body: JSON.stringify({ tags: selectedTags, count: generationCount })
     })
     .then(res => res.json())
     .then(data => {
@@ -2161,7 +2247,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
       <nav className="problem-sidebar" aria-label="문제 목록" style={{ width: '300px', flexShrink: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <h3 style={{ color: 'var(--color-4)', margin: 0 }}>문제 목록 ({problems.length})</h3>
-          {user?.username === 'admin' && (
+          {(user?.username === 'admin' || user?.can_generate_problems) && (
             <button onClick={handleGenerate} className="btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem', width: 'auto', background: 'var(--color-2)', color: 'white' }}>
               생성하기
             </button>
@@ -2241,15 +2327,26 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
                 </label>
               ))}
             </div>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', opacity: 0.75 }}>생성할 문제 수</label>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={generationCount}
+                onChange={e => setGenerationCount(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+                style={{ width: '100%', padding: '0.7rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box' }}
+              />
+            </div>
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
               <button
-                onClick={() => { setShowGenerateModal(false); setSelectedTags([]); }}
+                onClick={() => { setShowGenerateModal(false); setSelectedTags([]); setGenerationCount(5); }}
                 className="btn" style={{ background: 'var(--text-muted)', color: 'white', width: 'auto' }}
               >
                 취소
               </button>
               <button onClick={confirmGenerate} className="btn" style={{ background: 'var(--color-2)', color: 'white', width: 'auto' }}>
-                5개 생성
+                {generationCount}개 생성
               </button>
             </div>
           </div>
