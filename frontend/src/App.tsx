@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import './styles/globals.css';
 import 'katex/dist/katex.min.css';
 import { InlineMath, BlockMath } from 'react-katex';
+import GooseRoom from './GooseRoom';
 
 // --- Types ---
 interface Problem {
@@ -2446,27 +2447,40 @@ const Signup: React.FC = () => {
   );
 };
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+  const [themeToggleCount, setThemeToggleCount] = useState(() => Number(localStorage.getItem('theme-toggle-count') || '0'));
+  const navigate = useNavigate();
 
   useEffect(() => {
     const token = localStorage.getItem('token');
     const savedUser = localStorage.getItem('user');
     if (token && savedUser) setUser(JSON.parse(savedUser));
+  }, []);
+
+  useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
+    const nextCount = themeToggleCount + 1;
+
     setTheme(newTheme);
+    setThemeToggleCount(nextCount >= 20 ? 0 : nextCount);
     localStorage.setItem('theme', newTheme);
+    localStorage.setItem('theme-toggle-count', String(nextCount >= 20 ? 0 : nextCount));
+
+    if (nextCount >= 20) {
+      navigate('/goose-room');
+    }
   };
 
-  const handleLogin = (token: string, user: User) => {
+  const handleLogin = (token: string, nextUser: User) => {
     localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(user));
-    setUser(user);
+    localStorage.setItem('user', JSON.stringify(nextUser));
+    setUser(nextUser);
   };
 
   const handleLogout = () => {
@@ -2476,30 +2490,36 @@ const App: React.FC = () => {
   };
 
   return (
-    <Router>
+    <>
       <a href="#main-content" className="skip-link" style={{ position: 'absolute', left: '-9999px', top: 0, zIndex: 9999, padding: '1rem', background: '#5c95ff', color: 'white' }} onFocus={e => e.currentTarget.style.left = '0'} onBlur={e => e.currentTarget.style.left = '-9999px'}>본문으로 바로가기</a>
       <Navbar user={user} onLogout={handleLogout} theme={theme} toggleTheme={toggleTheme} />
       <div id="main-content" role="main">
-              <Routes>
-        <Route path="/" element={<Landing user={user} />} />
-        <Route path="/solve" element={<ProblemList user={user} setUser={setUser} />} />
-        <Route path="/ranking" element={<Ranking />} />
-        <Route path="/users/:id" element={<UserProfile />} />
-        <Route path="/groups" element={<Groups user={user} />} />
-        <Route path="/groups/:id" element={<GroupDetail user={user} />} />
-        <Route path="/about" element={<About user={user} />} />
-        <Route path="/login" element={<Login onLogin={handleLogin} />} />
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
-        <Route path="/admin" element={<Admin user={user} />} />
-      </Routes>
-
+        <Routes>
+          <Route path="/" element={<Landing user={user} />} />
+          <Route path="/solve" element={<ProblemList user={user} setUser={setUser} />} />
+          <Route path="/ranking" element={<Ranking />} />
+          <Route path="/users/:id" element={<UserProfile />} />
+          <Route path="/groups" element={<Groups user={user} />} />
+          <Route path="/groups/:id" element={<GroupDetail user={user} />} />
+          <Route path="/about" element={<About user={user} />} />
+          <Route path="/login" element={<Login onLogin={handleLogin} />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
+          <Route path="/admin" element={<Admin user={user} />} />
+          <Route path="/goose-room" element={<GooseRoom />} />
+        </Routes>
       </div>
       <footer role="contentinfo" style={{ textAlign: 'center', padding: '2rem 1rem', fontSize: '0.85rem', opacity: 0.6, borderTop: '1px solid var(--border)', marginTop: '2rem' }}>
         <p>&copy; {new Date().getFullYear()} Logis. All rights reserved. | <Link to="/about" style={{ color: 'var(--color-4)', textDecoration: 'none' }}>소개</Link> | <Link to="/ranking" style={{ color: 'var(--color-4)', textDecoration: 'none' }}>랭킹</Link></p>
       </footer>
-    </Router>
+    </>
   );
 };
+
+const App: React.FC = () => (
+  <Router>
+    <AppContent />
+  </Router>
+);
 
 export default App;

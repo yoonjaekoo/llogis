@@ -15,7 +15,8 @@
     "react-dom": "^19.0.0",
     "react-helmet-async": "^3.0.0",
     "react-katex": "^3.1.0",
-    "react-router-dom": "^7.1.0"
+    "react-router-dom": "^7.1.0",
+    "three": "^0.178.0"
   },
   "devDependencies": {
     "@types/katex": "^0.16.7",
@@ -23,6 +24,7 @@
     "@types/react-dom": "^19.0.0",
     "@types/react-helmet-async": "^1.0.1",
     "@types/react-katex": "^3.0.4",
+    "@types/three": "^0.184.1",
     "@vitejs/plugin-react": "^4.3.4",
     "terser": "^5.48.0",
     "typescript": "^5.7.0",
