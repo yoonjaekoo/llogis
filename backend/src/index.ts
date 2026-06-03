@@ -90,8 +90,46 @@ const ensureSchema = async () => {
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_repaired BOOLEAN DEFAULT FALSE');
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS can_generate_problems BOOLEAN DEFAULT FALSE');
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS quests JSONB DEFAULT '[]'");
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS equipped_title VARCHAR(50) DEFAULT ''");
   await pool.query("UPDATE users SET can_generate_problems = TRUE WHERE username = 'admin'");
   await pool.query("INSERT INTO tags (name) VALUES ('이차방정식') ON CONFLICT (name) DO NOTHING");
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS titles (
+      id SERIAL PRIMARY KEY,
+      title_id VARCHAR(50) UNIQUE NOT NULL,
+      name VARCHAR(100) NOT NULL,
+      description VARCHAR(255) NOT NULL,
+      condition_type VARCHAR(50) NOT NULL,
+      condition_value INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_titles (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      title_id VARCHAR(50) NOT NULL,
+      unlocked_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, title_id)
+    )
+  `);
+  await pool.query(`
+    INSERT INTO titles (title_id, name, description, condition_type, condition_value) VALUES
+      ('goose_room', '꽥?', '거위의 방에 방문하세요', 'goose_room', 1),
+      ('dark_mode', '어둠의 Logis', '다크 모드를 20회 전환하세요', 'dark_mode', 20),
+      ('solve_10', '수학 새싹', '문제 10개를 해결하세요', 'solve_count', 10),
+      ('solve_50', '문제 해결사', '문제 50개를 해결하세요', 'solve_count', 50),
+      ('solve_100', '수학 마스터', '문제 100개를 해결하세요', 'solve_count', 100),
+      ('solve_500', '문제 정복자', '문제 500개를 해결하세요', 'solve_count', 500),
+      ('solve_1000', '지식의 전당', '문제 1000개를 해결하세요', 'solve_count', 1000),
+      ('streak_7', '꾸준함의 시작', '7일 연속 스트릭을 달성하세요', 'streak', 7),
+      ('streak_30', '불굴의 의지', '30일 연속 스트릭을 달성하세요', 'streak', 30),
+      ('streak_100', '열정의 소유자', '100일 연속 스트릭을 달성하세요', 'streak', 100),
+      ('streak_365', '전설의 꾸준함', '365일 연속 스트릭을 달성하세요', 'streak', 365),
+      ('rank_1', '최강자', '랭킹 1위를 달성하세요', 'ranking', 1),
+      ('rank_2', '강호', '랭킹 2위를 달성하세요', 'ranking', 2),
+      ('rank_3', '도전자', '랭킹 3위를 달성하세요', 'ranking', 3)
+    ON CONFLICT (title_id) DO NOTHING
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS groups (
       id SERIAL PRIMARY KEY,
@@ -200,6 +238,13 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
     const updatedUserResult = await client.query('SELECT * FROM users WHERE id = $1', [user.id]);
     const updatedUser = updatedUserResult.rows[0];
 
+    // Look up equipped title display name
+    let equippedTitleName = '';
+    if (updatedUser.equipped_title) {
+      const titleRes = await client.query('SELECT name FROM titles WHERE title_id = $1', [updatedUser.equipped_title]);
+      if (titleRes.rows.length > 0) equippedTitleName = titleRes.rows[0].name;
+    }
+
     const token = jwt.sign({ id: updatedUser.id, username: updatedUser.username }, JWT_SECRET, { expiresIn: '24h' });
     res.json({ 
       token, 
@@ -215,6 +260,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         xp: updatedUser.xp,
         quests: updatedUser.quests,
         can_generate_problems: updatedUser.can_generate_problems,
+        equipped_title: equippedTitleName || updatedUser.equipped_title,
         streakRepaired: repairResult.repaired,
         streakRepairedFlag: updatedUser.streak_repaired
       } 
@@ -240,7 +286,7 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
     await client.query('COMMIT');
 
     const userResult = await client.query(
-      'SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, created_at FROM users WHERE id = $1',
+      'SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, equipped_title, created_at FROM users WHERE id = $1',
       [userId]
     );
 
@@ -250,6 +296,13 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
     }
 
     const user = userResult.rows[0];
+
+    // Look up equipped title display name
+    let equippedTitleName = '';
+    if (user.equipped_title) {
+      const titleRes = await client.query('SELECT name FROM titles WHERE title_id = $1', [user.equipped_title]);
+      if (titleRes.rows.length > 0) equippedTitleName = titleRes.rows[0].name;
+    }
 
     // Get submission statistics
     const statsResult = await client.query(
@@ -261,6 +314,7 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
     res.json({
       user: {
         ...user,
+        equipped_title: equippedTitleName,
         tier: getTier(parseFloat(user.rating)),
         streakRepaired: repairResult.repaired,
         streakRepairedFlag: user.streak_repaired
@@ -330,7 +384,7 @@ app.get('/api/users/search', async (req: Request, res: Response) => {
 
   try {
     const result = await pool.query(
-      'SELECT id, username, rating, profile_image_url, bio FROM users WHERE username ILIKE $1 ORDER BY rating DESC LIMIT 10',
+      'SELECT id, username, rating, profile_image_url, bio, equipped_title FROM users WHERE username ILIKE $1 ORDER BY rating DESC LIMIT 10',
       [`%${q}%`]
     );
     const users = result.rows.map(u => ({
@@ -347,13 +401,20 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const userResult = await pool.query(
-      'SELECT id, username, rating, profile_image_url, bio, created_at FROM users WHERE id = $1',
+      'SELECT id, username, rating, profile_image_url, bio, equipped_title, created_at FROM users WHERE id = $1',
       [id]
     );
 
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
 
     const user = userResult.rows[0];
+
+    // Look up equipped title display name
+    let equippedTitleName = '';
+    if (user.equipped_title) {
+      const titleRes = await pool.query('SELECT name FROM titles WHERE title_id = $1', [user.equipped_title]);
+      if (titleRes.rows.length > 0) equippedTitleName = titleRes.rows[0].name;
+    }
 
     // Get submission statistics
     const statsResult = await pool.query(
@@ -365,6 +426,7 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
     res.json({
       user: {
         ...user,
+        equipped_title: equippedTitleName,
         tier: getTier(user.rating)
       },
       stats: {
@@ -375,6 +437,147 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch user profile' });
+  }
+});
+
+// --- Title Endpoints ---
+
+app.get('/api/titles', authenticateToken, async (req: any, res: Response) => {
+  const userId = req.user.id;
+  try {
+    const titlesResult = await pool.query('SELECT * FROM titles ORDER BY id');
+    const userTitlesResult = await pool.query('SELECT title_id FROM user_titles WHERE user_id = $1', [userId]);
+    const userTitleIds = new Set(userTitlesResult.rows.map((r: any) => r.title_id));
+    const titleStatResult = await pool.query(
+      'SELECT COUNT(*) as correct_count FROM submissions WHERE user_id = $1 AND is_correct = true',
+      [userId]
+    );
+    const correctCount = parseInt(titleStatResult.rows[0].correct_count);
+    const userResult = await pool.query('SELECT streak, equipped_title FROM users WHERE id = $1', [userId]);
+    const user = userResult.rows[0];
+    const equippedTitle = user?.equipped_title || '';
+
+    const titles = titlesResult.rows.map((t: any) => ({
+      ...t,
+      unlocked: userTitleIds.has(t.title_id),
+      equipped: equippedTitle === t.title_id,
+      progress: correctCount
+    }));
+
+    res.json({ titles, equippedTitle, correctCount, streak: user?.streak || 0 });
+  } catch (err) {
+    console.error('Failed to fetch titles:', err);
+    res.status(500).json({ error: 'Failed to fetch titles' });
+  }
+});
+
+app.post('/api/titles/check', authenticateToken, async (req: any, res: Response) => {
+  const userId = req.user.id;
+  const { action, value } = req.body;
+  const client = await pool.connect();
+  try {
+    // Get user info for checks
+    const userRes = await client.query(
+      'SELECT streak, equipped_title FROM users WHERE id = $1',
+      [userId]
+    );
+    if (userRes.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const user = userRes.rows[0];
+
+    // Get correct submission count
+    const statsRes = await client.query(
+      'SELECT COUNT(*) as count FROM submissions WHERE user_id = $1 AND is_correct = true',
+      [userId]
+    );
+    const correctCount = parseInt(statsRes.rows[0].count);
+
+    // Get ranking position (exclude admin)
+    const rankRes = await client.query(
+      "SELECT id FROM users WHERE username != 'admin' ORDER BY rating DESC"
+    );
+    let userRank = -1;
+    for (let i = 0; i < rankRes.rows.length; i++) {
+      if (rankRes.rows[i].id === userId) { userRank = i + 1; break; }
+    }
+
+    // Get all titles
+    const titlesRes = await client.query('SELECT * FROM titles');
+    const titles = titlesRes.rows;
+
+    // Get already unlocked titles
+    const userTitlesRes = await client.query('SELECT title_id FROM user_titles WHERE user_id = $1', [userId]);
+    const unlockedSet = new Set(userTitlesRes.rows.map((r: any) => r.title_id));
+
+    const newlyUnlocked: any[] = [];
+
+    for (const title of titles) {
+      if (unlockedSet.has(title.title_id)) continue;
+      let shouldUnlock = false;
+
+      switch (title.condition_type) {
+        case 'goose_room':
+          if (action === 'goose_room') shouldUnlock = true;
+          break;
+        case 'dark_mode':
+          if (action === 'dark_mode' && value >= title.condition_value) shouldUnlock = true;
+          break;
+        case 'solve_count':
+          if (correctCount >= title.condition_value) shouldUnlock = true;
+          break;
+        case 'streak':
+          if ((user.streak || 0) >= title.condition_value) shouldUnlock = true;
+          break;
+        case 'ranking':
+          if (userRank > 0 && userRank <= title.condition_value) shouldUnlock = true;
+          break;
+      }
+
+      if (shouldUnlock) {
+        await client.query(
+          'INSERT INTO user_titles (user_id, title_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [userId, title.title_id]
+        );
+        newlyUnlocked.push({ title_id: title.title_id, name: title.name, description: title.description });
+      }
+    }
+
+    res.json({ newlyUnlocked, correctCount, streak: user.streak, rank: userRank });
+  } catch (err) {
+    console.error('Failed to check titles:', err);
+    res.status(500).json({ error: 'Failed to check titles' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/titles/equip', authenticateToken, async (req: any, res: Response) => {
+  const userId = req.user.id;
+  const { titleId } = req.body;
+
+  if (!titleId) {
+    return res.status(400).json({ error: 'titleId is required' });
+  }
+
+  try {
+    if (titleId === 'none') {
+      await pool.query("UPDATE users SET equipped_title = '' WHERE id = $1", [userId]);
+      return res.json({ message: '칭호를 해제했습니다.', equippedTitle: '' });
+    }
+
+    // Check if user owns this title
+    const ownedRes = await pool.query(
+      'SELECT 1 FROM user_titles WHERE user_id = $1 AND title_id = $2',
+      [userId, titleId]
+    );
+    if (ownedRes.rows.length === 0) {
+      return res.status(403).json({ error: '보유하지 않은 칭호입니다.' });
+    }
+
+    await pool.query('UPDATE users SET equipped_title = $1 WHERE id = $2', [titleId, userId]);
+    res.json({ message: '칭호를 장착했습니다.', equippedTitle: titleId });
+  } catch (err) {
+    console.error('Failed to equip title:', err);
+    res.status(500).json({ error: 'Failed to equip title' });
   }
 });
 

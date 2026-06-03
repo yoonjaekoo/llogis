@@ -28,6 +28,7 @@ interface User {
   quests?: any[];
   streak_repaired?: boolean;
   can_generate_problems?: boolean;
+  equipped_title?: string;
   created_at?: string;
 }
 
@@ -1223,6 +1224,11 @@ const UserProfile: React.FC = () => {
           </div>
 
           <h2 style={{ fontSize: '2.5rem', marginBottom: '0.5rem', color: 'var(--color-4)' }}>{u.username}</h2>
+          {u.equipped_title && (
+            <div style={{ marginBottom: '0.5rem', fontWeight: 700, color: 'var(--color-4)', fontSize: '1rem' }}>
+              [{u.equipped_title}]
+            </div>
+          )}
           <div style={{ 
             fontSize: '1.5rem', fontWeight: 800, color: tierColors[u.tier], textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '1.5rem'
           }}>
@@ -1751,6 +1757,16 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
     .then(data => {
       if (data.hasKey !== undefined) setHasNimKey(data.hasKey);
     });
+
+    fetch('/api/titles/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({})
+    }).then(r => r.json()).then(data => {
+      if (data.newlyUnlocked && data.newlyUnlocked.length > 0) {
+        setTimeout(() => alert(`🎉 새 칭호 획득: ${data.newlyUnlocked.map((t: any) => t.name).join(', ')}`), 1000);
+      }
+    });
   }, [user]);
 
   useEffect(() => {
@@ -1941,6 +1957,11 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
         ) : (
           <>
             <h2 style={{ fontSize: '2rem', fontWeight: 900, marginBottom: '0.3rem', color: 'var(--text-main)' }}>{u.username}</h2>
+            {u.equipped_title && (
+              <div style={{ marginBottom: '0.3rem', fontWeight: 700, color: 'var(--color-4)', fontSize: '0.95rem' }}>
+                [{u.equipped_title}]
+              </div>
+            )}
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.3rem 0.9rem', borderRadius: '99px', background: `${tierColors[u.tier] || '#888'}22`, border: `1.5px solid ${tierColors[u.tier] || '#888'}`, color: tierColors[u.tier] || '#888', fontWeight: 800, fontSize: '0.9rem', marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               🏅 {u.tier}
             </div>
@@ -2102,6 +2123,8 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
           </form>
         )}
       </div>
+
+      <TitleSection user={user} setUser={setUser} />
 
       {/* ─── NVIDIA NIM API 키 ─── */}
       <div className="problem-card">
@@ -2357,6 +2380,86 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
   );
 };
 
+const TitleSection: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ user, setUser }) => {
+  const [titles, setTitles] = useState<any[]>([]);
+  const [equippedTitle, setEquippedTitle] = useState('');
+  const [loadingTitles, setLoadingTitles] = useState(true);
+  const token = localStorage.getItem('token');
+
+  useEffect(() => {
+    fetch('/api/titles', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.titles) {
+          setTitles(data.titles);
+          setEquippedTitle(data.equippedTitle || '');
+        }
+        setLoadingTitles(false);
+      });
+  }, []);
+
+  const handleEquip = async (titleId: string) => {
+    const res = await fetch('/api/titles/equip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ titleId })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setEquippedTitle(data.equippedTitle);
+      const updatedUser = { ...user!, equipped_title: data.equippedTitle };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+    } else {
+      alert(data.error);
+    }
+  };
+
+  if (loadingTitles) return null;
+
+  return (
+    <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
+      <h3 style={{ margin: '0 0 1.2rem', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        🏆 내 칭호
+      </h3>
+      {equippedTitle && (
+        <div style={{ marginBottom: '1rem', padding: '0.6rem 1rem', background: 'rgba(92, 149, 255, 0.1)', borderRadius: '0.5rem', border: '1px solid var(--color-4)', textAlign: 'center' }}>
+          <span style={{ fontWeight: 800, color: 'var(--color-4)' }}>장착 중: </span>
+          <span style={{ fontWeight: 800 }}>{titles.find((t: any) => t.title_id === equippedTitle)?.name || equippedTitle}</span>
+          <button onClick={() => handleEquip('none')} style={{ marginLeft: '0.5rem', background: 'none', border: 'none', color: '#ff7675', cursor: 'pointer', fontSize: '0.8rem', textDecoration: 'underline' }}>해제</button>
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '0.75rem' }}>
+        {titles.map((t: any) => {
+          const isEquipped = equippedTitle === t.title_id;
+          return (
+            <div
+              key={t.title_id}
+              onClick={() => t.unlocked && !isEquipped && handleEquip(t.title_id)}
+              style={{
+                padding: '0.8rem', borderRadius: '0.75rem', textAlign: 'center', cursor: t.unlocked && !isEquipped ? 'pointer' : 'default',
+                border: isEquipped ? '2px solid var(--color-4)' : t.unlocked ? '1px solid var(--color-3)' : '1px solid var(--border)',
+                background: isEquipped ? 'rgba(92, 149, 255, 0.1)' : t.unlocked ? 'rgba(92, 149, 255, 0.04)' : 'transparent',
+                opacity: t.unlocked ? 1 : 0.4, transition: 'all 0.2s'
+              }}
+              title={t.description}
+            >
+              <div style={{ fontSize: '1.2rem', fontWeight: 900, color: t.unlocked ? 'var(--color-4)' : 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                {t.name}
+              </div>
+              <div style={{ fontSize: '0.7rem', opacity: 0.7, color: 'var(--text-muted)' }}>
+                {t.unlocked ? (isEquipped ? '장착 중' : '클릭하여 장착') : '🔒 잠김'}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const Login: React.FC<{ onLogin: (token: string, user: User) => void }> = ({ onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -2473,6 +2576,18 @@ const AppContent: React.FC = () => {
     localStorage.setItem('theme-toggle-count', String(nextCount >= 20 ? 0 : nextCount));
 
     if (nextCount >= 20) {
+      const token = localStorage.getItem('token');
+      if (token) {
+        fetch('/api/titles/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ action: 'dark_mode', value: 20 })
+        }).then(r => r.json()).then(data => {
+          if (data.newlyUnlocked && data.newlyUnlocked.length > 0) {
+            alert(`🎉 새 칭호 획득: ${data.newlyUnlocked.map((t: any) => t.name).join(', ')}`);
+          }
+        });
+      }
       navigate('/goose-room');
     }
   };
@@ -2481,6 +2596,15 @@ const AppContent: React.FC = () => {
     localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(nextUser));
     setUser(nextUser);
+    fetch('/api/titles/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ action: 'login' })
+    }).then(r => r.json()).then(data => {
+      if (data.newlyUnlocked && data.newlyUnlocked.length > 0) {
+        setTimeout(() => alert(`🎉 새 칭호 획득: ${data.newlyUnlocked.map((t: any) => t.name).join(', ')}`), 500);
+      }
+    });
   };
 
   const handleLogout = () => {

@@ -30,6 +30,8 @@ services:
       - "5000:5000"
     depends_on:
       - db
+    volumes:
+      - uploads_data:/app/uploads
 
   frontend:
     build:
@@ -44,3 +46,4 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:

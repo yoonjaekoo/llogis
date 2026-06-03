@@ -81,9 +81,9 @@ const checkAndRepairStreak = async (userId, client) => {
     const diff = (0, exports.getDaysDifference)(lastActive, today);
     // 날짜 차이가 2일인 경우 (어제 안 풀고 그저께 풀었음 -> 스트릭 브레이크 위기)
     if (diff === 2) {
-        if (tokens >= 3 && !user.streak_repaired) {
+        if (tokens >= 15 && !user.streak_repaired) {
             // 자동 스트릭 복구
-            tokens -= 3;
+            tokens -= 15;
             repaired = true;
             // 스트릭은 기존 스트릭 유지 (오늘 풀면 +1이 됨)
             await client.query('UPDATE users SET tokens = $1, streak_repaired = TRUE, last_active_date = $2 WHERE id = $3', [tokens, lastActive, userId] // last_active_date를 어제나 그저께 상태로 둠으로써 오늘 풀면 정상 누적되게 처리

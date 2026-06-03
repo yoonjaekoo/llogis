@@ -183,6 +183,45 @@ INSERT INTO problem_tags (problem_id, tag_id) SELECT id, (SELECT id FROM tags WH
 INSERT INTO problem_tags (problem_id, tag_id) SELECT id, (SELECT id FROM tags WHERE name = '식의계산') FROM problems WHERE title LIKE '%계산%';
 INSERT INTO problem_tags (problem_id, tag_id) SELECT id, (SELECT id FROM tags WHERE name = '도형') FROM problems WHERE title LIKE '%도형%';
 
+-- Titles Table
+CREATE TABLE IF NOT EXISTS titles (
+    id SERIAL PRIMARY KEY,
+    title_id VARCHAR(50) UNIQUE NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    description VARCHAR(255) NOT NULL,
+    condition_type VARCHAR(50) NOT NULL,
+    condition_value INTEGER NOT NULL DEFAULT 0
+);
+
+-- User Titles Table
+CREATE TABLE IF NOT EXISTS user_titles (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    title_id VARCHAR(50) NOT NULL,
+    unlocked_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, title_id)
+);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS equipped_title VARCHAR(50);
+
+-- Seed Titles
+INSERT INTO titles (title_id, name, description, condition_type, condition_value) VALUES
+    ('goose_room', '꽥?', '거위의 방에 방문하세요', 'goose_room', 1),
+    ('dark_mode', '어둠의 Logis', '다크 모드를 20회 전환하세요', 'dark_mode', 20),
+    ('solve_10', '수학 새싹', '문제 10개를 해결하세요', 'solve_count', 10),
+    ('solve_50', '문제 해결사', '문제 50개를 해결하세요', 'solve_count', 50),
+    ('solve_100', '수학 마스터', '문제 100개를 해결하세요', 'solve_count', 100),
+    ('solve_500', '문제 정복자', '문제 500개를 해결하세요', 'solve_count', 500),
+    ('solve_1000', '지식의 전당', '문제 1000개를 해결하세요', 'solve_count', 1000),
+    ('streak_7', '꾸준함의 시작', '7일 연속 스트릭을 달성하세요', 'streak', 7),
+    ('streak_30', '불굴의 의지', '30일 연속 스트릭을 달성하세요', 'streak', 30),
+    ('streak_100', '열정의 소유자', '100일 연속 스트릭을 달성하세요', 'streak', 100),
+    ('streak_365', '전설의 꾸준함', '365일 연속 스트릭을 달성하세요', 'streak', 365),
+    ('rank_1', '최강자', '랭킹 1위를 달성하세요', 'ranking', 1),
+    ('rank_2', '강호', '랭킹 2위를 달성하세요', 'ranking', 2),
+    ('rank_3', '도전자', '랭킹 3위를 달성하세요', 'ranking', 3)
+ON CONFLICT (title_id) DO NOTHING;
+
 -- Groups Competitions
 CREATE TABLE IF NOT EXISTS group_competitions (
     id SERIAL PRIMARY KEY,

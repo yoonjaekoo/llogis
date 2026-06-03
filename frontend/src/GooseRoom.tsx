@@ -105,6 +105,18 @@ const GooseRoom: React.FC = () => {
         goose = object;
         scene.add(object);
         setLoading(false);
+        const token = localStorage.getItem('token');
+        if (token) {
+          fetch('/api/titles/check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ action: 'goose_room' })
+          }).then(r => r.json()).then(data => {
+            if (data.newlyUnlocked && data.newlyUnlocked.length > 0) {
+              alert(`🎉 새 칭호 획득: ${data.newlyUnlocked.map((t: any) => t.name).join(', ')}`);
+            }
+          });
+        }
       } catch (loadError) {
         if (!cancelled) {
           setError('거위 모델을 불러오지 못했습니다.');
