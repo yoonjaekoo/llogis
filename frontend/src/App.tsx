@@ -1714,6 +1714,86 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
   );
 };
 
+const TitleSection: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ user, setUser }) => {
+  const [titles, setTitles] = useState<any[]>([]);
+  const [equippedTitle, setEquippedTitle] = useState('');
+  const [loadingTitles, setLoadingTitles] = useState(true);
+  const token = localStorage.getItem('token');
+
+  useEffect(() => {
+    fetch('/api/titles', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.titles) {
+          setTitles(data.titles);
+          setEquippedTitle(data.equippedTitle || '');
+        }
+        setLoadingTitles(false);
+      });
+  }, []);
+
+  const handleEquip = async (titleId: string) => {
+    const res = await fetch('/api/titles/equip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ titleId })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setEquippedTitle(data.equippedTitle);
+      const updatedUser = { ...user!, equipped_title: data.equippedTitle };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+    } else {
+      alert(data.error);
+    }
+  };
+
+  if (loadingTitles) return null;
+
+  return (
+    <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
+      <h3 style={{ margin: '0 0 1.2rem', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        🏆 내 칭호
+      </h3>
+      {equippedTitle && (
+        <div style={{ marginBottom: '1rem', padding: '0.6rem 1rem', background: 'rgba(92, 149, 255, 0.1)', borderRadius: '0.5rem', border: '1px solid var(--color-4)', textAlign: 'center' }}>
+          <span style={{ fontWeight: 800, color: 'var(--color-4)' }}>장착 중: </span>
+          <span style={{ fontWeight: 800 }}>{titles.find((t: any) => t.title_id === equippedTitle)?.name || equippedTitle}</span>
+          <button onClick={() => handleEquip('none')} style={{ marginLeft: '0.5rem', background: 'none', border: 'none', color: '#ff7675', cursor: 'pointer', fontSize: '0.8rem', textDecoration: 'underline' }}>해제</button>
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '0.75rem' }}>
+        {titles.map((t: any) => {
+          const isEquipped = equippedTitle === t.title_id;
+          return (
+            <div
+              key={t.title_id}
+              onClick={() => t.unlocked && !isEquipped && handleEquip(t.title_id)}
+              style={{
+                padding: '0.8rem', borderRadius: '0.75rem', textAlign: 'center', cursor: t.unlocked && !isEquipped ? 'pointer' : 'default',
+                border: isEquipped ? '2px solid var(--color-4)' : t.unlocked ? '1px solid var(--color-3)' : '1px solid var(--border)',
+                background: isEquipped ? 'rgba(92, 149, 255, 0.1)' : t.unlocked ? 'rgba(92, 149, 255, 0.04)' : 'transparent',
+                opacity: t.unlocked ? 1 : 0.4, transition: 'all 0.2s'
+              }}
+              title={t.description}
+            >
+              <div style={{ fontSize: '1.2rem', fontWeight: 900, color: t.unlocked ? 'var(--color-4)' : 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                {t.name}
+              </div>
+              <div style={{ fontSize: '0.7rem', opacity: 0.7, color: 'var(--text-muted)' }}>
+                {t.unlocked ? (isEquipped ? '장착 중' : '클릭하여 장착') : '🔒 잠김'}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ user, setUser }) => {
   const [profileData, setProfileData] = useState<any>(null);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -2377,86 +2457,6 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
         </div>
       )}
     </main>
-  );
-};
-
-const TitleSection: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ user, setUser }) => {
-  const [titles, setTitles] = useState<any[]>([]);
-  const [equippedTitle, setEquippedTitle] = useState('');
-  const [loadingTitles, setLoadingTitles] = useState(true);
-  const token = localStorage.getItem('token');
-
-  useEffect(() => {
-    fetch('/api/titles', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.titles) {
-          setTitles(data.titles);
-          setEquippedTitle(data.equippedTitle || '');
-        }
-        setLoadingTitles(false);
-      });
-  }, []);
-
-  const handleEquip = async (titleId: string) => {
-    const res = await fetch('/api/titles/equip', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ titleId })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      setEquippedTitle(data.equippedTitle);
-      const updatedUser = { ...user!, equipped_title: data.equippedTitle };
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      setUser(updatedUser);
-    } else {
-      alert(data.error);
-    }
-  };
-
-  if (loadingTitles) return null;
-
-  return (
-    <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
-      <h3 style={{ margin: '0 0 1.2rem', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        🏆 내 칭호
-      </h3>
-      {equippedTitle && (
-        <div style={{ marginBottom: '1rem', padding: '0.6rem 1rem', background: 'rgba(92, 149, 255, 0.1)', borderRadius: '0.5rem', border: '1px solid var(--color-4)', textAlign: 'center' }}>
-          <span style={{ fontWeight: 800, color: 'var(--color-4)' }}>장착 중: </span>
-          <span style={{ fontWeight: 800 }}>{titles.find((t: any) => t.title_id === equippedTitle)?.name || equippedTitle}</span>
-          <button onClick={() => handleEquip('none')} style={{ marginLeft: '0.5rem', background: 'none', border: 'none', color: '#ff7675', cursor: 'pointer', fontSize: '0.8rem', textDecoration: 'underline' }}>해제</button>
-        </div>
-      )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '0.75rem' }}>
-        {titles.map((t: any) => {
-          const isEquipped = equippedTitle === t.title_id;
-          return (
-            <div
-              key={t.title_id}
-              onClick={() => t.unlocked && !isEquipped && handleEquip(t.title_id)}
-              style={{
-                padding: '0.8rem', borderRadius: '0.75rem', textAlign: 'center', cursor: t.unlocked && !isEquipped ? 'pointer' : 'default',
-                border: isEquipped ? '2px solid var(--color-4)' : t.unlocked ? '1px solid var(--color-3)' : '1px solid var(--border)',
-                background: isEquipped ? 'rgba(92, 149, 255, 0.1)' : t.unlocked ? 'rgba(92, 149, 255, 0.04)' : 'transparent',
-                opacity: t.unlocked ? 1 : 0.4, transition: 'all 0.2s'
-              }}
-              title={t.description}
-            >
-              <div style={{ fontSize: '1.2rem', fontWeight: 900, color: t.unlocked ? 'var(--color-4)' : 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                {t.name}
-              </div>
-              <div style={{ fontSize: '0.7rem', opacity: 0.7, color: 'var(--text-muted)' }}>
-                {t.unlocked ? (isEquipped ? '장착 중' : '클릭하여 장착') : '🔒 잠김'}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
   );
 };
 
