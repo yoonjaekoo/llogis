@@ -387,8 +387,18 @@ app.get('/api/users/search', async (req: Request, res: Response) => {
       'SELECT id, username, rating, profile_image_url, bio, equipped_title FROM users WHERE username ILIKE $1 ORDER BY rating DESC LIMIT 10',
       [`%${q}%`]
     );
-    const users = result.rows.map(u => ({
+    // Resolve equipped title display names
+    const titleIds = [...new Set(result.rows.filter((r: any) => r.equipped_title).map((r: any) => r.equipped_title))];
+    const titleMap: Record<string, string> = {};
+    if (titleIds.length > 0) {
+      const titleRes = await pool.query('SELECT title_id, name FROM titles WHERE title_id = ANY($1)', [titleIds]);
+      for (const row of titleRes.rows) {
+        titleMap[row.title_id] = row.name;
+      }
+    }
+    const users = result.rows.map((u: any) => ({
       ...u,
+      equipped_title: u.equipped_title ? (titleMap[u.equipped_title] || u.equipped_title) : '',
       tier: getTier(u.rating)
     }));
     res.json(users);
@@ -574,7 +584,9 @@ app.post('/api/titles/equip', authenticateToken, async (req: any, res: Response)
     }
 
     await pool.query('UPDATE users SET equipped_title = $1 WHERE id = $2', [titleId, userId]);
-    res.json({ message: '칭호를 장착했습니다.', equippedTitle: titleId });
+    const titleRes = await pool.query('SELECT name FROM titles WHERE title_id = $1', [titleId]);
+    const equippedTitleName = titleRes.rows.length > 0 ? titleRes.rows[0].name : titleId;
+    res.json({ message: '칭호를 장착했습니다.', equippedTitle: titleId, equippedTitleName });
   } catch (err) {
     console.error('Failed to equip title:', err);
     res.status(500).json({ error: 'Failed to equip title' });

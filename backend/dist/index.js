@@ -350,8 +350,18 @@ app.get('/api/users/search', async (req, res) => {
         return res.json([]);
     try {
         const result = await pool.query('SELECT id, username, rating, profile_image_url, bio, equipped_title FROM users WHERE username ILIKE $1 ORDER BY rating DESC LIMIT 10', [`%${q}%`]);
-        const users = result.rows.map(u => ({
+        // Resolve equipped title display names
+        const titleIds = [...new Set(result.rows.filter((r) => r.equipped_title).map((r) => r.equipped_title))];
+        const titleMap = {};
+        if (titleIds.length > 0) {
+            const titleRes = await pool.query('SELECT title_id, name FROM titles WHERE title_id = ANY($1)', [titleIds]);
+            for (const row of titleRes.rows) {
+                titleMap[row.title_id] = row.name;
+            }
+        }
+        const users = result.rows.map((u) => ({
             ...u,
+            equipped_title: u.equipped_title ? (titleMap[u.equipped_title] || u.equipped_title) : '',
             tier: (0, ratingService_1.getTier)(u.rating)
         }));
         res.json(users);
@@ -506,7 +516,9 @@ app.post('/api/titles/equip', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: '보유하지 않은 칭호입니다.' });
         }
         await pool.query('UPDATE users SET equipped_title = $1 WHERE id = $2', [titleId, userId]);
-        res.json({ message: '칭호를 장착했습니다.', equippedTitle: titleId });
+        const titleRes = await pool.query('SELECT name FROM titles WHERE title_id = $1', [titleId]);
+        const equippedTitleName = titleRes.rows.length > 0 ? titleRes.rows[0].name : titleId;
+        res.json({ message: '칭호를 장착했습니다.', equippedTitle: titleId, equippedTitleName });
     }
     catch (err) {
         console.error('Failed to equip title:', err);

@@ -54,7 +54,7 @@ CREATE TABLE submissions (
 );
 
 -- Groups Table
-CREATE TABLE groups (
+CREATE TABLE IF NOT EXISTS groups (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     description TEXT,
@@ -63,11 +63,21 @@ CREATE TABLE groups (
 );
 
 -- Group Members Table
-CREATE TABLE group_members (
+CREATE TABLE IF NOT EXISTS group_members (
     group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (group_id, user_id)
+);
+
+-- Group Join Requests Table
+CREATE TABLE IF NOT EXISTS group_join_requests (
+    id SERIAL PRIMARY KEY,
+    group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(group_id, user_id)
 );
 
 -- 초기 사용자

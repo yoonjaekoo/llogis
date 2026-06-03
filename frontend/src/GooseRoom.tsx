@@ -115,7 +115,7 @@ const GooseRoom: React.FC = () => {
             if (data.newlyUnlocked && data.newlyUnlocked.length > 0) {
               alert(`🎉 새 칭호 획득: ${data.newlyUnlocked.map((t: any) => t.name).join(', ')}`);
             }
-          });
+          }).catch(() => {});
         }
       } catch (loadError) {
         if (!cancelled) {

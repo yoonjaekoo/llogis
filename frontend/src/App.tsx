@@ -1714,13 +1714,15 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
   );
 };
 
-const TitleSection: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ user, setUser }) => {
+const TitleSection: React.FC<{ user: User | null; setUser: (u: User) => void; refreshKey?: number }> = ({ user, setUser, refreshKey }) => {
   const [titles, setTitles] = useState<any[]>([]);
   const [equippedTitle, setEquippedTitle] = useState('');
+  const [equippedTitleName, setEquippedTitleName] = useState('');
   const [loadingTitles, setLoadingTitles] = useState(true);
   const token = localStorage.getItem('token');
 
-  useEffect(() => {
+  const fetchTitles = useCallback(() => {
+    setLoadingTitles(true);
     fetch('/api/titles', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
@@ -1729,10 +1731,15 @@ const TitleSection: React.FC<{ user: User | null; setUser: (u: User) => void }> 
         if (data.titles) {
           setTitles(data.titles);
           setEquippedTitle(data.equippedTitle || '');
+          const found = data.titles.find((t: any) => t.title_id === data.equippedTitle);
+          setEquippedTitleName(found ? found.name : '');
         }
         setLoadingTitles(false);
-      });
-  }, []);
+      })
+      .catch(() => setLoadingTitles(false));
+  }, [token]);
+
+  useEffect(() => { fetchTitles(); }, [fetchTitles, refreshKey]);
 
   const handleEquip = async (titleId: string) => {
     const res = await fetch('/api/titles/equip', {
@@ -1740,14 +1747,16 @@ const TitleSection: React.FC<{ user: User | null; setUser: (u: User) => void }> 
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ titleId })
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (res.ok) {
       setEquippedTitle(data.equippedTitle);
-      const updatedUser = { ...user!, equipped_title: data.equippedTitle };
+      setEquippedTitleName(data.equippedTitleName || '');
+      const updatedUser = { ...user!, equipped_title: data.equippedTitleName || data.equippedTitle };
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setUser(updatedUser);
+      fetchTitles();
     } else {
-      alert(data.error);
+      alert(data.error || '칭호 장착에 실패했습니다.');
     }
   };
 
@@ -1810,6 +1819,7 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
   const [nimApiKey, setNimApiKey] = useState('');
   const [isEditingNimKey, setIsEditingNimKey] = useState(false);
   const [hasNimKey, setHasNimKey] = useState(false);
+  const [titleRefreshKey, setTitleRefreshKey] = useState(0);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -1822,13 +1832,15 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
     })
     .then(res => res.json())
     .then(data => {
+      if (data.error) return;
       setProfileData(data);
       setEditedUsername(data.user.username);
       setEditedBio(data.user.bio || '');
       if (data.user) {
         setUser({ ...user!, ...data.user });
       }
-    });
+    })
+    .catch(() => {});
 
     fetch('/api/users/nim-key/status', {
       headers: { 'Authorization': `Bearer ${token}` }
@@ -1836,7 +1848,8 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
     .then(res => res.json())
     .then(data => {
       if (data.hasKey !== undefined) setHasNimKey(data.hasKey);
-    });
+    })
+    .catch(() => {});
 
     fetch('/api/titles/check', {
       method: 'POST',
@@ -1844,9 +1857,10 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
       body: JSON.stringify({})
     }).then(r => r.json()).then(data => {
       if (data.newlyUnlocked && data.newlyUnlocked.length > 0) {
+        setTitleRefreshKey(k => k + 1);
         setTimeout(() => alert(`🎉 새 칭호 획득: ${data.newlyUnlocked.map((t: any) => t.name).join(', ')}`), 1000);
       }
-    });
+    }).catch(() => {});
   }, [user]);
 
   useEffect(() => {
@@ -2204,7 +2218,7 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
         )}
       </div>
 
-      <TitleSection user={user} setUser={setUser} />
+      <TitleSection user={user} setUser={setUser} refreshKey={titleRefreshKey} />
 
       {/* ─── NVIDIA NIM API 키 ─── */}
       <div className="problem-card">
@@ -2586,7 +2600,7 @@ const AppContent: React.FC = () => {
           if (data.newlyUnlocked && data.newlyUnlocked.length > 0) {
             alert(`🎉 새 칭호 획득: ${data.newlyUnlocked.map((t: any) => t.name).join(', ')}`);
           }
-        });
+        }).catch(() => {});
       }
       navigate('/goose-room');
     }
@@ -2604,7 +2618,7 @@ const AppContent: React.FC = () => {
       if (data.newlyUnlocked && data.newlyUnlocked.length > 0) {
         setTimeout(() => alert(`🎉 새 칭호 획득: ${data.newlyUnlocked.map((t: any) => t.name).join(', ')}`), 500);
       }
-    });
+    }).catch(() => {});
   };
 
   const handleLogout = () => {
