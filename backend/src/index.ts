@@ -548,28 +548,6 @@ app.get('/api/problems/custom', authenticateToken, async (req: any, res: Respons
 });
 
 // Admin creates a custom problem with rating reward
-app.post('/api/problems/custom', authenticateToken, async (req: any, res: Response) => {
-  const userId = req.user.id;
-  // Verify admin
-  const userRes = await pool.query('SELECT username FROM users WHERE id = $1', [userId]);
-  if (userRes.rows.length === 0 || userRes.rows[0].username !== 'admin') {
-    return res.status(403).json({ error: '관리자 전용 API 입니다.' });
-  }
-  const { title, content, difficulty, tags, rewardRating } = req.body;
-  if (!title || !content) return res.status(400).json({ error: 'title and content required' });
-  try {
-    const insertRes = await pool.query(
-      `INSERT INTO problems (title, content, current_difficulty, tags, is_custom, custom_reward_rating)
-       VALUES ($1, $2, $3, $4, TRUE, $5) RETURNING id`,
-      [title, content, difficulty || 0, tags || [], rewardRating || 0]
-    );
-    res.status(201).json({ message: 'Custom problem created', problemId: insertRes.rows[0].id });
-  } catch (err) {
-    console.error('Failed to create custom problem:', err);
-    res.status(500).json({ error: 'Failed to create custom problem' });
-  }
-});
-
 // User streak history (daily solved count) with offset support
 app.get('/api/users/:id/streak-history', async (req: Request, res: Response) => {
   const { id } = req.params;
