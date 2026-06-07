@@ -13,6 +13,8 @@ interface Problem {
   content: string;
   current_difficulty: number;
   tags: string[];
+  custom_reward_rating?: number;
+  is_custom?: boolean;
 }
 
 interface User {
@@ -81,6 +83,7 @@ const Navbar: React.FC<{
           <li><Link to="/">문제</Link></li>
           <li><Link to="/ranking">랭킹</Link></li>
           <li><Link to="/groups">그룹</Link></li>
+          <li><Link to="/shop">상점</Link></li>
           <li><Link to="/about">소개</Link></li>
           {user ? (
             <>
@@ -1159,6 +1162,8 @@ const UserProfile: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [streakHistory, setStreakHistory] = useState<any>(null);
+  const [streakOffset, setStreakOffset] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -1179,6 +1184,14 @@ const UserProfile: React.FC = () => {
         navigate('/ranking');
       });
   }, [id, navigate]);
+
+  useEffect(() => {
+    if (!id) return;
+    fetch(`/api/users/${id}/streak-history?offset=${streakOffset}`)
+      .then(res => res.json())
+      .then(data => setStreakHistory(data))
+      .catch(() => {});
+  }, [id, streakOffset]);
 
   if (loading) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>로딩 중...</div>;
 
@@ -1256,12 +1269,109 @@ const UserProfile: React.FC = () => {
               <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>정답률</div>
               <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{Math.round(stats.accuracy)}%</div>
             </div>
+            <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>🔥 연속 스트릭</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{u.streak || 0}일</div>
+            </div>
+            <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>🪙 보유 토큰</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#e6a800' }}>{u.tokens || 0}</div>
+            </div>
+            <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>⚡ 총 XP</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#00b360' }}>{(u.xp || 0).toLocaleString()}</div>
+            </div>
           </section>
 
           <div style={{ textAlign: 'center', opacity: 0.6, fontSize: '0.9rem' }}>
             가입일: {new Date(u.created_at).toLocaleDateString()}
           </div>
         </article>
+
+        {/* 6-month streak calendar for public profile */}
+        {
+          (() => {
+            const historyMap: Record<string, number> = {};
+            if (streakHistory?.history) {
+              for (const h of streakHistory.history) {
+                historyMap[h.date] = parseInt(h.solved);
+              }
+            }
+            const now = new Date();
+            const endM = now.getMonth() - streakOffset * 6;
+            const calendarMonths = [];
+            for (let i = 5; i >= 0; i--) {
+              const m = endM - i;
+              const y = now.getFullYear() + Math.floor(m / 12);
+              calendarMonths.push({ year: y, month: ((m % 12) + 12) % 12 });
+            }
+            const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+            return (
+              <div className="problem-card" style={{ marginTop: '1.5rem' }}>
+                <h3 style={{ margin: '0 0 0.75rem', color: '#5fae35', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  📅 스트릭 달력
+                </h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <button onClick={() => setStreakOffset(o => o + 1)} className="btn" style={{ width: 'auto', padding: '0.4rem 1rem', fontSize: '0.85rem', background: 'var(--card-bg)', border: '1px solid var(--border)', color: 'var(--text-main)' }}>
+                    ◀ 이전
+                  </button>
+                  <span style={{ fontWeight: 800, fontSize: '1rem' }}>
+                    {calendarMonths[0].year}.{String(calendarMonths[0].month + 1).padStart(2, '0')} - {calendarMonths[5].year}.{String(calendarMonths[5].month + 1).padStart(2, '0')}
+                  </span>
+                  <button onClick={() => streakOffset > 0 && setStreakOffset(o => o - 1)} disabled={streakOffset <= 0} className="btn" style={{ width: 'auto', padding: '0.4rem 1rem', fontSize: '0.85rem', background: 'var(--card-bg)', border: '1px solid var(--border)', color: streakOffset > 0 ? 'var(--text-main)' : 'var(--text-muted)', opacity: streakOffset > 0 ? 1 : 0.5, cursor: streakOffset > 0 ? 'pointer' : 'not-allowed' }}>
+                    다음 ▶
+                  </button>
+                </div>
+                <div className="streak-calendar-grid">
+                  {calendarMonths.map(({ year, month }) => {
+                    const firstDay = new Date(year, month, 1).getDay();
+                    const daysInMonth = new Date(year, month + 1, 0).getDate();
+                    const cells: (null | { date: string; day: number; count: number })[] = [];
+                    for (let i = 0; i < firstDay; i++) cells.push(null);
+                    for (let d = 1; d <= daysInMonth; d++) {
+                      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                      cells.push({ date: dateStr, day: d, count: historyMap[dateStr] || 0 });
+                    }
+                    return (
+                      <div key={`${year}-${month}`} style={{ minWidth: '110px' }}>
+                        <div style={{ fontWeight: 800, fontSize: '0.85rem', textAlign: 'center', marginBottom: '0.4rem' }}>
+                          {year}.{String(month + 1).padStart(2, '0')}
+                        </div>
+                        <div className="streak-month-grid">
+                          {dayNames.map(dn => (
+                            <div key={dn} style={{ fontSize: '0.55rem', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{dn}</div>
+                          ))}
+                          {cells.map((cell, i) => (
+                            cell ? (
+                              <div
+                                key={i}
+                                title={`${cell.date} - ${cell.count}문제 해결`}
+                                className="streak-day"
+                                style={{
+                                  background: cell.count > 0
+                                    ? cell.count >= 5 ? '#7ad151'
+                                      : cell.count >= 3 ? '#a8e06a'
+                                      : '#d4ed9a'
+                                    : 'transparent',
+                                  color: cell.count > 0 ? 'white' : 'var(--text-muted)',
+                                  fontWeight: cell.count > 0 ? 700 : 400
+                                }}
+                              >
+                                {cell.day}
+                              </div>
+                            ) : (
+                              <div key={i} />
+                            )
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()
+        }
       </div>
     </main>
   );
@@ -1812,6 +1922,7 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
   const [isUpdatingImage, setIsUpdatingImage] = useState(false);
   
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [editedUsername, setEditedUsername] = useState('');
   const [editedBio, setEditedBio] = useState('');
 
@@ -1820,6 +1931,10 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
   const [isEditingNimKey, setIsEditingNimKey] = useState(false);
   const [hasNimKey, setHasNimKey] = useState(false);
   const [titleRefreshKey, setTitleRefreshKey] = useState(0);
+
+  // Streak calendar state
+  const [streakHistory, setStreakHistory] = useState<any>(null);
+  const [streakOffset, setStreakOffset] = useState(0);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -1873,26 +1988,32 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editedUsername?.trim()) { alert('사용자 이름을 입력해주세요.'); return; }
+    setIsSavingProfile(true);
     const token = localStorage.getItem('token');
-    const res = await fetch('/api/users/profile', {
-      method: 'PATCH',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ username: editedUsername, bio: editedBio })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      alert('프로필이 업데이트되었습니다.');
-      setIsEditingProfile(false);
-      const updatedUser = { ...user!, username: editedUsername, bio: editedBio };
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      setUser(updatedUser);
-      fetchProfile();
-    } else {
-      alert(data.error);
+    try {
+      const res = await fetch('/api/users/profile', {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ username: editedUsername.trim(), bio: editedBio || '' })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setIsEditingProfile(false);
+        const updatedUser = { ...user!, username: editedUsername.trim(), bio: editedBio || '' };
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        setUser(updatedUser);
+        fetchProfile();
+      } else {
+        alert(data.error || '프로필 업데이트에 실패했습니다.');
+      }
+    } catch (err) {
+      alert('네트워크 오류가 발생했습니다.');
     }
+    setIsSavingProfile(false);
   };
 
   const handleSaveNimKey = async (e: React.FormEvent) => {
@@ -1969,14 +2090,20 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
 
   const { user: u, stats } = profileData;
 
+  useEffect(() => {
+    if (!u?.id) return;
+    fetch(`/api/users/${u.id}/streak-history?offset=${streakOffset}`)
+      .then(res => res.json())
+      .then(data => setStreakHistory(data))
+      .catch(() => {});
+  }, [u?.id, streakOffset]);
+
   const tierColors: { [key: string]: string } = {
     'Bronze': '#cd7f32', 'Silver': '#a8b8c8', 'Gold': '#ffd700',
     'Platinum': '#8eb4cf', 'Diamond': '#5bcefa', 'Ruby': '#e0115f',
     'Master': '#9b59b6', 'God': '#ff6b35', 'Hacker': '#00e676'
   };
   const streak = u.streak || 0;
-  const streakGridSize = Math.min(140, Math.max(28, Math.ceil(Math.max(streak, 1) / 7) * 7));
-  const streakDots = Array.from({ length: streakGridSize }, (_, index) => index >= streakGridSize - Math.min(streak, streakGridSize));
 
   return (
     <main className="container" style={{ padding: '3rem 0 5rem', maxWidth: '860px', margin: '0 auto' }}>
@@ -2044,8 +2171,8 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
                 style={{ width: '100%', padding: '0.8rem 1rem', borderRadius: 'var(--radius-md)', border: '1.5px solid var(--border)', background: 'var(--bg-color)', color: 'var(--text-main)', minHeight: '90px', resize: 'vertical', boxSizing: 'border-box', fontSize: '1rem' }} />
             </div>
             <div style={{ display: 'flex', gap: '0.6rem' }}>
-              <button type="submit" className="btn" style={{ background: 'var(--color-4)', color: 'white' }}>저장</button>
-              <button type="button" onClick={() => setIsEditingProfile(false)} className="btn" style={{ background: 'var(--border)', color: 'var(--text-main)' }}>취소</button>
+              <button type="submit" disabled={isSavingProfile} className="btn" style={{ background: 'var(--color-4)', color: 'white', opacity: isSavingProfile ? 0.6 : 1 }}>{isSavingProfile ? '저장 중...' : '저장'}</button>
+              <button type="button" onClick={() => setIsEditingProfile(false)} disabled={isSavingProfile} className="btn" style={{ background: 'var(--border)', color: 'var(--text-main)' }}>취소</button>
             </div>
           </form>
         ) : (
@@ -2124,34 +2251,93 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
         </div>
       </div>
 
-      <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
-        <h3 style={{ margin: '0 0 0.75rem', color: '#5fae35', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          스트릭 달력
-        </h3>
-        <p style={{ margin: '0 0 1rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-          연속 {streak}일을 연두/초록 점으로 표시합니다.
-        </p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '0.45rem' }}>
-          {streakDots.map((active, index) => (
-            <div
-              key={index}
-              title={`${index + 1}일차`}
-              style={{
-                aspectRatio: '1 / 1',
-                borderRadius: '999px',
-                border: active ? '1px solid rgba(95, 174, 53, 0.45)' : '1px solid var(--border)',
-                background: active ? 'linear-gradient(135deg, #dff7a6, #7ad151)' : 'transparent',
-                boxShadow: active ? '0 0 10px rgba(122, 209, 81, 0.28)' : 'none',
-                opacity: active ? 1 : 0.45
-              }}
-            />
-          ))}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-          <span>시작</span>
-          <span>오늘</span>
-        </div>
-      </div>
+      {/* 6-month streak calendar */}
+      {
+        (() => {
+          const historyMap: Record<string, number> = {};
+          if (streakHistory?.history) {
+            for (const h of streakHistory.history) {
+              historyMap[h.date] = parseInt(h.solved);
+            }
+          }
+          const now = new Date();
+          const endM = now.getMonth() - streakOffset * 6;
+          const calendarMonths = [];
+          for (let i = 5; i >= 0; i--) {
+            const m = endM - i;
+            const y = now.getFullYear() + Math.floor(m / 12);
+            calendarMonths.push({ year: y, month: ((m % 12) + 12) % 12 });
+          }
+          const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+          return (
+            <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
+              <h3 style={{ margin: '0 0 0.75rem', color: '#5fae35', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                📅 스트릭 달력 (6개월)
+              </h3>
+              <p style={{ margin: '0 0 1rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                연속 {streak}일째 해결 중
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <button onClick={() => setStreakOffset(o => o + 1)} className="btn" style={{ width: 'auto', padding: '0.4rem 1rem', fontSize: '0.85rem', background: 'var(--card-bg)', border: '1px solid var(--border)', color: 'var(--text-main)' }}>
+                  ◀ 이전
+                </button>
+                <span style={{ fontWeight: 800, fontSize: '1rem' }}>
+                  {calendarMonths[0].year}.{String(calendarMonths[0].month + 1).padStart(2, '0')} - {calendarMonths[5].year}.{String(calendarMonths[5].month + 1).padStart(2, '0')}
+                </span>
+                <button onClick={() => streakOffset > 0 && setStreakOffset(o => o - 1)} disabled={streakOffset <= 0} className="btn" style={{ width: 'auto', padding: '0.4rem 1rem', fontSize: '0.85rem', background: 'var(--card-bg)', border: '1px solid var(--border)', color: streakOffset > 0 ? 'var(--text-main)' : 'var(--text-muted)', opacity: streakOffset > 0 ? 1 : 0.5, cursor: streakOffset > 0 ? 'pointer' : 'not-allowed' }}>
+                  다음 ▶
+                </button>
+              </div>
+              <div className="streak-calendar-grid">
+                {calendarMonths.map(({ year, month }) => {
+                  const firstDay = new Date(year, month, 1).getDay();
+                  const daysInMonth = new Date(year, month + 1, 0).getDate();
+                  const cells: (null | { date: string; day: number; count: number })[] = [];
+                  for (let i = 0; i < firstDay; i++) cells.push(null);
+                  for (let d = 1; d <= daysInMonth; d++) {
+                    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                    cells.push({ date: dateStr, day: d, count: historyMap[dateStr] || 0 });
+                  }
+                  return (
+                    <div key={`${year}-${month}`} style={{ minWidth: '110px' }}>
+                      <div style={{ fontWeight: 800, fontSize: '0.85rem', textAlign: 'center', marginBottom: '0.4rem' }}>
+                        {year}.{String(month + 1).padStart(2, '0')}
+                      </div>
+                      <div className="streak-month-grid">
+                        {dayNames.map(dn => (
+                          <div key={dn} style={{ fontSize: '0.55rem', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{dn}</div>
+                        ))}
+                        {cells.map((cell, i) => (
+                          cell ? (
+                            <div
+                              key={i}
+                              title={`${cell.date} - ${cell.count}문제 해결`}
+                              className={`streak-day ${cell.count > 0 ? 'has-solved' : ''}`}
+                              style={{
+                                background: cell.count > 0
+                                  ? cell.count >= 5 ? '#7ad151'
+                                    : cell.count >= 3 ? '#a8e06a'
+                                    : '#d4ed9a'
+                                  : 'transparent',
+                                color: cell.count > 0 ? 'white' : 'var(--text-muted)',
+                                fontWeight: cell.count > 0 ? 700 : 400
+                              }}
+                            >
+                              {cell.day}
+                            </div>
+                          ) : (
+                            <div key={i} />
+                          )
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()
+      }
 
       {/* ─── 일일 퀘스트 ─── */}
       <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
@@ -2259,6 +2445,16 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
   const [allTags, setAllTags] = useState<string[]>([]);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [generationCount, setGenerationCount] = useState(5);
+  const [problemType, setProblemType] = useState<'normal' | 'custom'>('normal');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loadingProblems, setLoadingProblems] = useState(false);
+  // Custom problem creation (admin only)
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [customTitle, setCustomTitle] = useState('');
+  const [customContent, setCustomContent] = useState('');
+  const [customAnswer, setCustomAnswer] = useState('');
+  const [customRewardRating, setCustomRewardRating] = useState(10000);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -2273,20 +2469,32 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
       });
   }, []);
 
-  useEffect(() => {
+  const fetchProblems = useCallback(() => {
+    setLoadingProblems(true);
     const token = localStorage.getItem('token');
     const headers: any = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    fetch('/api/problems', { headers })
+    fetch(`/api/problems?page=${page}&limit=10&type=${problemType}`, { headers })
       .then(res => res.json())
       .then(data => {
-        if (Array.isArray(data)) {
-          setProblems(data);
-          if (data.length > 0) setSelectedProblemId(data[0].id);
+        if (data.problems) {
+          setProblems(data.problems);
+          setTotalPages(data.pagination?.totalPages || 1);
+          if (data.problems.length > 0) {
+            setSelectedProblemId(prev => data.problems.some((p: Problem) => p.id === prev) ? prev : data.problems[0].id);
+          } else {
+            setSelectedProblemId(null);
+          }
         }
-      });
-  }, []);
+        setLoadingProblems(false);
+      })
+      .catch(() => setLoadingProblems(false));
+  }, [page, problemType]);
+
+  useEffect(() => {
+    fetchProblems();
+  }, [fetchProblems]);
 
   const handleInputChange = (id: number, val: string) => {
     setAnswers(prev => ({ ...prev, [id]: val }));
@@ -2311,10 +2519,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
     .then(data => {
       if (data.isCorrect) {
         alert('정답입니다! 🎉');
-        const remainingProblems = problems.filter(p => p.id !== problemId);
-        setProblems(remainingProblems);
-        if (remainingProblems.length > 0) setSelectedProblemId(remainingProblems[0].id);
-        else setSelectedProblemId(null);
+        fetchProblems();
       } else {
         alert('틀렸습니다. 🧐');
       }
@@ -2349,7 +2554,38 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
       setProblems(data.problems);
       if (data.problems.length > 0) setSelectedProblemId(data.problems[0].id);
       setShowGenerateModal(false);
+      setPage(1);
     });
+  };
+
+  const handleCreateCustom = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || user.username !== 'admin') return;
+    const token = localStorage.getItem('token');
+    const res = await fetch('/api/problems/custom', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        title: customTitle,
+        content: customContent,
+        answer: customAnswer,
+        ratingReward: customRewardRating,
+        tags: []
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert('커스텀 문제가 생성되었습니다.');
+      setShowCustomForm(false);
+      setCustomTitle('');
+      setCustomContent('');
+      setCustomAnswer('');
+      setCustomRewardRating(10000);
+      setPage(1);
+      fetchProblems();
+    } else {
+      alert(data.error);
+    }
   };
 
   const selectedProblem = problems.find(p => p.id === selectedProblemId);
@@ -2358,50 +2594,102 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
     <main className="container problem-layout">
       <Helmet>
         <title>문제 풀기 | Logis - 수학 문제 풀이 플랫폼</title>
-        <meta name="description" content="Logis에서 다양한 수학 문제를 풀고 레이팅을 올리세요. 선형방정식, 연립방정식, 부등식, 함수 등 다양한 문제를 도전하세요." />
+        <meta name="description" content="Logis에서 다양한 수학 문제를 풀고 레이팅을 올리세요." />
         <meta property="og:title" content="문제 풀기 | Logis - 수학 문제 풀이 플랫폼" />
         <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
       </Helmet>
       <nav className="problem-sidebar" aria-label="문제 목록" style={{ width: '300px', flexShrink: 0 }}>
+        {/* 탭: 일반 / 커스텀 */}
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+          <button onClick={() => { setProblemType('normal'); setPage(1); }} className="btn" style={{ width: 'auto', padding: '0.4rem 1rem', fontSize: '0.8rem', background: problemType === 'normal' ? 'var(--color-4)' : 'var(--card-bg)', color: problemType === 'normal' ? 'white' : 'var(--text-main)', border: '1px solid var(--border)' }}>
+            일반 문제
+          </button>
+          <button onClick={() => { setProblemType('custom'); setPage(1); }} className="btn" style={{ width: 'auto', padding: '0.4rem 1rem', fontSize: '0.8rem', background: problemType === 'custom' ? 'var(--color-4)' : 'var(--card-bg)', color: problemType === 'custom' ? 'white' : 'var(--text-main)', border: '1px solid var(--border)' }}>
+            커스텀 문제
+          </button>
+        </div>
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <h3 style={{ color: 'var(--color-4)', margin: 0 }}>문제 목록 ({problems.length})</h3>
-          {(user?.username === 'admin' || user?.can_generate_problems) && (
+          {problemType === 'normal' && (user?.username === 'admin' || user?.can_generate_problems) && (
             <button onClick={handleGenerate} className="btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem', width: 'auto', background: 'var(--color-2)', color: 'white' }}>
               생성하기
             </button>
           )}
+          {problemType === 'custom' && user?.username === 'admin' && (
+            <button onClick={() => setShowCustomForm(!showCustomForm)} className="btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem', width: 'auto', background: 'var(--color-4)', color: 'white' }}>
+              {showCustomForm ? '취소' : '+ 추가'}
+            </button>
+          )}
         </div>
-        
-        <div role="listbox" aria-label="문제 선택" style={{ maxHeight: '60vh', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '1rem', background: 'var(--card-bg)' }}>
-          {problems.map(p => (
-            <div 
-              key={p.id} 
-              onClick={() => setSelectedProblemId(p.id)}
-              style={{ 
-                padding: '1rem', cursor: 'pointer', borderBottom: '1px solid var(--border)',
-                background: selectedProblemId === p.id ? 'var(--color-3)' : 'transparent',
-                color: selectedProblemId === p.id ? 'var(--color-4)' : 'inherit',
-                fontWeight: selectedProblemId === p.id ? 800 : 400
-              }}
-            >
-              {p.title}
+
+        {/* 커스텀 문제 생성 폼 (admin only) */}
+        {showCustomForm && user?.username === 'admin' && (
+          <form onSubmit={handleCreateCustom} className="problem-card" style={{ padding: '1rem', marginBottom: '1rem' }}>
+            <h4 style={{ margin: '0 0 0.8rem', color: 'var(--color-4)' }}>새 커스텀 문제</h4>
+            <input type="text" placeholder="제목" value={customTitle} onChange={e => setCustomTitle(e.target.value)} required style={{ width: '100%', padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '0.5rem', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+            <textarea placeholder="문제 내용 (LaTeX)" value={customContent} onChange={e => setCustomContent(e.target.value)} required rows={4} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '0.5rem', boxSizing: 'border-box', fontSize: '0.85rem', resize: 'vertical' }} />
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <input type="text" placeholder="정답" value={customAnswer} onChange={e => setCustomAnswer(e.target.value)} required style={{ flex: 1, padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box', fontSize: '0.85rem' }} />
+              <input type="number" placeholder="획득 레이팅" value={customRewardRating} onChange={e => setCustomRewardRating(parseInt(e.target.value) || 0)} style={{ width: '120px', padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box', fontSize: '0.85rem' }} />
             </div>
-          ))}
-          {problems.length === 0 && (
+            <button type="submit" className="btn" style={{ padding: '0.5rem', fontSize: '0.85rem', background: 'var(--color-4)', color: 'white' }}>생성하기</button>
+          </form>
+        )}
+        
+        <div role="listbox" aria-label="문제 선택" style={{ maxHeight: '50vh', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '1rem', background: 'var(--card-bg)' }}>
+          {loadingProblems ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>로딩 중...</div>
+          ) : (
+            problems.map(p => (
+              <div 
+                key={p.id} 
+                onClick={() => setSelectedProblemId(p.id)}
+                style={{ 
+                  padding: '0.8rem 1rem', cursor: 'pointer', borderBottom: '1px solid var(--border)',
+                  background: selectedProblemId === p.id ? 'var(--color-3)' : 'transparent',
+                  color: selectedProblemId === p.id ? 'var(--color-4)' : 'inherit',
+                  fontWeight: selectedProblemId === p.id ? 800 : 400
+                }}
+              >
+                <div style={{ fontSize: '0.9rem' }}>{p.title}</div>
+                {!!p.custom_reward_rating && p.custom_reward_rating > 0 && (
+                  <div style={{ fontSize: '0.7rem', color: '#e6a800', marginTop: '0.2rem' }}>
+                    +{(p.custom_reward_rating as number).toLocaleString()} RP
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+          {!loadingProblems && problems.length === 0 && (
             <div style={{ padding: '2rem', textAlign: 'center' }}>
-              <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>모든 문제를 풀었습니다!</p>
+              <p style={{ color: 'var(--text-muted)', margin: 0 }}>표시할 문제가 없습니다.</p>
             </div>
           )}
         </div>
+
+        {/* 페이지네이션 */}
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', marginTop: '1rem' }}>
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="btn" style={{ width: 'auto', padding: '0.3rem 0.7rem', fontSize: '0.8rem', background: 'var(--card-bg)', border: '1px solid var(--border)', color: page > 1 ? 'var(--text-main)' : 'var(--text-muted)', opacity: page > 1 ? 1 : 0.5 }}>◀</button>
+            <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>{page} / {totalPages}</span>
+            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="btn" style={{ width: 'auto', padding: '0.3rem 0.7rem', fontSize: '0.8rem', background: 'var(--card-bg)', border: '1px solid var(--border)', color: page < totalPages ? 'var(--text-main)' : 'var(--text-muted)', opacity: page < totalPages ? 1 : 0.5 }}>▶</button>
+          </div>
+        )}
       </nav>
 
       <section aria-label="선택된 문제" style={{ flexGrow: 1 }}>
         {selectedProblem ? (
           <div className="problem-card" style={{ margin: 0 }}>
             <h3 style={{ marginBottom: '1.5rem', color: 'var(--color-4)' }}>{selectedProblem.title}</h3>
+            {!!selectedProblem.custom_reward_rating && selectedProblem.custom_reward_rating > 0 && (
+              <div style={{ marginBottom: '1rem', fontSize: '0.9rem', fontWeight: 700, color: '#e6a800' }}>
+                🏆 획득 레이팅: +{(selectedProblem.custom_reward_rating as number).toLocaleString()} RP
+              </div>
+            )}
             <div className="math-content" style={{ fontSize: '1.8rem' }}>{renderMath(selectedProblem.content)}</div>
             <div style={{ marginTop: '2rem' }}>
-              <input type="text" placeholder="정답" className="answer-input" value={answers[selectedProblem.id] || ''} onChange={(e) => handleInputChange(selectedProblem.id, e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSubmit(selectedProblem.id)} />
+              <input type="text" placeholder="정답" className="answer-input" value={answers[selectedProblem.id] || ''} onChange={(e) => handleInputChange(selectedProblem.id, e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSubmit(selectedProblem.id)} />
               <button onClick={() => handleSubmit(selectedProblem.id)} className="btn btn-solve">제출</button>
             </div>
           </div>
@@ -2420,7 +2708,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
             background: 'var(--card-bg)'
           }}>
             <h3 style={{ marginBottom: '1.5rem', color: 'var(--color-4)' }}>문제 생성</h3>
-            <p style={{ marginBottom: '1rem', opacity: 0.8, fontSize: '0.9rem' }}>생성할 문제 유형을 선택하세요. (선택하지 않으면 전체 유형)</p>
+            <p style={{ marginBottom: '1rem', opacity: 0.8, fontSize: '0.9rem' }}>생성할 문제 유형을 선택하세요.</p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', marginBottom: '1.5rem' }}>
               {allTags.map(tag => (
                 <label key={tag} style={{
@@ -2468,6 +2756,88 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </main>
+  );
+};
+
+const Shop: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ user, setUser }) => {
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!user) { navigate('/login'); return; }
+    const token = localStorage.getItem('token');
+    fetch('/api/store/items', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.items) setItems(data.items);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [user, navigate]);
+
+  const handleBuy = async (itemId: string) => {
+    if (!window.confirm('정말 구매하시겠습니까?')) return;
+    const token = localStorage.getItem('token');
+    const res = await fetch('/api/store/buy-streak-repair', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setMessage('✅ 구매 완료! 스트릭이 복구되었습니다.');
+      const updatedUser = { ...user!, tokens: (user!.tokens || 0) - 15, streak: 0, streak_repaired: true };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+    } else {
+      setMessage(`❌ ${data.error}`);
+    }
+  };
+
+  return (
+    <main className="container" style={{ padding: '4rem 0', maxWidth: '800px', margin: '0 auto' }}>
+      <Helmet>
+        <title>상점 | Logis - 수학 문제 풀이 플랫폼</title>
+        <meta name="robots" content="noindex, nofollow" />
+        <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
+      </Helmet>
+      <h2 style={{ color: 'var(--color-4)', fontSize: '2.5rem', marginBottom: '0.5rem', textAlign: 'center' }}>🪙 토큰 상점</h2>
+      <p style={{ textAlign: 'center', opacity: 0.7, marginBottom: '2.5rem' }}>보유 토큰: <b style={{ color: '#e6a800', fontSize: '1.2rem' }}>{user?.tokens || 0} 토큰</b></p>
+
+      {message && (
+        <div style={{ padding: '1rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '0.5rem', marginBottom: '1.5rem', textAlign: 'center', fontWeight: 700 }}>
+          {message}
+        </div>
+      )}
+
+      {loading ? <p style={{ textAlign: 'center' }}>로딩 중...</p> : (
+        <div style={{ display: 'grid', gap: '1.5rem' }}>
+          {items.map(item => (
+            <div key={item.id} className="problem-card" style={{ margin: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+              <div>
+                <h3 style={{ margin: '0 0 0.3rem', color: 'var(--color-4)' }}>{item.name}</h3>
+                <p style={{ margin: 0, opacity: 0.7, fontSize: '0.9rem' }}>{item.description}</p>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontWeight: 800, fontSize: '1.1rem', marginBottom: '0.5rem', color: '#e6a800' }}>🪙 {item.cost} 토큰</div>
+                <button
+                  onClick={() => handleBuy(item.id)}
+                  disabled={(user?.tokens || 0) < item.cost}
+                  className="btn"
+                  style={{ width: 'auto', padding: '0.6rem 1.5rem', background: (user?.tokens || 0) >= item.cost ? 'var(--color-4)' : 'var(--border)', color: (user?.tokens || 0) >= item.cost ? 'white' : 'var(--text-muted)', cursor: (user?.tokens || 0) >= item.cost ? 'pointer' : 'not-allowed', opacity: (user?.tokens || 0) >= item.cost ? 1 : 0.6 }}
+                >
+                  구매하기
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </main>
@@ -2589,19 +2959,23 @@ const AppContent: React.FC = () => {
     localStorage.setItem('theme', newTheme);
     localStorage.setItem('theme-toggle-count', String(nextCount >= 20 ? 0 : nextCount));
 
-    if (nextCount >= 20) {
+    // 다크모드 활성화 시 즉시 '어둠의 Logis' 칭호 체크
+    if (newTheme === 'dark') {
       const token = localStorage.getItem('token');
       if (token) {
         fetch('/api/titles/check', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ action: 'dark_mode', value: 20 })
+          body: JSON.stringify({ action: 'dark_mode', value: 1 })
         }).then(r => r.json()).then(data => {
           if (data.newlyUnlocked && data.newlyUnlocked.length > 0) {
-            alert(`🎉 새 칭호 획득: ${data.newlyUnlocked.map((t: any) => t.name).join(', ')}`);
+            setTimeout(() => alert(`🎉 새 칭호 획득: ${data.newlyUnlocked.map((t: any) => t.name).join(', ')}`), 500);
           }
         }).catch(() => {});
       }
+    }
+
+    if (nextCount >= 20) {
       navigate('/goose-room');
     }
   };
@@ -2643,6 +3017,7 @@ const AppContent: React.FC = () => {
           <Route path="/login" element={<Login onLogin={handleLogin} />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
+          <Route path="/shop" element={<Shop user={user} setUser={setUser} />} />
           <Route path="/admin" element={<Admin user={user} />} />
           <Route path="/goose-room" element={<GooseRoom />} />
         </Routes>

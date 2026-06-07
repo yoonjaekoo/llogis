@@ -735,3 +735,60 @@ nav a:hover {
   }
 }
 
+/* Streak Calendar */
+.streak-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.streak-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.streak-day {
+  aspect-ratio: 1;
+  border-radius: 3px;
+  font-size: 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.streak-day:hover {
+  transform: scale(1.3);
+  z-index: 2;
+}
+
+.streak-day.has-solved {
+  border-color: rgba(95, 174, 53, 0.45);
+}
+
+@media (max-width: 900px) {
+  .streak-calendar-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 500px) {
+  .streak-calendar-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Shop */
+.shop-item-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
