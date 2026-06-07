@@ -476,22 +476,6 @@ app.get('/api/users/:id/profile', async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch profile' });
     }
 });
-// Problem list with pagination (general problems)
-app.get('/api/problems', async (req, res) => {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const offset = (page - 1) * limit;
-    try {
-        const result = await pool.query('SELECT id, title, content, current_difficulty, tags FROM problems WHERE is_custom = FALSE ORDER BY id LIMIT $1 OFFSET $2', [limit, offset]);
-        const countRes = await pool.query('SELECT COUNT(*) FROM problems WHERE is_custom = FALSE');
-        const total = parseInt(countRes.rows[0].count);
-        res.json({ problems: result.rows, pagination: { page, limit, total } });
-    }
-    catch (err) {
-        console.error('Failed to fetch problems:', err);
-        res.status(500).json({ error: 'Failed to fetch problems' });
-    }
-});
 // Custom problem list (admin only view)
 app.get('/api/problems/custom', authenticateToken, async (req, res) => {
     const page = parseInt(req.query.page) || 1;

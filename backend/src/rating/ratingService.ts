@@ -45,7 +45,20 @@ export const processSubmission = async (userId: number, problemId: number, isCor
     // 2. 스트릭 만료 검사 및 자동 스트릭 복구 시도
     const repairResult = await checkAndRepairStreak(userId, client);
 
-    // 3. 기존 레이팅 계산 로직 실행
+    // 3. 문제 정보 조회 (커스텀 보상 레이팅 확인)
+    const problemRes = await client.query(
+      'SELECT is_custom, custom_reward_rating FROM problems WHERE id = $1',
+      [problemId]
+    );
+    if (problemRes.rows.length === 0) {
+      throw new Error('Problem not found');
+    }
+    const problem = problemRes.rows[0];
+    const rewardRating = problem.is_custom && problem.custom_reward_rating > 0
+      ? parseFloat(problem.custom_reward_rating)
+      : 10000;
+
+    // 4. 기존 레이팅 계산 로직 실행
     const userRes = await client.query(
       'SELECT rating FROM users WHERE id = $1 FOR UPDATE',
       [userId]
@@ -56,14 +69,14 @@ export const processSubmission = async (userId: number, problemId: number, isCor
     }
 
     const currentRating = parseFloat(userRes.rows[0].rating);
-    const finalRating = isCorrect ? Math.min(MAX_RATING, currentRating + 10000) : currentRating;
+    const finalRating = isCorrect ? Math.min(MAX_RATING, currentRating + rewardRating) : currentRating;
 
     await client.query(
       'UPDATE users SET rating = $1 WHERE id = $2',
       [finalRating, userId]
     );
 
-    // 4. 스트릭 및 토큰 지급 로직 실행
+    // 5. 스트릭 및 토큰 지급 로직 실행
     let streakResult = { newStreak: 0, bonusTokens: 0 };
     let finalTokens = 0;
 
@@ -80,13 +93,13 @@ export const processSubmission = async (userId: number, problemId: number, isCor
       await updateQuests(userId, client, 'attempt');
     }
 
-    // 5. 제출 기록 저장
+    // 6. 제출 기록 저장
     await client.query(
       'INSERT INTO submissions (user_id, problem_id, is_correct) VALUES ($1, $2, $3)',
       [userId, problemId, isCorrect]
     );
 
-    // 6. 업데이트 완료된 최신 유저 정보 조회
+    // 7. 업데이트 완료된 최신 유저 정보 조회
     const finalUserRes = await client.query(
       'SELECT streak, tokens, xp, quests, last_active_date, streak_repaired FROM users WHERE id = $1',
       [userId]
