@@ -1936,6 +1936,14 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
   const [streakHistory, setStreakHistory] = useState<any>(null);
   const [streakOffset, setStreakOffset] = useState(0);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    fetch(`/api/users/${user.id}/streak-history?offset=${streakOffset}`)
+      .then(res => res.json())
+      .then(data => setStreakHistory(data))
+      .catch(() => {});
+  }, [user?.id, streakOffset]);
+
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -2089,14 +2097,6 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
   if (!profileData) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>로딩 중...</div>;
 
   const { user: u, stats } = profileData;
-
-  useEffect(() => {
-    if (!u?.id) return;
-    fetch(`/api/users/${u.id}/streak-history?offset=${streakOffset}`)
-      .then(res => res.json())
-      .then(data => setStreakHistory(data))
-      .catch(() => {});
-  }, [u?.id, streakOffset]);
 
   const tierColors: { [key: string]: string } = {
     'Bronze': '#cd7f32', 'Silver': '#a8b8c8', 'Gold': '#ffd700',
