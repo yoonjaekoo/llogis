@@ -13,27 +13,35 @@ const pool = new pg_1.Pool({
 });
 const engine = new glicko2_1.Glicko2Engine();
 const getTier = (rating) => {
-    // 레이팅 100배 인플레이션에 맞춰 티어 구간 조정
     if (rating < 100000)
-        return 'Bronze'; // 시작 ~ 10만
+        return 'Bronze';
     if (rating < 300000)
-        return 'Silver'; // +20만 (약 20문제)
+        return 'Silver';
     if (rating < 800000)
-        return 'Gold'; // +50만 (약 50문제)
+        return 'Gold';
     if (rating < 2000000)
-        return 'Platinum'; // +120만 (약 120문제+)
+        return 'Platinum';
     if (rating < 5000000)
-        return 'Diamond'; // +300만
+        return 'Diamond';
     if (rating < 12000000)
-        return 'Ruby'; // +700만
+        return 'Ruby';
     if (rating < 30000000)
-        return 'Master'; // +1800만
+        return 'Master';
     if (rating < 70000000)
-        return 'God'; // +4000만
-    return 'Hacker';
+        return 'God';
+    if (rating < 150000000)
+        return 'Hacker';
+    if (rating < 300000000)
+        return '치피치피차파차파';
+    if (rating < 600000000)
+        return 'ChatGPT';
+    if (rating < 1200000000)
+        return '출제자';
+    if (rating < 2500000000)
+        return '주인장';
+    return '정답';
 };
 exports.getTier = getTier;
-const MAX_RATING = 100000000; // 오버플로우 방지를 위한 최대 레이팅 캡 (1억)
 const processSubmission = async (userId, problemId, isCorrect) => {
     const client = await pool.connect();
     try {
@@ -57,7 +65,7 @@ const processSubmission = async (userId, problemId, isCorrect) => {
             throw new Error('User not found');
         }
         const currentRating = parseFloat(userRes.rows[0].rating);
-        const finalRating = isCorrect ? Math.min(MAX_RATING, currentRating + rewardRating) : currentRating;
+        const finalRating = isCorrect ? currentRating + rewardRating : currentRating;
         await client.query('UPDATE users SET rating = $1 WHERE id = $2', [finalRating, userId]);
         // 5. 스트릭 및 토큰 지급 로직 실행
         let streakResult = { newStreak: 0, bonusTokens: 0 };

@@ -130,7 +130,12 @@ const About: React.FC<{ user: User | null }> = ({ user }) => {
     { name: 'Ruby', threshold: '5,000,000' },
     { name: 'Master', threshold: '12,000,000' },
     { name: 'God', threshold: '30,000,000' },
-    { name: 'Hacker', threshold: '70,000,000' }
+    { name: 'Hacker', threshold: '70,000,000' },
+    { name: '치피치피차파차파', threshold: '150,000,000' },
+    { name: 'ChatGPT', threshold: '300,000,000' },
+    { name: '출제자', threshold: '600,000,000' },
+    { name: '주인장', threshold: '1,200,000,000' },
+    { name: '정답', threshold: '2,500,000,000' }
   ];
 
   return (
@@ -199,9 +204,11 @@ const About: React.FC<{ user: User | null }> = ({ user }) => {
 const Landing: React.FC<{ user: User | null }> = ({ user }) => {
   const navigate = useNavigate();
   const tierColors: { [key: string]: string } = {
-    'Bronze': '#cd7f32', 'Silver': '#a8b8c8', 'Gold': '#ffd700',
-    'Platinum': '#8eb4cf', 'Diamond': '#5bcefa', 'Ruby': '#e0115f',
-    'Master': '#9b59b6', 'God': '#ff6b35', 'Hacker': '#00e676'
+    'Bronze': '#cd7f32', 'Silver': '#c0c0c0', 'Gold': '#ffd700',
+    'Platinum': '#e5e4e2', 'Diamond': '#b9f2ff', 'Ruby': '#e0115f',
+    'Master': '#800080', 'God': '#ff4500', 'Hacker': '#00ff00',
+    '치피치피차파차파': '#ff1493', 'ChatGPT': '#10a37f',
+    '출제자': '#ffb300', '주인장': '#6a0dad', '정답': '#00e5ff'
   };
   const tier = user ? (user as any).tier || 'Bronze' : null;
 
@@ -303,7 +310,7 @@ const Landing: React.FC<{ user: User | null }> = ({ user }) => {
             { icon: '🔥', title: '연속 스트릭', desc: '매일 1문제 이상 풀면 스트릭이 쌓입니다. 토큰으로 긴급 수리도 가능해요!' },
             { icon: '🪙', title: '토큰 경제', desc: '정답을 맞힐 때마다 토큰을 획득하세요. 스트릭 수리, 혜택 등에 활용할 수 있습니다.' },
             { icon: '📅', title: '일일 퀘스트', desc: '매일 새로운 퀘스트가 갱신됩니다. 완료하면 XP와 토큰을 대량으로 획득할 수 있어요.' },
-            { icon: '🏆', title: '티어 시스템', desc: 'Bronze부터 Hacker까지 — 레이팅이 오를수록 더 높은 티어를 달성하세요.' },
+            { icon: '🏆', title: '티어 시스템', desc: 'Bronze부터 정답까지 14개 티어 — 레이팅이 오를수록 더 높은 티어를 달성하세요.' },
             { icon: '🤖', title: 'AI 문제 생성', desc: 'NVIDIA NIM 기반 AI가 원하는 단원의 문제를 즉시 만들어 드립니다.' },
           ].map(f => (
             <div key={f.title} className="feature-card">
@@ -1057,7 +1064,12 @@ const Ranking: React.FC = () => {
     'Ruby': '#e0115f',
     'Master': '#800080',
     'God': '#ff4500',
-    'Hacker': '#00ff00'
+    'Hacker': '#00ff00',
+    '치피치피차파차파': '#ff1493',
+    'ChatGPT': '#10a37f',
+    '출제자': '#ffb300',
+    '주인장': '#6a0dad',
+    '정답': '#00e5ff'
   };
 
   if (loading) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>로딩 중...</div>;
@@ -1066,7 +1078,7 @@ const Ranking: React.FC = () => {
     <main className="container" style={{ padding: '4rem 0' }}>
       <Helmet>
         <title>랭킹 | Logis - 수학 문제 풀이 플랫폼</title>
-        <meta name="description" content="Logis 사용자 랭킹을 확인하고 검색하세요. Bronze부터 Hacker까지 다양한 티어의 유저들을 만나보세요." />
+        <meta name="description" content="Logis 사용자 랭킹을 확인하고 검색하세요. Bronze부터 정답까지 다양한 티어의 유저들을 만나보세요." />
         <meta property="og:title" content="랭킹 | Logis - 수학 문제 풀이 플랫폼" />
         <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
       </Helmet>
@@ -1207,7 +1219,12 @@ const UserProfile: React.FC = () => {
     'Ruby': '#e0115f',
     'Master': '#800080',
     'God': '#ff4500',
-    'Hacker': '#00ff00'
+    'Hacker': '#00ff00',
+    '치피치피차파차파': '#ff1493',
+    'ChatGPT': '#10a37f',
+    '출제자': '#ffb300',
+    '주인장': '#6a0dad',
+    '정답': '#00e5ff'
   };
 
   return (
@@ -2100,9 +2117,11 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
   const { user: u, stats } = profileData;
 
   const tierColors: { [key: string]: string } = {
-    'Bronze': '#cd7f32', 'Silver': '#a8b8c8', 'Gold': '#ffd700',
-    'Platinum': '#8eb4cf', 'Diamond': '#5bcefa', 'Ruby': '#e0115f',
-    'Master': '#9b59b6', 'God': '#ff6b35', 'Hacker': '#00e676'
+    'Bronze': '#cd7f32', 'Silver': '#c0c0c0', 'Gold': '#ffd700',
+    'Platinum': '#e5e4e2', 'Diamond': '#b9f2ff', 'Ruby': '#e0115f',
+    'Master': '#800080', 'God': '#ff4500', 'Hacker': '#00ff00',
+    '치피치피차파차파': '#ff1493', 'ChatGPT': '#10a37f',
+    '출제자': '#ffb300', '주인장': '#6a0dad', '정답': '#00e5ff'
   };
   const streak = u.streak || 0;
 

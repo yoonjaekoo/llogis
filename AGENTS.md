@@ -36,7 +36,7 @@ Korean math problem-solving platform with Glicko-2 rating system. Three-part sta
 - **LaTeX**: rendered with `react-katex`. Content uses `$$...$$` for display math, `$...$` for inline math.
 - **Answer comparison**: submitted answers are whitespace-stripped and lowercased before string comparison
 - **Problem generation**: `backend/src/problemGenerator.ts` uses templates with random variables, ensures integer answers for equations
-- **Tier thresholds**: Bronze (<100k), Silver (<300k), Gold (<800k), Platinum (<2M), Diamond (<5M), Ruby (<12M), Master (<30M), God (<70M), Hacker (≥70M)
+- **Tier thresholds**: Bronze (<100k), Silver (<300k), Gold (<800k), Platinum (<2M), Diamond (<5M), Ruby (<12M), Master (<30M), God (<70M), Hacker (<150M), 치피치피차파차파 (<300M), ChatGPT (<600M), 출제자 (<1.2B), 주인장 (<2.5B), 정답 (≥2.5B)
 
 ## Dev server notes
 - Frontend Vite proxy routes `/api` and `/uploads` to `http://localhost:5000`
