@@ -2620,7 +2620,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
     .then(res => res.json())
     .then(data => {
       if (data.isCorrect) {
-        if (user?.has_firework_effect) setShowFirework(true);
+        setShowFirework(true);
         fetchProblems();
       } else {
         setWrongGlowTrigger(prev => prev + 1);
