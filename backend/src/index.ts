@@ -91,6 +91,7 @@ const ensureSchema = async () => {
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS can_generate_problems BOOLEAN DEFAULT FALSE');
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS quests JSONB DEFAULT '[]'");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS equipped_title VARCHAR(50) DEFAULT ''");
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_firework_effect BOOLEAN DEFAULT FALSE");
   await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS is_custom BOOLEAN DEFAULT FALSE');
   await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS custom_reward_rating FLOAT DEFAULT 0.0');
   await pool.query("UPDATE users SET can_generate_problems = TRUE WHERE username = 'admin'");
@@ -264,7 +265,8 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         can_generate_problems: updatedUser.can_generate_problems,
         equipped_title: equippedTitleName || updatedUser.equipped_title,
         streakRepaired: repairResult.repaired,
-        streakRepairedFlag: updatedUser.streak_repaired
+        streakRepairedFlag: updatedUser.streak_repaired,
+        has_firework_effect: updatedUser.has_firework_effect
       } 
     });
   } catch (err) {
@@ -288,7 +290,7 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
     await client.query('COMMIT');
 
     const userResult = await client.query(
-      'SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, equipped_title, created_at FROM users WHERE id = $1',
+      'SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, equipped_title, created_at, has_firework_effect FROM users WHERE id = $1',
       [userId]
     );
 
@@ -456,13 +458,20 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
 // --- Store API Endpoints ---
 // List available store items
 app.get('/api/store/items', authenticateToken, async (req: any, res: Response) => {
-  // Currently only one item: streak repair (cost 15 tokens)
-  const items = [{
-    id: 'streak_repair',
-    name: '스트릭 리페어',
-    cost: 15,
-    description: '스트릭을 복구하고 연속 일수를 초기화합니다.'
-  }];
+  const items = [
+    {
+      id: 'streak_repair',
+      name: '스트릭 리페어',
+      cost: 30,
+      description: '스트릭을 복구하고 연속 일수를 초기화합니다.'
+    },
+    {
+      id: 'firework_effect',
+      name: '폭죽 이펙트',
+      cost: 100,
+      description: '정답 시 화면 중앙에서 폭죽 파티클 이펙트가 재생됩니다.'
+    }
+  ];
   res.json({ items });
 });
 
@@ -478,17 +487,51 @@ app.post('/api/store/buy-streak-repair', authenticateToken, async (req: any, res
       return res.status(404).json({ error: 'User not found' });
     }
     const user = userRes.rows[0];
-    if (user.tokens < 15) {
+    if (user.tokens < 30) {
       client.release();
-      return res.status(400).json({ error: '토큰이 부족합니다. (필요: 15 토큰)' });
+      return res.status(400).json({ error: '토큰이 부족합니다. (필요: 30 토큰)' });
     }
     // Deduct tokens and set streak_repaired flag
     await client.query(
-      'UPDATE users SET tokens = tokens - 15, streak_repaired = TRUE, streak = 0 WHERE id = $1',
+      'UPDATE users SET tokens = tokens - 30, streak_repaired = TRUE, streak = 0 WHERE id = $1',
       [userId]
     );
     await client.query('COMMIT');
     res.json({ message: '스트릭 복구 아이템을 구매했습니다.' });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    res.status(500).json({ error: '상점 구매 중 오류가 발생했습니다.' });
+  } finally {
+    client.release();
+  }
+});
+
+// Purchase firework effect item
+app.post('/api/store/buy-firework-effect', authenticateToken, async (req: any, res: Response) => {
+  const userId = req.user.id;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const userRes = await client.query('SELECT tokens, has_firework_effect FROM users WHERE id = $1 FOR UPDATE', [userId]);
+    if (userRes.rows.length === 0) {
+      client.release();
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const user = userRes.rows[0];
+    if (user.has_firework_effect) {
+      client.release();
+      return res.status(400).json({ error: '이미 보유 중인 아이템입니다.' });
+    }
+    if (user.tokens < 100) {
+      client.release();
+      return res.status(400).json({ error: '토큰이 부족합니다. (필요: 100 토큰)' });
+    }
+    await client.query(
+      'UPDATE users SET tokens = tokens - 100, has_firework_effect = TRUE WHERE id = $1',
+      [userId]
+    );
+    await client.query('COMMIT');
+    res.json({ message: '폭죽 이펙트를 구매했습니다.' });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     res.status(500).json({ error: '상점 구매 중 오류가 발생했습니다.' });
@@ -502,7 +545,7 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const userResult = await pool.query(
-      'SELECT id, username, rating, profile_image_url, bio, streak, tokens, xp, equipped_title FROM users WHERE id = $1',
+      'SELECT id, username, rating, profile_image_url, bio, streak, tokens, xp, equipped_title, has_firework_effect FROM users WHERE id = $1',
       [id]
     );
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });

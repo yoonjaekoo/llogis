@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import './styles/globals.css';
@@ -32,6 +32,7 @@ interface User {
   can_generate_problems?: boolean;
   equipped_title?: string;
   created_at?: string;
+  has_firework_effect?: boolean;
 }
 
 // LaTeX Helper
@@ -2437,6 +2438,105 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
   );
 };
 
+const FireworkEffect: React.FC<{ active: boolean; onComplete: () => void }> = ({ active, onComplete }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
+  useEffect(() => {
+    if (!active) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const colors = ['#ff4444', '#44ff44', '#4444ff', '#ffff44', '#ff44ff', '#44ffff', '#ff8800', '#ff0088', '#ffffff'];
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const particles: { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number }[] = [];
+
+    for (let i = 0; i < 80; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 3 + Math.random() * 7;
+      particles.push({
+        x: centerX,
+        y: centerY,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        size: 3 + Math.random() * 4
+      });
+    }
+
+    let animationId: number;
+    const startTime = Date.now();
+    const duration = 1000;
+
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = elapsed / duration;
+      if (progress >= 1) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        onCompleteRef.current();
+        return;
+      }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (const p of particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.15;
+        p.life = 1 - progress;
+        ctx.globalAlpha = Math.max(0, p.life);
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * (0.3 + 0.7 * p.life), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      animationId = requestAnimationFrame(animate);
+    };
+    animate();
+    return () => cancelAnimationFrame(animationId);
+  }, [active]);
+
+  if (!active) return null;
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{
+        position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+        pointerEvents: 'none', zIndex: 9999
+      }}
+    />
+  );
+};
+
+const WrongAnswerGlow: React.FC<{ trigger: number }> = ({ trigger }) => {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (trigger === 0) return;
+    setVisible(true);
+    const timer = setTimeout(() => setVisible(false), 1500);
+    return () => clearTimeout(timer);
+  }, [trigger]);
+
+  if (!visible) return null;
+  return (
+    <div
+      className="wrong-answer-glow"
+      style={{
+        position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+        pointerEvents: 'none', zIndex: 9998
+      }}
+    />
+  );
+};
+
 const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ user, setUser }) => {
   const [problems, setProblems] = useState<Problem[]>([]);
   const [selectedProblemId, setSelectedProblemId] = useState<number | null>(null);
@@ -2449,6 +2549,8 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loadingProblems, setLoadingProblems] = useState(false);
+  const [showFirework, setShowFirework] = useState(false);
+  const [wrongGlowTrigger, setWrongGlowTrigger] = useState(0);
   // Custom problem creation (admin only)
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [customTitle, setCustomTitle] = useState('');
@@ -2518,10 +2620,10 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
     .then(res => res.json())
     .then(data => {
       if (data.isCorrect) {
-        alert('정답입니다! 🎉');
+        if (user?.has_firework_effect) setShowFirework(true);
         fetchProblems();
       } else {
-        alert('틀렸습니다. 🧐');
+        setWrongGlowTrigger(prev => prev + 1);
       }
       
       const updatedUser = { 
@@ -2592,6 +2694,8 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
 
   return (
     <main className="container problem-layout">
+      <FireworkEffect active={showFirework} onComplete={() => setShowFirework(false)} />
+      <WrongAnswerGlow trigger={wrongGlowTrigger} />
       <Helmet>
         <title>문제 풀기 | Logis - 수학 문제 풀이 플랫폼</title>
         <meta name="description" content="Logis에서 다양한 수학 문제를 풀고 레이팅을 올리세요." />
@@ -2786,14 +2890,30 @@ const Shop: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ use
   const handleBuy = async (itemId: string) => {
     if (!window.confirm('정말 구매하시겠습니까?')) return;
     const token = localStorage.getItem('token');
-    const res = await fetch('/api/store/buy-streak-repair', {
+    let url = '';
+    let cost = 0;
+    if (itemId === 'streak_repair') {
+      url = '/api/store/buy-streak-repair';
+      cost = 30;
+    } else if (itemId === 'firework_effect') {
+      url = '/api/store/buy-firework-effect';
+      cost = 100;
+    }
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` }
     });
     const data = await res.json();
     if (res.ok) {
-      setMessage('✅ 구매 완료! 스트릭이 복구되었습니다.');
-      const updatedUser = { ...user!, tokens: (user!.tokens || 0) - 15, streak: 0, streak_repaired: true };
+      const msg = itemId === 'streak_repair' ? '스트릭이 복구되었습니다.' : '폭죽 이펙트가 활성화되었습니다.';
+      setMessage(`✅ 구매 완료! ${msg}`);
+      const updatedUser = { ...user!, tokens: (user!.tokens || 0) - cost };
+      if (itemId === 'streak_repair') {
+        updatedUser.streak = 0;
+        updatedUser.streak_repaired = true;
+      } else if (itemId === 'firework_effect') {
+        updatedUser.has_firework_effect = true;
+      }
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setUser(updatedUser);
     } else {
