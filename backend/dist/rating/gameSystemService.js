@@ -61,7 +61,8 @@ exports.generateDailyQuests = generateDailyQuests;
 /**
  * 1. 스트릭 복구 메커니즘
  * 로그인 시 혹은 문제 풀이 시도 시 호출됩니다.
- * 하루를 건너뛰어 스트릭이 끊겼는지(어제 활동이 없음) 확인하고 복구를 수행합니다.
+ * 하루를 건너뛰어 스트릭이 끊겼는지 확인하고, streak_repaired 보호막을 소비하여 복구합니다.
+ * 복구 시 submissions 테이블에 is_streak_repair = true 행을 추가합니다.
  */
 const checkAndRepairStreak = async (userId, client) => {
     const today = (0, exports.getTodayString)();
@@ -74,33 +75,31 @@ const checkAndRepairStreak = async (userId, client) => {
     let tokens = user.tokens || 0;
     const lastActive = user.last_active_date;
     let repaired = false;
+    let consumedRepair = false;
     if (!lastActive) {
-        // 최초 유저인 경우 아무 조치 없음
-        return { repaired: false, newStreak: streak, newTokens: tokens };
+        return { repaired: false, newStreak: streak, newTokens: tokens, consumedRepair: false };
     }
     const diff = (0, exports.getDaysDifference)(lastActive, today);
-    // 날짜 차이가 2일인 경우 (어제 안 풀고 그저께 풀었음 -> 스트릭 브레이크 위기)
-    if (diff === 2) {
-        if (tokens >= 15 && !user.streak_repaired) {
-            // 자동 스트릭 복구
-            tokens -= 15;
+    if (diff >= 2) {
+        if (user.streak_repaired) {
+            // 보호막 소비: 스트릭 유지, 어제 날짜로 last_active_date 설정
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const kstOffset = 9 * 60 * 60 * 1000;
+            const yesterdayKst = new Date(yesterday.getTime() + kstOffset);
+            const yesterdayStr = yesterdayKst.toISOString().split('T')[0];
+            await client.query('INSERT INTO submissions (user_id, problem_id, is_correct, is_streak_repair, user_answer) VALUES ($1, NULL, TRUE, TRUE, $2)', [userId, '스트릭 리페어 사용']);
+            await client.query('UPDATE users SET streak_repaired = FALSE, last_active_date = $1 WHERE id = $2', [yesterdayStr, userId]);
             repaired = true;
-            // 스트릭은 기존 스트릭 유지 (오늘 풀면 +1이 됨)
-            await client.query('UPDATE users SET tokens = $1, streak_repaired = TRUE, last_active_date = $2 WHERE id = $3', [tokens, lastActive, userId] // last_active_date를 어제나 그저께 상태로 둠으로써 오늘 풀면 정상 누적되게 처리
-            );
+            consumedRepair = true;
         }
-        else if (diff > 1) {
-            // 복구 불가 혹은 토큰 부족 -> 스트릭 초기화 (0으로 리셋, 오늘 풀면 1이 됨)
+        else {
+            // 보호막 없음 → 스트릭 초기화
             streak = 0;
-            await client.query('UPDATE users SET streak = $1, streak_repaired = FALSE WHERE id = $2', [streak, userId]);
+            await client.query('UPDATE users SET streak = $1, last_active_date = $2 WHERE id = $3', [streak, today, userId]);
         }
     }
-    else if (diff > 2) {
-        // 2일 초과 공백은 복구 불가능하므로 스트릭 리셋
-        streak = 0;
-        await client.query('UPDATE users SET streak = $1, streak_repaired = FALSE WHERE id = $2', [streak, userId]);
-    }
-    return { repaired, newStreak: streak, newTokens: tokens };
+    return { repaired, newStreak: streak, newTokens: tokens, consumedRepair };
 };
 exports.checkAndRepairStreak = checkAndRepairStreak;
 /**
@@ -115,9 +114,9 @@ const handleDailyReset = async (userId, client, todayStr) => {
     const user = userRes.rows[0];
     const lastActive = user.last_active_date;
     if (lastActive !== today) {
-        // 날짜가 바뀜 -> 퀘스트 새로 생성, 복구 플래그 해제
+        // 날짜가 바뀜 → 퀘스트 새로 생성 (streak_repaired는 유지, 보호막은 소비될 때까지 유지)
         const freshQuests = (0, exports.generateDailyQuests)();
-        await client.query('UPDATE users SET streak_repaired = FALSE, quests = $1 WHERE id = $2', [JSON.stringify(freshQuests), userId]);
+        await client.query('UPDATE users SET quests = $1 WHERE id = $2', [JSON.stringify(freshQuests), userId]);
     }
 };
 exports.handleDailyReset = handleDailyReset;

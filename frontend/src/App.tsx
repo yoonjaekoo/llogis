@@ -1303,6 +1303,7 @@ const UserProfile: React.FC = () => {
 
           <div style={{ textAlign: 'center', opacity: 0.6, fontSize: '0.9rem' }}>
             가입일: {new Date(u.created_at).toLocaleDateString()}
+            {u.last_active_date ? ` · 마지막 활동: ${new Date(u.last_active_date).toLocaleDateString()}` : ''}
           </div>
         </article>
 
@@ -1310,9 +1311,11 @@ const UserProfile: React.FC = () => {
         {
           (() => {
             const historyMap: Record<string, number> = {};
+            const repairMap: Record<string, boolean> = {};
             if (streakHistory?.history) {
               for (const h of streakHistory.history) {
                 historyMap[h.date] = parseInt(h.solved);
+                if (h.has_repair) repairMap[h.date] = true;
               }
             }
             const now = new Date();
@@ -1363,18 +1366,19 @@ const UserProfile: React.FC = () => {
                             cell ? (
                               <div
                                 key={i}
-                                title={`${cell.date} - ${cell.count}문제 해결`}
-                                className="streak-day"
+                                title={repairMap[cell.date] ? `${cell.date} - 스트릭 리페어 사용` : `${cell.date} - ${cell.count}문제 해결`}
+                                className={`streak-day ${cell.count > 0 ? 'has-solved' : ''}`}
                                 style={{
-                                  background: cell.count > 0
+                                  background: repairMap[cell.date]
+                                    ? '#9370db'
+                                    : cell.count > 0
                                     ? cell.count >= 5 ? '#7ad151'
                                       : cell.count >= 3 ? '#a8e06a'
                                       : '#d4ed9a'
                                     : 'transparent',
-                                  color: cell.count > 0 ? 'white' : 'var(--text-muted)',
-                                  fontWeight: cell.count > 0 ? 700 : 400
-                                }}
-                              >
+                                  color: repairMap[cell.date] ? 'white' : cell.count > 0 ? 'white' : 'var(--text-muted)',
+                                  fontWeight: repairMap[cell.date] ? 700 : cell.count > 0 ? 700 : 400
+                                }}>
                                 {cell.day}
                               </div>
                             ) : (
@@ -2251,7 +2255,7 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
           <span className="stat-card-icon">🪙</span>
           <div className="stat-card-label">보유 토큰</div>
           <div className="stat-card-value" style={{ color: '#e6a800' }}>{u.tokens || 0}</div>
-          <div className="stat-card-sub">수리 1회에 15토큰</div>
+          <div className="stat-card-sub">수리 1회에 30토큰</div>
         </div>
 
         <div className="stat-card">
@@ -2271,13 +2275,19 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
         </div>
       </div>
 
+      <div style={{ textAlign: 'center', opacity: 0.6, fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+        {u.last_active_date ? `마지막 활동: ${new Date(u.last_active_date).toLocaleDateString()}` : ''}
+      </div>
+
       {/* 6-month streak calendar */}
       {
         (() => {
           const historyMap: Record<string, number> = {};
+          const repairMap: Record<string, boolean> = {};
           if (streakHistory?.history) {
             for (const h of streakHistory.history) {
               historyMap[h.date] = parseInt(h.solved);
+              if (h.has_repair) repairMap[h.date] = true;
             }
           }
           const now = new Date();
@@ -2331,16 +2341,18 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
                           cell ? (
                             <div
                               key={i}
-                              title={`${cell.date} - ${cell.count}문제 해결`}
-                              className={`streak-day ${cell.count > 0 ? 'has-solved' : ''}`}
+                              title={repairMap[cell.date] ? `${cell.date} - 스트릭 리페어 사용` : `${cell.date} - ${cell.count}문제 해결`}
+                              className={`streak-day ${repairMap[cell.date] || cell.count > 0 ? 'has-solved' : ''}`}
                               style={{
-                                background: cell.count > 0
+                                background: repairMap[cell.date]
+                                  ? '#9370db'
+                                  : cell.count > 0
                                   ? cell.count >= 5 ? '#7ad151'
                                     : cell.count >= 3 ? '#a8e06a'
                                     : '#d4ed9a'
                                   : 'transparent',
-                                color: cell.count > 0 ? 'white' : 'var(--text-muted)',
-                                fontWeight: cell.count > 0 ? 700 : 400
+                                color: repairMap[cell.date] || cell.count > 0 ? 'white' : 'var(--text-muted)',
+                                fontWeight: repairMap[cell.date] || cell.count > 0 ? 700 : 400
                               }}
                             >
                               {cell.day}
@@ -2750,8 +2762,11 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
         {showCustomForm && user?.username === 'admin' && (
           <form onSubmit={handleCreateCustom} className="problem-card" style={{ padding: '1rem', marginBottom: '1rem' }}>
             <h4 style={{ margin: '0 0 0.8rem', color: 'var(--color-4)' }}>새 커스텀 문제</h4>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 0.8rem' }}>
+              수식은 LaTeX 형식으로 작성하세요. 인라인 수식은 <code>$...$</code>, 블록 수식은 <code>$$...$$</code>를 사용합니다.
+            </p>
             <input type="text" placeholder="제목" value={customTitle} onChange={e => setCustomTitle(e.target.value)} required style={{ width: '100%', padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '0.5rem', boxSizing: 'border-box', fontSize: '0.85rem' }} />
-            <textarea placeholder="문제 내용 (LaTeX)" value={customContent} onChange={e => setCustomContent(e.target.value)} required rows={4} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '0.5rem', boxSizing: 'border-box', fontSize: '0.85rem', resize: 'vertical' }} />
+            <textarea placeholder="문제 내용 (예: $x^2 + 2x + 1 = 0$을 푸시오.)" value={customContent} onChange={e => setCustomContent(e.target.value)} required rows={4} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '0.5rem', boxSizing: 'border-box', fontSize: '0.85rem', resize: 'vertical' }} />
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
               <input type="text" placeholder="정답" value={customAnswer} onChange={e => setCustomAnswer(e.target.value)} required style={{ flex: 1, padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box', fontSize: '0.85rem' }} />
               <input type="number" placeholder="획득 레이팅" value={customRewardRating} onChange={e => setCustomRewardRating(parseInt(e.target.value) || 0)} style={{ width: '120px', padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box', fontSize: '0.85rem' }} />

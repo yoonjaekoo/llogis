@@ -79,6 +79,7 @@ const ensureSchema = async () => {
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_firework_effect BOOLEAN DEFAULT FALSE");
     await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS is_custom BOOLEAN DEFAULT FALSE');
     await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS custom_reward_rating FLOAT DEFAULT 0.0');
+    await pool.query("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS is_streak_repair BOOLEAN DEFAULT FALSE");
     await pool.query("UPDATE users SET can_generate_problems = TRUE WHERE username = 'admin'");
     await pool.query("INSERT INTO tags (name) VALUES ('이차방정식') ON CONFLICT (name) DO NOTHING");
     await pool.query(`
@@ -444,8 +445,8 @@ app.post('/api/store/buy-streak-repair', authenticateToken, async (req, res) => 
             client.release();
             return res.status(400).json({ error: '토큰이 부족합니다. (필요: 30 토큰)' });
         }
-        // Deduct tokens and set streak_repaired flag
-        await client.query('UPDATE users SET tokens = tokens - 30, streak_repaired = TRUE, streak = 0 WHERE id = $1', [userId]);
+        // Deduct tokens and set streak_repaired flag (streak 유지, 초기화하지 않음)
+        await client.query('UPDATE users SET tokens = tokens - 30, streak_repaired = TRUE WHERE id = $1', [userId]);
         await client.query('COMMIT');
         res.json({ message: '스트릭 복구 아이템을 구매했습니다.' });
     }
@@ -493,7 +494,7 @@ app.post('/api/store/buy-firework-effect', authenticateToken, async (req, res) =
 app.get('/api/users/:id/profile', async (req, res) => {
     const { id } = req.params;
     try {
-        const userResult = await pool.query('SELECT id, username, rating, profile_image_url, bio, streak, tokens, xp, equipped_title, has_firework_effect FROM users WHERE id = $1', [id]);
+        const userResult = await pool.query('SELECT id, username, rating, profile_image_url, bio, streak, tokens, xp, equipped_title, has_firework_effect, last_active_date FROM users WHERE id = $1', [id]);
         if (userResult.rows.length === 0)
             return res.status(404).json({ error: 'User not found' });
         const user = userResult.rows[0];
@@ -549,7 +550,8 @@ app.get('/api/users/:id/streak-history', async (req, res) => {
         monthStart.setMonth(monthStart.getMonth() - 5);
         monthStart.setDate(1);
         monthStart.setHours(0, 0, 0, 0);
-        const result = await pool.query(`SELECT to_char(submitted_at::date, 'YYYY-MM-DD') as date, COUNT(*) as solved
+        const result = await pool.query(`SELECT to_char(submitted_at::date, 'YYYY-MM-DD') as date, COUNT(*) as solved,
+              bool_or(is_streak_repair) as has_repair
        FROM submissions WHERE user_id = $1 AND is_correct = true
        AND submitted_at >= $2 AND submitted_at <= $3
        GROUP BY date ORDER BY date`, [id, monthStart.toISOString(), monthEnd.toISOString()]);
