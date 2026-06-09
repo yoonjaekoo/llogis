@@ -103,7 +103,7 @@ export const processSubmission = async (userId: number, problemId: number, isCor
 
     // 7. 업데이트 완료된 최신 유저 정보 조회
     const finalUserRes = await client.query(
-      'SELECT streak, tokens, xp, quests, last_active_date, streak_repaired FROM users WHERE id = $1',
+      'SELECT streak, tokens, xp, quests, last_active_date, streak_repaired, longest_streak FROM users WHERE id = $1',
       [userId]
     );
     const finalUser = finalUserRes.rows[0];

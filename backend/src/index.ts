@@ -92,6 +92,7 @@ const ensureSchema = async () => {
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS quests JSONB DEFAULT '[]'");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS equipped_title VARCHAR(50) DEFAULT ''");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_firework_effect BOOLEAN DEFAULT FALSE");
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS longest_streak INTEGER DEFAULT 0");
   await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS is_custom BOOLEAN DEFAULT FALSE');
   await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS custom_reward_rating FLOAT DEFAULT 0.0');
   await pool.query("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS is_streak_repair BOOLEAN DEFAULT FALSE");
@@ -291,7 +292,7 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
     await client.query('COMMIT');
 
     const userResult = await client.query(
-      'SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, equipped_title, created_at, has_firework_effect FROM users WHERE id = $1',
+      'SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, equipped_title, created_at, has_firework_effect, last_active_date, longest_streak FROM users WHERE id = $1',
       [userId]
     );
 
@@ -546,7 +547,7 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const userResult = await pool.query(
-      'SELECT id, username, rating, profile_image_url, bio, streak, tokens, xp, equipped_title, has_firework_effect, last_active_date FROM users WHERE id = $1',
+      'SELECT id, username, rating, profile_image_url, bio, streak, tokens, xp, equipped_title, has_firework_effect, last_active_date, longest_streak FROM users WHERE id = $1',
       [id]
     );
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
@@ -557,12 +558,18 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
       const titleRes = await pool.query('SELECT name FROM titles WHERE title_id = $1', [user.equipped_title]);
       if (titleRes.rows.length > 0) equippedTitleName = titleRes.rows[0].name;
     }
+    // Fetch earned titles
+    const titlesRes = await pool.query(
+      'SELECT t.title_id, t.name, t.description FROM user_titles ut JOIN titles t ON t.title_id = ut.title_id WHERE ut.user_id = $1 ORDER BY ut.unlocked_at',
+      [id]
+    );
     res.json({
       user: {
         ...user,
         equipped_title: equippedTitleName || user.equipped_title,
         tier: getTier(parseFloat(user.rating))
-      }
+      },
+      titles: titlesRes.rows
     });
   } catch (err) {
     console.error('Failed to fetch public profile:', err);

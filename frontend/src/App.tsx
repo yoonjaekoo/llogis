@@ -1290,6 +1290,7 @@ const UserProfile: React.FC = () => {
             <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
               <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>🔥 연속 스트릭</div>
               <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{u.streak || 0}일</div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>최장 {u.longest_streak || 0}일</div>
             </div>
             <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
               <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>🪙 보유 토큰</div>
@@ -1394,6 +1395,31 @@ const UserProfile: React.FC = () => {
             );
           })()
         }
+
+        {/* 획득한 칭호 */}
+        {profileData?.titles && profileData.titles.length > 0 && (
+          <div className="problem-card" style={{ marginTop: '1.5rem' }}>
+            <h3 style={{ margin: '0 0 0.75rem', color: 'var(--color-4)', fontWeight: 800, fontSize: '1.1rem' }}>
+              🏅 획득한 칭호
+            </h3>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              {profileData.titles.map((t: any) => (
+                <div key={t.title_id} style={{
+                  padding: '0.3rem 0.8rem',
+                  borderRadius: '99px',
+                  background: 'var(--card-bg)',
+                  border: '1px solid var(--border)',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  color: u.equipped_title === t.title_id ? 'var(--color-4)' : 'var(--text-main)'
+                }}>
+                  {t.name}
+                  {u.equipped_title === t.title_id && <span style={{ marginLeft: '0.3rem', fontSize: '0.7rem', opacity: 0.7 }}>(장착 중)</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
@@ -2247,7 +2273,7 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
           <span className="stat-card-icon">🔥</span>
           <div className="stat-card-label">연속 스트릭</div>
           <div className="stat-card-value" style={{ color: '#f87575' }}>{u.streak || 0}일</div>
-          <div className="stat-card-sub">{u.streak_repaired ? '🩹 토큰으로 수리됨' : '스트릭 유지 중'}</div>
+          <div className="stat-card-sub">최장 {u.longest_streak || 0}일 {u.streak_repaired ? '· 🩹 수리됨' : ''}</div>
         </div>
 
         <div className="stat-card">

@@ -86,7 +86,7 @@ const processSubmission = async (userId, problemId, isCorrect) => {
         // 6. 제출 기록 저장
         await client.query('INSERT INTO submissions (user_id, problem_id, is_correct) VALUES ($1, $2, $3)', [userId, problemId, isCorrect]);
         // 7. 업데이트 완료된 최신 유저 정보 조회
-        const finalUserRes = await client.query('SELECT streak, tokens, xp, quests, last_active_date, streak_repaired FROM users WHERE id = $1', [userId]);
+        const finalUserRes = await client.query('SELECT streak, tokens, xp, quests, last_active_date, streak_repaired, longest_streak FROM users WHERE id = $1', [userId]);
         const finalUser = finalUserRes.rows[0];
         await client.query('COMMIT');
         return {

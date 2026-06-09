@@ -126,11 +126,12 @@ exports.handleDailyReset = handleDailyReset;
  */
 const updateStreak = async (userId, client) => {
     const today = (0, exports.getTodayString)();
-    const userRes = await client.query('SELECT streak, last_active_date, tokens FROM users WHERE id = $1 FOR UPDATE', [userId]);
+    const userRes = await client.query('SELECT streak, last_active_date, tokens, longest_streak FROM users WHERE id = $1 FOR UPDATE', [userId]);
     if (userRes.rows.length === 0)
         throw new Error('User not found');
     const user = userRes.rows[0];
     let streak = user.streak || 0;
+    let longestStreak = user.longest_streak || 0;
     const lastActive = user.last_active_date;
     let bonusTokens = 0;
     if (lastActive !== today) {
@@ -143,6 +144,9 @@ const updateStreak = async (userId, client) => {
             // 끊긴 경우 (이전 checkAndRepair가 수행되지 않았거나 실패한 상태)
             streak = 1;
         }
+        // 최장 스트릭 갱신
+        if (streak > longestStreak)
+            longestStreak = streak;
         // 스트릭 보너스 토큰 계산 (하루에 최초 1회만 지급)
         if (streak >= 10) {
             bonusTokens = 2;
@@ -150,7 +154,7 @@ const updateStreak = async (userId, client) => {
         else if (streak >= 5) {
             bonusTokens = 1;
         }
-        await client.query('UPDATE users SET streak = $1, last_active_date = $2, tokens = tokens + $3 WHERE id = $4', [streak, today, bonusTokens, userId]);
+        await client.query('UPDATE users SET streak = $1, last_active_date = $2, tokens = tokens + $3, longest_streak = $4 WHERE id = $5', [streak, today, bonusTokens, longestStreak, userId]);
     }
     return { newStreak: streak, bonusTokens };
 };
