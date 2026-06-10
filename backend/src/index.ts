@@ -98,6 +98,19 @@ const ensureSchema = async () => {
   await pool.query("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS is_streak_repair BOOLEAN DEFAULT FALSE");
   await pool.query("UPDATE users SET can_generate_problems = TRUE WHERE username = 'admin'");
   await pool.query("INSERT INTO tags (name) VALUES ('이차방정식') ON CONFLICT (name) DO NOTHING");
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_title VARCHAR(100) DEFAULT ''");
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS admin_notifications (
+      id SERIAL PRIMARY KEY,
+      type VARCHAR(50) NOT NULL DEFAULT 'info',
+      message TEXT NOT NULL,
+      from_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      from_username VARCHAR(50),
+      related_id INTEGER,
+      is_read BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS titles (
       id SERIAL PRIMARY KEY,
@@ -268,7 +281,8 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         equipped_title: equippedTitleName || updatedUser.equipped_title,
         streakRepaired: repairResult.repaired,
         streakRepairedFlag: updatedUser.streak_repaired,
-        has_firework_effect: updatedUser.has_firework_effect
+        has_firework_effect: updatedUser.has_firework_effect,
+        custom_title: updatedUser.custom_title || ''
       } 
     });
   } catch (err) {
@@ -292,7 +306,7 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
     await client.query('COMMIT');
 
     const userResult = await client.query(
-      'SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, equipped_title, created_at, has_firework_effect, last_active_date, longest_streak FROM users WHERE id = $1',
+      'SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, equipped_title, created_at, has_firework_effect, last_active_date, longest_streak, custom_title FROM users WHERE id = $1',
       [userId]
     );
 
@@ -472,6 +486,12 @@ app.get('/api/store/items', authenticateToken, async (req: any, res: Response) =
       name: '폭죽 이펙트',
       cost: 100,
       description: '정답 시 화면 중앙에서 폭죽 파티클 이펙트가 재생됩니다.'
+    },
+    {
+      id: 'developer_love',
+      name: '💕 개발자의 사랑',
+      cost: 1000,
+      description: '개발자에게 사랑을 전하세요! 어드민에게 알림이 전달됩니다.'
     }
   ];
   res.json({ items });
@@ -542,12 +562,45 @@ app.post('/api/store/buy-firework-effect', authenticateToken, async (req: any, r
   }
 });
 
+// Purchase developer love item
+app.post('/api/store/buy-developer-love', authenticateToken, async (req: any, res: Response) => {
+  const userId = req.user.id;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const userRes = await client.query('SELECT tokens, username FROM users WHERE id = $1 FOR UPDATE', [userId]);
+    if (userRes.rows.length === 0) {
+      client.release();
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const user = userRes.rows[0];
+    if (user.tokens < 1000) {
+      client.release();
+      return res.status(400).json({ error: '토큰이 부족합니다. (필요: 1000 토큰)' });
+    }
+    // Deduct tokens
+    await client.query('UPDATE users SET tokens = tokens - 1000 WHERE id = $1', [userId]);
+    // Create admin notification
+    await client.query(
+      `INSERT INTO admin_notifications (type, message, from_user_id, from_username) VALUES ($1, $2, $3, $4)`,
+      ['developer_love', `💕 ${user.username}님이 개발자의 사랑을 구매했습니다!`, userId, user.username]
+    );
+    await client.query('COMMIT');
+    res.json({ message: '💕 개발자의 사랑을 전달했습니다! 어드민에게 알림이 전송되었습니다.' });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    res.status(500).json({ error: '상점 구매 중 오류가 발생했습니다.' });
+  } finally {
+    client.release();
+  }
+});
+
 // Public user profile (others can view streak, tokens, xp)
 app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const userResult = await pool.query(
-      'SELECT id, username, rating, profile_image_url, bio, streak, tokens, xp, equipped_title, has_firework_effect, last_active_date, longest_streak FROM users WHERE id = $1',
+      'SELECT id, username, rating, profile_image_url, bio, streak, tokens, xp, equipped_title, has_firework_effect, last_active_date, longest_streak, custom_title FROM users WHERE id = $1',
       [id]
     );
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
@@ -1704,7 +1757,7 @@ app.get('/api/admin/users', authenticateToken, async (req: any, res: Response) =
   
   try {
     const result = await pool.query(`
-      SELECT u.id, u.username, u.email, u.rating, u.created_at, u.can_generate_problems,
+      SELECT u.id, u.username, u.email, u.rating, u.tokens, u.created_at, u.can_generate_problems, u.custom_title,
              COUNT(s.id) as total_submissions,
              SUM(CASE WHEN s.is_correct THEN 1 ELSE 0 END) as correct_submissions
       FROM users u
@@ -1756,6 +1809,90 @@ app.patch('/api/admin/users/:id/problem-generation', authenticateToken, async (r
     res.json({ message: '문제 생성 권한이 업데이트되었습니다.', user: result.rows[0] });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update problem generation permission' });
+  }
+});
+
+app.patch('/api/admin/users/:id/tokens', authenticateToken, async (req: any, res: Response) => {
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const { id } = req.params;
+  const { tokens } = req.body;
+
+  try {
+    const result = await pool.query(
+      'UPDATE users SET tokens = $1 WHERE id = $2 RETURNING id, username, tokens',
+      [tokens, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    res.json({ message: '토큰이 업데이트되었습니다.', user: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: '토큰 업데이트에 실패했습니다.' });
+  }
+});
+
+app.patch('/api/admin/users/:id/custom-title', authenticateToken, async (req: any, res: Response) => {
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const { id } = req.params;
+  const { customTitle } = req.body;
+
+  try {
+    const result = await pool.query(
+      "UPDATE users SET custom_title = $1 WHERE id = $2 RETURNING id, username, custom_title",
+      [customTitle || '', id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    res.json({ message: '커스텀 칭호가 설정되었습니다.', user: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: '커스텀 칭호 설정에 실패했습니다.' });
+  }
+});
+
+app.get('/api/admin/notifications', authenticateToken, async (req: any, res: Response) => {
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+
+  try {
+    const result = await pool.query(
+      'SELECT * FROM admin_notifications ORDER BY created_at DESC LIMIT 100'
+    );
+    const unreadCount = await pool.query(
+      "SELECT COUNT(*) FROM admin_notifications WHERE is_read = FALSE"
+    );
+    res.json({
+      notifications: result.rows,
+      unreadCount: parseInt(unreadCount.rows[0].count)
+    });
+  } catch (err) {
+    res.status(500).json({ error: '알림 조회에 실패했습니다.' });
+  }
+});
+
+app.post('/api/admin/notifications/:id/read', authenticateToken, async (req: any, res: Response) => {
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const { id } = req.params;
+
+  try {
+    await pool.query('UPDATE admin_notifications SET is_read = TRUE WHERE id = $1', [id]);
+    res.json({ message: '알림이 읽음 처리되었습니다.' });
+  } catch (err) {
+    res.status(500).json({ error: '알림 읽음 처리에 실패했습니다.' });
+  }
+});
+
+app.get('/api/users/problem-type-stats', authenticateToken, async (req: any, res: Response) => {
+  const userId = req.user.id;
+  try {
+    const result = await pool.query(`
+      SELECT t.name as tag_name, COUNT(*) as solved_count
+      FROM submissions s
+      JOIN problem_tags pt ON s.problem_id = pt.problem_id
+      JOIN tags t ON pt.tag_id = t.id
+      WHERE s.user_id = $1 AND s.is_correct = true
+      GROUP BY t.name
+      ORDER BY t.name
+    `, [userId]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Failed to fetch problem type stats:', err);
+    res.status(500).json({ error: '통계 조회에 실패했습니다.' });
   }
 });
 

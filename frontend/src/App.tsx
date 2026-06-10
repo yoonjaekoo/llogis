@@ -33,6 +33,7 @@ interface User {
   equipped_title?: string;
   created_at?: string;
   has_firework_effect?: boolean;
+  custom_title?: string;
 }
 
 // LaTeX Helper
@@ -64,6 +65,65 @@ const renderMath = (content: any) => {
 };
 
 // --- Components ---
+
+const RadarChart: React.FC<{ data: { tag: string; count: number }[]; maxValue: number }> = ({ data, maxValue }) => {
+  if (data.length === 0) return null;
+  const size = 280;
+  const cx = size / 2;
+  const cy = size / 2;
+  const radius = 110;
+  const levels = 5;
+  const angleStep = (Math.PI * 2) / data.length;
+
+  const getPoint = (index: number, value: number) => {
+    const angle = angleStep * index - Math.PI / 2;
+    const r = (value / Math.max(maxValue, 1)) * radius;
+    return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) };
+  };
+
+  const polygonPoints = data.map((d, i) => {
+    const p = getPoint(i, d.count);
+    return `${p.x},${p.y}`;
+  }).join(' ');
+
+  const gridPolygons = [];
+  for (let level = 1; level <= levels; level++) {
+    const pts = data.map((_, i) => {
+      const p = getPoint(i, (maxValue / levels) * level);
+      return `${p.x},${p.y}`;
+    }).join(' ');
+    gridPolygons.push(pts);
+  }
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: 'block', margin: '0 auto' }}>
+      {gridPolygons.map((pts, i) => (
+        <polygon key={i} points={pts} fill="none" stroke="var(--border)" strokeWidth="1" opacity={0.5} />
+      ))}
+      {data.map((_, i) => {
+        const p1 = getPoint(i, maxValue);
+        const p2 = getPoint((i + 1) % data.length, maxValue);
+        return <line key={`axis-${i}`} x1={cx} y1={cy} x2={p1.x} y2={p1.y} stroke="var(--border)" strokeWidth="1" opacity={0.3} />;
+      })}
+      <polygon points={polygonPoints} fill="var(--color-4)" fillOpacity="0.2" stroke="var(--color-4)" strokeWidth="2" />
+      {data.map((d, i) => {
+        const p = getPoint(i, d.count);
+        return <circle key={i} cx={p.x} cy={p.y} r="4" fill="var(--color-4)" />;
+      })}
+      {data.map((d, i) => {
+        const angle = angleStep * i - Math.PI / 2;
+        const labelR = radius + 25;
+        const lx = cx + labelR * Math.cos(angle);
+        const ly = cy + labelR * Math.sin(angle);
+        return (
+          <text key={`label-${i}`} x={lx} y={ly} textAnchor="middle" dominantBaseline="central" fill="var(--text-main)" fontSize="11" fontWeight={700}>
+            {d.tag}
+          </text>
+        );
+      })}
+    </svg>
+  );
+};
 
 const Navbar: React.FC<{ 
   user: User | null; 
@@ -1256,8 +1316,13 @@ const UserProfile: React.FC = () => {
 
           <h2 style={{ fontSize: '2.5rem', marginBottom: '0.5rem', color: 'var(--color-4)' }}>{u.username}</h2>
           {u.equipped_title && (
-            <div style={{ marginBottom: '0.5rem', fontWeight: 700, color: 'var(--color-4)', fontSize: '1rem' }}>
+            <div style={{ marginBottom: '0.3rem', fontWeight: 700, color: 'var(--color-4)', fontSize: '1rem' }}>
               [{u.equipped_title}]
+            </div>
+          )}
+          {u.custom_title && (
+            <div style={{ marginBottom: '0.5rem', fontWeight: 700, color: '#ff6b9d', fontSize: '0.95rem', fontStyle: 'italic' }}>
+              ✨ {u.custom_title}
             </div>
           )}
           <div style={{ 
@@ -1438,6 +1503,10 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
   const [problemsTotalPages, setProblemsTotalPages] = useState(1);
   const [loadingProblems, setLoadingProblems] = useState(false);
   const [editingProblem, setEditingProblem] = useState<any>(null);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [activeTab, setActiveTab] = useState<'users' | 'notifications'>('users');
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -1460,13 +1529,41 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
     });
   }, [navigate]);
 
+  const fetchNotifications = useCallback(() => {
+    const token = localStorage.getItem('token');
+    fetch('/api/admin/notifications', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => {
+      if (!res.ok) throw new Error('Unauthorized');
+      return res.json();
+    })
+    .then(data => {
+      if (data.notifications) {
+        setNotifications(data.notifications);
+        setUnreadCount(data.unreadCount || 0);
+      }
+    })
+    .catch(() => {});
+  }, []);
+
+  const handleMarkRead = async (id: number) => {
+    const token = localStorage.getItem('token');
+    await fetch(`/api/admin/notifications/${id}/read`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    fetchNotifications();
+  };
+
   useEffect(() => {
     if (!user || user.username !== 'admin') {
       navigate('/');
       return;
     }
     fetchUsers();
-  }, [user, navigate, fetchUsers]);
+    fetchNotifications();
+  }, [user, navigate, fetchUsers, fetchNotifications]);
 
   const handleSeed = async () => {
     const token = localStorage.getItem('token');
@@ -1613,6 +1710,50 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
     }
   };
 
+  const handleUpdateTokens = async (userId: number, currentTokens: number) => {
+    const newTokensStr = window.prompt('새로운 토큰 수를 입력하세요:', currentTokens.toString());
+    if (newTokensStr === null) return;
+    const newTokens = parseInt(newTokensStr);
+    if (isNaN(newTokens)) return alert('올바른 숫자를 입력해주세요.');
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/admin/users/${userId}/tokens`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ tokens: newTokens })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(data.message);
+      fetchUsers();
+    } else {
+      alert(data.error);
+    }
+  };
+
+  const handleUpdateCustomTitle = async (userId: number, currentTitle: string) => {
+    const newTitle = window.prompt('커스텀 칭호를 입력하세요 (없으면 빈칸):', currentTitle || '');
+    if (newTitle === null) return;
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/admin/users/${userId}/custom-title`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ customTitle: newTitle })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(data.message);
+      fetchUsers();
+    } else {
+      alert(data.error);
+    }
+  };
+
   const handleToggleProblemGeneration = async (userId: number, currentValue: boolean) => {
     const token = localStorage.getItem('token');
     const res = await fetch(`/api/admin/users/${userId}/problem-generation`, {
@@ -1718,60 +1859,86 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
           </div>
         )}
 
+        {/* Tab Navigation */}
+        <div style={{ display: 'flex', gap: '1rem', borderBottom: '2px solid var(--border)', marginBottom: '2rem', paddingBottom: '0.5rem' }}>
+          <button 
+            onClick={() => setActiveTab('users')} 
+            style={{ 
+              background: 'none', border: 'none', 
+              color: activeTab === 'users' ? 'var(--color-4)' : 'var(--text-muted)', 
+              fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer',
+              borderBottom: activeTab === 'users' ? '3px solid var(--color-4)' : 'none',
+              paddingBottom: '0.5rem', marginBottom: '-0.7rem'
+            }}
+          >
+            사용자 관리 ({users.length})
+          </button>
+          <button 
+            onClick={() => { setActiveTab('notifications'); fetchNotifications(); }} 
+            style={{ 
+              background: 'none', border: 'none', 
+              color: activeTab === 'notifications' ? 'var(--color-4)' : 'var(--text-muted)', 
+              fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer',
+              borderBottom: activeTab === 'notifications' ? '3px solid var(--color-4)' : 'none',
+              paddingBottom: '0.5rem', marginBottom: '-0.7rem'
+            }}
+          >
+            💕 알림 {unreadCount > 0 && <span style={{ background: '#ff7675', color: 'white', borderRadius: '99px', padding: '0.1rem 0.5rem', fontSize: '0.75rem', marginLeft: '0.3rem' }}>{unreadCount}</span>}
+          </button>
+        </div>
+
+        {/* Users Tab */}
+        {activeTab === 'users' && (
         <div className="problem-card" style={{ margin: 0 }}>
           <h3 style={{ marginBottom: '1.5rem' }}>사용자 관리 ({users.length})</h3>
           {loadingUsers ? <p>사용자 목록 로딩 중...</p> : (
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-muted)' }}>
-                    <th style={{ padding: '1rem' }}>순위</th>
-                    <th style={{ padding: '1rem' }}>사용자</th>
-                    <th style={{ padding: '1rem' }}>레이팅</th>
-                    <th style={{ padding: '1rem' }}>정답수</th>
-                    <th style={{ padding: '1rem' }}>문제 생성 권한</th>
-                    <th style={{ padding: '1rem' }}>관리</th>
+                    <th style={{ padding: '0.6rem' }}>순위</th>
+                    <th style={{ padding: '0.6rem' }}>사용자</th>
+                    <th style={{ padding: '0.6rem' }}>레이팅</th>
+                    <th style={{ padding: '0.6rem' }}>토큰</th>
+                    <th style={{ padding: '0.6rem' }}>칭호</th>
+                    <th style={{ padding: '0.6rem' }}>정답수</th>
+                    <th style={{ padding: '0.6rem' }}>문제 생성</th>
+                    <th style={{ padding: '0.6rem' }}>관리</th>
                   </tr>
                 </thead>
                 <tbody>
                   {users.map((u, i) => (
                     <tr key={u.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '1rem', fontWeight: 800 }}>{i + 1}</td>
-                      <td style={{ padding: '1rem' }}>
+                      <td style={{ padding: '0.6rem', fontWeight: 800 }}>{i + 1}</td>
+                      <td style={{ padding: '0.6rem' }}>
                         <div style={{ fontWeight: 800 }}>{u.username}</div>
-                        <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>{u.email}</div>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.6 }}>{u.email}</div>
                       </td>
-                      <td style={{ padding: '1rem' }}>
-                        <div style={{ fontWeight: 800 }}>{Math.round(u.rating).toLocaleString()}</div>
-                        <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>{u.tier}</div>
+                      <td style={{ padding: '0.6rem' }}>
+                        <div style={{ fontWeight: 800, fontSize: '0.85rem' }}>{Math.round(u.rating).toLocaleString()}</div>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>{u.tier}</div>
                       </td>
-                      <td style={{ padding: '1rem' }}>{u.correct_submissions} / {u.total_submissions}</td>
-                      <td style={{ padding: '1rem' }}>
+                      <td style={{ padding: '0.6rem', fontWeight: 800, color: '#e6a800' }}>{(u.tokens || 0).toLocaleString()}</td>
+                      <td style={{ padding: '0.6rem', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{ fontSize: '0.8rem' }}>{u.custom_title || '-'}</span>
+                      </td>
+                      <td style={{ padding: '0.6rem', fontSize: '0.85rem' }}>{u.correct_submissions} / {u.total_submissions}</td>
+                      <td style={{ padding: '0.6rem' }}>
                         <button
                           onClick={() => handleToggleProblemGeneration(u.id, !!u.can_generate_problems)}
                           className="btn"
-                          style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: u.can_generate_problems ? '#00b894' : 'var(--border)', color: u.can_generate_problems ? 'white' : 'var(--text-main)' }}
+                          style={{ padding: '0.3rem 0.6rem', fontSize: '0.7rem', width: 'auto', background: u.can_generate_problems ? '#00b894' : 'var(--border)', color: u.can_generate_problems ? 'white' : 'var(--text-main)' }}
                         >
-                          {u.can_generate_problems ? '허용 중' : '권한 부여'}
+                          {u.can_generate_problems ? '허용' : '부여'}
                         </button>
                       </td>
-                      <td style={{ padding: '1rem' }}>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button 
-                            onClick={() => handleUpdateRating(u.id, u.rating)}
-                            className="btn" 
-                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: 'var(--color-3)', color: 'white' }}
-                          >
-                            수정
-                          </button>
+                      <td style={{ padding: '0.6rem' }}>
+                        <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                          <button onClick={() => handleUpdateRating(u.id, u.rating)} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: 'var(--color-3)', color: 'white' }}>⭐</button>
+                          <button onClick={() => handleUpdateTokens(u.id, u.tokens || 0)} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: '#e6a800', color: 'white' }}>🪙</button>
+                          <button onClick={() => handleUpdateCustomTitle(u.id, u.custom_title || '')} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: 'var(--color-4)', color: 'white' }}>🏷️</button>
                           {u.username !== 'admin' && (
-                            <button 
-                              onClick={() => handleDeleteUser(u.id, u.username)}
-                              className="btn" 
-                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: '#ff7675', color: 'white' }}
-                            >
-                              삭제
-                            </button>
+                            <button onClick={() => handleDeleteUser(u.id, u.username)} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: '#ff7675', color: 'white' }}>🗑️</button>
                           )}
                         </div>
                       </td>
@@ -1782,6 +1949,40 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
             </div>
           )}
         </div>
+        )}
+
+        {/* Notifications Tab */}
+        {activeTab === 'notifications' && (
+        <div className="problem-card" style={{ margin: 0 }}>
+          <h3 style={{ marginBottom: '1.5rem' }}>💕 알림 내역 ({notifications.length})</h3>
+          {notifications.length === 0 ? (
+            <p style={{ opacity: 0.5, textAlign: 'center', padding: '2rem' }}>알림이 없습니다.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {notifications.map((n: any) => (
+                <div key={n.id} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '0.8rem 1rem', borderRadius: '0.5rem',
+                  background: n.is_read ? 'var(--card-bg)' : 'rgba(255, 118, 117, 0.08)',
+                  border: n.is_read ? '1px solid var(--border)' : '1px solid #ff7675'
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: n.is_read ? 400 : 800, fontSize: '0.95rem' }}>{n.message}</div>
+                    <div style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '0.3rem' }}>
+                      {new Date(n.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                  {!n.is_read && (
+                    <button onClick={() => handleMarkRead(n.id)} className="btn" style={{ padding: '0.3rem 0.8rem', fontSize: '0.75rem', width: 'auto', background: 'var(--color-4)', color: 'white', flexShrink: 0 }}>
+                      읽음
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        )}
 
         {/* Problem Management */}
         <div className="problem-card" style={{ margin: 0, marginTop: '2rem' }}>
@@ -1984,6 +2185,9 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
   const [streakHistory, setStreakHistory] = useState<any>(null);
   const [streakOffset, setStreakOffset] = useState(0);
 
+  // Problem type stats for radar chart
+  const [problemTypeStats, setProblemTypeStats] = useState<any[]>([]);
+
   useEffect(() => {
     if (!user?.id) return;
     fetch(`/api/users/${user.id}/streak-history?offset=${streakOffset}`)
@@ -2032,6 +2236,17 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
         setTimeout(() => alert(`🎉 새 칭호 획득: ${data.newlyUnlocked.map((t: any) => t.name).join(', ')}`), 1000);
       }
     }).catch(() => {});
+
+    // Fetch problem type stats for radar chart
+    const token2 = localStorage.getItem('token');
+    fetch('/api/users/problem-type-stats', {
+      headers: { 'Authorization': `Bearer ${token2}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (Array.isArray(data)) setProblemTypeStats(data);
+    })
+    .catch(() => {});
   }, [user]);
 
   useEffect(() => {
@@ -2233,6 +2448,11 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
                 [{u.equipped_title}]
               </div>
             )}
+            {u.custom_title && (
+              <div style={{ marginBottom: '0.3rem', fontWeight: 700, color: '#ff6b9d', fontSize: '0.9rem', fontStyle: 'italic' }}>
+                ✨ {u.custom_title}
+              </div>
+            )}
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.3rem 0.9rem', borderRadius: '99px', background: `${tierColors[u.tier] || '#888'}22`, border: `1.5px solid ${tierColors[u.tier] || '#888'}`, color: tierColors[u.tier] || '#888', fontWeight: 800, fontSize: '0.9rem', marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               🏅 {u.tier}
             </div>
@@ -2303,6 +2523,35 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
 
       <div style={{ textAlign: 'center', opacity: 0.6, fontSize: '0.9rem', marginBottom: '1.5rem' }}>
         {u.last_active_date ? `마지막 활동: ${new Date(u.last_active_date).toLocaleDateString()}` : ''}
+      </div>
+
+      {/* ─── 분야별 문제 통계 (다각형 그래프) ─── */}
+      <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
+        <h3 style={{ margin: '0 0 0.75rem', color: 'var(--color-4)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          📊 분야별 문제 통계
+        </h3>
+        <p style={{ margin: '0 0 1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+          각 분야별로 푼 문제 수를 다각형 그래프로 표시합니다.
+        </p>
+        {problemTypeStats.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <RadarChart data={problemTypeStats.map((s: any) => ({ tag: s.tag_name, count: parseInt(s.solved_count) }))} maxValue={Math.max(...problemTypeStats.map((s: any) => parseInt(s.solved_count)), 1)} />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', justifyContent: 'center', marginTop: '1rem', width: '100%' }}>
+              {problemTypeStats.map((s: any) => (
+                <div key={s.tag_name} style={{
+                  padding: '0.3rem 0.8rem', borderRadius: '99px', background: 'var(--card-bg)',
+                  border: '1px solid var(--border)', fontSize: '0.82rem', fontWeight: 700
+                }}>
+                  {s.tag_name}: <span style={{ color: 'var(--color-4)' }}>{s.solved_count}문제</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p style={{ color: 'var(--text-muted)', fontStyle: 'italic', margin: 0, fontSize: '0.9rem', textAlign: 'center' }}>
+            아직 푼 문제가 없습니다. 문제를 풀면 통계가 표시됩니다.
+          </p>
+        )}
       </div>
 
       {/* 6-month streak calendar */}
@@ -2958,6 +3207,9 @@ const Shop: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ use
     } else if (itemId === 'firework_effect') {
       url = '/api/store/buy-firework-effect';
       cost = 100;
+    } else if (itemId === 'developer_love') {
+      url = '/api/store/buy-developer-love';
+      cost = 1000;
     }
     const res = await fetch(url, {
       method: 'POST',
@@ -2965,7 +3217,7 @@ const Shop: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ use
     });
     const data = await res.json();
     if (res.ok) {
-      const msg = itemId === 'streak_repair' ? '스트릭이 복구되었습니다.' : '폭죽 이펙트가 활성화되었습니다.';
+      const msg = itemId === 'streak_repair' ? '스트릭이 복구되었습니다.' : itemId === 'firework_effect' ? '폭죽 이펙트가 활성화되었습니다.' : '💕 개발자에게 사랑이 전달되었습니다!';
       setMessage(`✅ 구매 완료! ${msg}`);
       const updatedUser = { ...user!, tokens: (user!.tokens || 0) - cost };
       if (itemId === 'streak_repair') {
