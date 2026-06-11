@@ -5,6 +5,7 @@ import './styles/globals.css';
 import 'katex/dist/katex.min.css';
 import { InlineMath, BlockMath } from 'react-katex';
 import GooseRoom from './GooseRoom';
+import CatRoom from './CatRoom';
 
 // --- Types ---
 interface Problem {
@@ -33,6 +34,7 @@ interface User {
   equipped_title?: string;
   created_at?: string;
   has_firework_effect?: boolean;
+  has_developer_chango?: boolean;
   custom_title?: string;
 }
 
@@ -129,12 +131,13 @@ const Navbar: React.FC<{
   user: User | null; 
   onLogout: () => void; 
   theme: string; 
-  toggleTheme: () => void 
-}> = ({ user, onLogout, theme, toggleTheme }) => (
+  toggleTheme: () => void;
+  onLogoClick: (e: React.MouseEvent) => void
+}> = ({ user, onLogout, theme, toggleTheme, onLogoClick }) => (
   <header role="banner">
     <div className="container">
       <h1 style={{ margin: 0 }}>
-        <Link to="/" aria-label="Logis 홈으로 이동" style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', color: 'white', textDecoration: 'none' }}>
+        <Link to="/" aria-label="Logis 홈으로 이동" style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', color: 'white', textDecoration: 'none' }} onClick={onLogoClick}>
           <img src="/logo.png" alt="Logis 로고" width="40" height="40" style={{ borderRadius: '8px', objectFit: 'cover' }} />
           <span style={{ letterSpacing: '-1px' }}>Logis</span>
         </Link>
@@ -2713,6 +2716,11 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
 
       <TitleSection user={user} setUser={setUser} refreshKey={titleRefreshKey} />
 
+      {/* ─── 개발자의 창호 ─── */}
+      {user?.has_developer_chango && (
+        <CustomTitleChango user={user} setUser={setUser} />
+      )}
+
       {/* ─── NVIDIA NIM API 키 ─── */}
       <div className="problem-card">
         <h3 style={{ margin: '0 0 0.5rem', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -2741,6 +2749,61 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
         )}
       </div>
     </main>
+  );
+};
+
+const CustomTitleChango: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ user, setUser }) => {
+  const [customTitleInput, setCustomTitleInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sentMessage, setSentMessage] = useState('');
+
+  const handleSubmitCustomTitle = async () => {
+    if (!customTitleInput.trim()) { alert('칭호 문구를 입력해주세요.'); return; }
+    setSending(true);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('/api/store/submit-custom-title', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ customTitle: customTitleInput.trim() })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSentMessage('✅ 맞춤형 칭호가 전송되었습니다! 관리자가 확인 후 적용합니다.');
+        setCustomTitleInput('');
+      } else {
+        setSentMessage(`❌ ${data.error}`);
+      }
+    } catch {
+      setSentMessage('❌ 네트워크 오류가 발생했습니다.');
+    }
+    setSending(false);
+  };
+
+  return (
+    <div className="problem-card">
+      <h3 style={{ margin: '0 0 0.5rem', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        🎫 개발자의 창호
+      </h3>
+      <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', margin: '0 0 1rem' }}>
+        원하는 맞춤형 칭호 문구를 입력하면 관리자에게 전송됩니다. 관리자가 확인 후 적용해드립니다!
+      </p>
+      {sentMessage && (
+        <div style={{ padding: '0.7rem 1rem', background: 'rgba(92, 149, 255, 0.1)', border: '1px solid var(--color-4)', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.9rem', fontWeight: 600 }}>{sentMessage}</div>
+      )}
+      <div style={{ display: 'flex', gap: '0.5rem', maxWidth: '480px' }}>
+        <input
+          type="text" placeholder="예: Logis의 전설, 수학천재, 야옹..."
+          value={customTitleInput} onChange={e => setCustomTitleInput(e.target.value)}
+          maxLength={50}
+          style={{ flex: 1, padding: '0.7rem 1rem', borderRadius: '0.5rem', border: '1.5px solid var(--border)', background: 'var(--bg-color)', color: 'var(--text-main)', fontSize: '0.95rem', boxSizing: 'border-box' }}
+          disabled={sending}
+        />
+        <button onClick={handleSubmitCustomTitle} disabled={sending} className="btn" style={{ background: 'var(--color-4)', color: 'white', width: 'auto', padding: '0.7rem 1.4rem', whiteSpace: 'nowrap' }}>
+          {sending ? '전송 중...' : '전송'}
+        </button>
+      </div>
+    </div>
   );
 };
 
@@ -3210,6 +3273,9 @@ const Shop: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ use
     } else if (itemId === 'developer_love') {
       url = '/api/store/buy-developer-love';
       cost = 1000;
+    } else if (itemId === 'developer_chango') {
+      url = '/api/store/buy-developer-chango';
+      cost = 500;
     }
     const res = await fetch(url, {
       method: 'POST',
@@ -3217,7 +3283,7 @@ const Shop: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ use
     });
     const data = await res.json();
     if (res.ok) {
-      const msg = itemId === 'streak_repair' ? '스트릭이 복구되었습니다.' : itemId === 'firework_effect' ? '폭죽 이펙트가 활성화되었습니다.' : '💕 개발자에게 사랑이 전달되었습니다!';
+      const msg = itemId === 'streak_repair' ? '스트릭이 복구되었습니다.' : itemId === 'firework_effect' ? '폭죽 이펙트가 활성화되었습니다.' : itemId === 'developer_love' ? '💕 개발자에게 사랑이 전달되었습니다!' : '🎫 개발자의 창호를 구매했습니다! 프로필에서 칭호를 입력하세요.';
       setMessage(`✅ 구매 완료! ${msg}`);
       const updatedUser = { ...user!, tokens: (user!.tokens || 0) - cost };
       if (itemId === 'streak_repair') {
@@ -3370,6 +3436,7 @@ const AppContent: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
   const [themeToggleCount, setThemeToggleCount] = useState(() => Number(localStorage.getItem('theme-toggle-count') || '0'));
+  const [logoClickCount, setLogoClickCount] = useState(() => Number(localStorage.getItem('logo-click-count') || '0'));
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -3412,6 +3479,16 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const handleLogoClick = (e: React.MouseEvent) => {
+    const nextCount = logoClickCount + 1;
+    setLogoClickCount(nextCount >= 20 ? 0 : nextCount);
+    localStorage.setItem('logo-click-count', String(nextCount >= 20 ? 0 : nextCount));
+    if (nextCount >= 20) {
+      e.preventDefault();
+      navigate('/cat-room');
+    }
+  };
+
   const handleLogin = (token: string, nextUser: User) => {
     localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(nextUser));
@@ -3436,7 +3513,7 @@ const AppContent: React.FC = () => {
   return (
     <>
       <a href="#main-content" className="skip-link" style={{ position: 'absolute', left: '-9999px', top: 0, zIndex: 9999, padding: '1rem', background: '#5c95ff', color: 'white' }} onFocus={e => e.currentTarget.style.left = '0'} onBlur={e => e.currentTarget.style.left = '-9999px'}>본문으로 바로가기</a>
-      <Navbar user={user} onLogout={handleLogout} theme={theme} toggleTheme={toggleTheme} />
+      <Navbar user={user} onLogout={handleLogout} theme={theme} toggleTheme={toggleTheme} onLogoClick={handleLogoClick} />
       <div id="main-content" role="main">
         <Routes>
           <Route path="/" element={<Landing user={user} />} />
@@ -3452,6 +3529,7 @@ const AppContent: React.FC = () => {
           <Route path="/shop" element={<Shop user={user} setUser={setUser} />} />
           <Route path="/admin" element={<Admin user={user} />} />
           <Route path="/goose-room" element={<GooseRoom />} />
+          <Route path="/cat-room" element={<CatRoom />} />
         </Routes>
       </div>
       <footer role="contentinfo" style={{ textAlign: 'center', padding: '2rem 1rem', fontSize: '0.85rem', opacity: 0.6, borderTop: '1px solid var(--border)', marginTop: '2rem' }}>

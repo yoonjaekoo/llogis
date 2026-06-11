@@ -735,6 +735,131 @@ nav a:hover {
   }
 }
 
+/* Cat Room — shares layout with goose room */
+.cat-room-page {
+  min-height: calc(100vh - 160px);
+  padding: 3rem 0 4rem;
+  background:
+    radial-gradient(circle at top left, rgba(255, 165, 50, 0.24), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(255, 100, 150, 0.18), transparent 30%);
+}
+
+.cat-room-shell {
+  width: min(1120px, calc(100% - 2rem));
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 1.5rem;
+  align-items: stretch;
+}
+
+.cat-room-copy,
+.cat-stage-frame {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--border);
+  border-radius: 1.75rem;
+  box-shadow: var(--card-shadow);
+  backdrop-filter: blur(12px);
+}
+
+[data-theme='dark'] .cat-room-copy,
+[data-theme='dark'] .cat-stage-frame {
+  background: rgba(10, 16, 30, 0.72);
+}
+
+.cat-room-copy {
+  padding: 2.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.cat-room-eyebrow {
+  margin: 0 0 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-4);
+}
+
+.cat-room-copy h1 {
+  margin: 0 0 1rem;
+  font-size: clamp(2.25rem, 4vw, 4rem);
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.cat-room-description {
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+  line-height: 1.8;
+}
+
+.cat-room-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.cat-stage-frame {
+  position: relative;
+  min-height: 560px;
+  overflow: hidden;
+}
+
+.cat-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 560px;
+}
+
+.cat-overlay {
+  position: absolute;
+  inset: auto 1rem 1rem 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  background: rgba(17, 24, 39, 0.72);
+  color: white;
+  font-weight: 700;
+  text-align: center;
+}
+
+.cat-overlay-error {
+  background: rgba(255, 118, 117, 0.9);
+}
+
+@media (max-width: 960px) {
+  .cat-room-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .cat-stage-frame,
+  .cat-canvas {
+    min-height: 420px;
+  }
+}
+
+@media (max-width: 768px) {
+  .cat-room-page {
+    padding: 2rem 0 3rem;
+  }
+
+  .cat-room-shell {
+    width: min(100% - 1rem, 1120px);
+  }
+
+  .cat-room-copy {
+    padding: 1.5rem;
+  }
+
+  .cat-stage-frame,
+  .cat-canvas {
+    min-height: 360px;
+  }
+}
+
 /* Streak Calendar */
 .streak-calendar-grid {
   display: grid;
