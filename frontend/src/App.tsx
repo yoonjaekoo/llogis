@@ -36,6 +36,7 @@ interface User {
   has_firework_effect?: boolean;
   has_developer_chango?: boolean;
   custom_title?: string;
+  problems_solved?: number;
 }
 
 // LaTeX Helper
@@ -1349,7 +1350,7 @@ const UserProfile: React.FC = () => {
             </div>
             <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
               <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>해결 문제</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{stats.correctSubmissions}</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{u.problems_solved || stats.correctSubmissions}</div>
             </div>
             <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
               <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>정답률</div>
@@ -2519,7 +2520,7 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(90deg, var(--color-3), var(--color-4))' }} />
           <span className="stat-card-icon">✅</span>
           <div className="stat-card-label">정답 문제</div>
-          <div className="stat-card-value">{stats.correctSubmissions}</div>
+          <div className="stat-card-value">{u.problems_solved}</div>
           <div className="stat-card-sub">정답률 {Math.round(stats.accuracy)}%</div>
         </div>
       </div>
@@ -2998,7 +2999,8 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
       const updatedUser = { 
         ...user, 
         rating: data.newUserRating,
-        tier: data.tier
+        tier: data.tier,
+        problems_solved: data.problems_solved
       };
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setUser(updatedUser);

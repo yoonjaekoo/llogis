@@ -100,6 +100,13 @@ const ensureSchema = async () => {
   await pool.query("UPDATE users SET can_generate_problems = TRUE WHERE username = 'admin'");
   await pool.query("INSERT INTO tags (name) VALUES ('이차방정식') ON CONFLICT (name) DO NOTHING");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_title VARCHAR(100) DEFAULT ''");
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS problems_solved INTEGER DEFAULT 0");
+  // Initialize problems_solved from existing correct submissions
+  await pool.query(`
+    UPDATE users u SET problems_solved = (
+      SELECT COUNT(*) FROM submissions s WHERE s.user_id = u.id AND s.is_correct = true
+    ) WHERE u.problems_solved = 0
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS admin_notifications (
       id SERIAL PRIMARY KEY,
@@ -280,6 +287,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         xp: updatedUser.xp,
         quests: updatedUser.quests,
         can_generate_problems: updatedUser.can_generate_problems,
+        problems_solved: parseInt(updatedUser.problems_solved) || 0,
         equipped_title: equippedTitleName || updatedUser.equipped_title,
         streakRepaired: repairResult.repaired,
         streakRepairedFlag: updatedUser.streak_repaired,
@@ -309,7 +317,7 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
     await client.query('COMMIT');
 
     const userResult = await client.query(
-      'SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, equipped_title, created_at, has_firework_effect, has_developer_chango, last_active_date, longest_streak, custom_title FROM users WHERE id = $1',
+      'SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, equipped_title, created_at, has_firework_effect, has_developer_chango, last_active_date, longest_streak, custom_title, problems_solved FROM users WHERE id = $1',
       [userId]
     );
 
@@ -327,12 +335,14 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
       if (titleRes.rows.length > 0) equippedTitleName = titleRes.rows[0].name;
     }
 
-    // Get submission statistics
+    // Get submission statistics (total submissions for accuracy calculation)
     const statsResult = await client.query(
-      'SELECT COUNT(*) as total, SUM(CASE WHEN is_correct THEN 1 ELSE 0 END) as correct FROM submissions WHERE user_id = $1',
+      'SELECT COUNT(*) as total FROM submissions WHERE user_id = $1',
       [userId]
     );
     const stats = statsResult.rows[0];
+    const totalSubmissions = parseInt(stats.total);
+    const correctSubmissions = parseInt(user.problems_solved) || 0;
 
     res.json({
       user: {
@@ -343,9 +353,9 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
         streakRepairedFlag: user.streak_repaired
       },
       stats: {
-        totalSubmissions: parseInt(stats.total),
-        correctSubmissions: parseInt(stats.correct || 0),
-        accuracy: stats.total > 0 ? (stats.correct / stats.total) * 100 : 0
+        totalSubmissions,
+        correctSubmissions,
+        accuracy: totalSubmissions > 0 ? (correctSubmissions / totalSubmissions) * 100 : 0
       }
     });
   } catch (err) {
@@ -434,7 +444,7 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const userResult = await pool.query(
-      'SELECT id, username, rating, profile_image_url, bio, equipped_title, streak, tokens, xp, created_at FROM users WHERE id = $1',
+      'SELECT id, username, rating, profile_image_url, bio, equipped_title, streak, tokens, xp, created_at, problems_solved FROM users WHERE id = $1',
       [id]
     );
 
@@ -451,10 +461,12 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
 
     // Get submission statistics
     const statsResult = await pool.query(
-      'SELECT COUNT(*) as total, SUM(CASE WHEN is_correct THEN 1 ELSE 0 END) as correct FROM submissions WHERE user_id = $1',
+      'SELECT COUNT(*) as total FROM submissions WHERE user_id = $1',
       [id]
     );
     const stats = statsResult.rows[0];
+    const totalSubmissions = parseInt(stats.total);
+    const correctSubmissions = parseInt(user.problems_solved) || 0;
 
     res.json({
       user: {
@@ -463,9 +475,9 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
         tier: getTier(user.rating)
       },
       stats: {
-        totalSubmissions: parseInt(stats.total),
-        correctSubmissions: parseInt(stats.correct || 0),
-        accuracy: stats.total > 0 ? (stats.correct / stats.total) * 100 : 0
+        totalSubmissions,
+        correctSubmissions,
+        accuracy: totalSubmissions > 0 ? (correctSubmissions / totalSubmissions) * 100 : 0
       }
     });
   } catch (err) {

@@ -14,6 +14,7 @@ CREATE TABLE users (
     volatility FLOAT DEFAULT 0.06 NOT NULL,
     profile_image_url TEXT,
     can_generate_problems BOOLEAN DEFAULT FALSE NOT NULL,
+    problems_solved INTEGER DEFAULT 0 NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

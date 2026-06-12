@@ -90,6 +90,8 @@ export const processSubmission = async (userId: number, problemId: number, isCor
       // 퀘스트 업데이트 ('solve' 및 최초 일일 스트릭 보상 액션 체크)
       await updateQuests(userId, client, 'solve');
       await updateQuests(userId, client, 'streak');
+      // problems_solved 증가 (데이터베이스에 저장되어 문제 초기화 시에도 유지)
+      await client.query('UPDATE users SET problems_solved = problems_solved + 1 WHERE id = $1', [userId]);
     } else {
       // 오답인 경우 시도(attempt)만 기록하여 정확도 퀘스트 갱신
       await updateQuests(userId, client, 'attempt');
@@ -103,7 +105,7 @@ export const processSubmission = async (userId: number, problemId: number, isCor
 
     // 7. 업데이트 완료된 최신 유저 정보 조회
     const finalUserRes = await client.query(
-      'SELECT streak, tokens, xp, quests, last_active_date, streak_repaired, longest_streak FROM users WHERE id = $1',
+      'SELECT streak, tokens, xp, quests, last_active_date, streak_repaired, longest_streak, problems_solved FROM users WHERE id = $1',
       [userId]
     );
     const finalUser = finalUserRes.rows[0];
@@ -118,7 +120,8 @@ export const processSubmission = async (userId: number, problemId: number, isCor
       xp: finalUser.xp,
       quests: finalUser.quests,
       streakRepaired: repairResult.repaired,
-      streakRepairedFlag: finalUser.streak_repaired
+      streakRepairedFlag: finalUser.streak_repaired,
+      problems_solved: finalUser.problems_solved
     };
   } catch (err) {
     await client.query('ROLLBACK');
