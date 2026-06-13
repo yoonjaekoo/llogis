@@ -2995,26 +2995,23 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
     const headers: any = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    fetch(`/api/problems?page=${page}&limit=10&type=${problemType}`, { headers })
+    const p = page;
+    const t = problemType;
+
+    fetch(`/api/problems?page=${p}&limit=10&type=${t}`, { headers })
       .then(res => res.json())
       .then(data => {
         if (data.problems) {
           setProblems(data.problems);
           setTotalPages(data.pagination?.totalPages || 1);
-          if (data.problems.length > 0) {
-            setSelectedProblemId(prev => data.problems.some((p: Problem) => p.id === prev) ? prev : data.problems[0].id);
-          } else {
-            setSelectedProblemId(null);
-          }
+          setSelectedProblemId(prev => data.problems.some((prob: Problem) => prob.id === prev) ? prev : (data.problems.length > 0 ? data.problems[0].id : null));
         }
         setLoadingProblems(false);
       })
       .catch(() => setLoadingProblems(false));
   };
 
-  useEffect(() => {
-    fetchProblems();
-  }, [page, problemType]);
+  useEffect(() => { fetchProblems(); }, [page, problemType]);
 
   const handleInputChange = (id: number, val: string) => {
     setAnswers(prev => ({ ...prev, [id]: val }));
