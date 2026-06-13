@@ -518,14 +518,8 @@ app.get('/api/store/items', authenticateToken, async (req: any, res: Response) =
       description: '정답 시 화면 중앙에서 폭죽 파티클 이펙트가 재생됩니다.'
     },
     {
-      id: 'developer_love',
-      name: '💕 개발자의 사랑',
-      cost: 1000,
-      description: '개발자에게 사랑을 전하면 맞춤형 칭호를 전합니다!'
-    },
-    {
       id: 'developer_chango',
-      name: '🎫 개발자의 창호',
+      name: '🎫 개발자의 칭호',
       cost: 500,
       description: '구매 후 프로필에서 원하는 맞춤형 칭호 문구를 관리자에게 전송하세요!'
     }
@@ -598,40 +592,7 @@ app.post('/api/store/buy-firework-effect', authenticateToken, async (req: any, r
   }
 });
 
-// Purchase developer love item
-app.post('/api/store/buy-developer-love', authenticateToken, async (req: any, res: Response) => {
-  const userId = req.user.id;
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const userRes = await client.query('SELECT tokens, username FROM users WHERE id = $1 FOR UPDATE', [userId]);
-    if (userRes.rows.length === 0) {
-      client.release();
-      return res.status(404).json({ error: 'User not found' });
-    }
-    const user = userRes.rows[0];
-    if (user.tokens < 1000) {
-      client.release();
-      return res.status(400).json({ error: '토큰이 부족합니다. (필요: 1000 토큰)' });
-    }
-    // Deduct tokens
-    await client.query('UPDATE users SET tokens = tokens - 1000 WHERE id = $1', [userId]);
-    // Create admin notification
-    await client.query(
-      `INSERT INTO admin_notifications (type, message, from_user_id, from_username) VALUES ($1, $2, $3, $4)`,
-      ['developer_love', `💕 ${user.username}님이 개발자의 사랑을 구매했습니다!`, userId, user.username]
-    );
-    await client.query('COMMIT');
-    res.json({ message: '💕 개발자의 사랑을 전달했습니다! 어드민에게 알림이 전송되었습니다.' });
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    res.status(500).json({ error: '상점 구매 중 오류가 발생했습니다.' });
-  } finally {
-    client.release();
-  }
-});
-
-// Purchase developer chango item
+// Purchase developer title item
 app.post('/api/store/buy-developer-chango', authenticateToken, async (req: any, res: Response) => {
   const userId = req.user.id;
   const client = await pool.connect();
@@ -656,7 +617,7 @@ app.post('/api/store/buy-developer-chango', authenticateToken, async (req: any, 
       [userId]
     );
     await client.query('COMMIT');
-    res.json({ message: '🎫 개발자의 창호를 구매했습니다! 프로필에서 맞춤형 칭호를 입력하세요.' });
+    res.json({ message: '🎫 개발자의 칭호를 구매했습니다! 프로필에서 맞춤형 칭호를 입력하세요.' });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     res.status(500).json({ error: '상점 구매 중 오류가 발생했습니다.' });
@@ -680,7 +641,7 @@ app.post('/api/store/submit-custom-title', authenticateToken, async (req: any, r
     if (userRes.rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const user = userRes.rows[0];
     if (!user.has_developer_chango) {
-      return res.status(403).json({ error: '개발자의 창호 아이템을 보유하고 있어야 합니다.' });
+      return res.status(403).json({ error: '개발자의 칭호 아이템을 보유하고 있어야 합니다.' });
     }
     await pool.query(
       `INSERT INTO admin_notifications (type, message, from_user_id, from_username) VALUES ($1, $2, $3, $4)`,

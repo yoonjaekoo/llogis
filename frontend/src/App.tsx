@@ -2725,7 +2725,7 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
 
       <TitleSection user={user} setUser={setUser} refreshKey={titleRefreshKey} />
 
-      {/* ─── 개발자의 창호 ─── */}
+      {/* ─── 개발자의 칭호 ─── */}
       {user?.has_developer_chango && (
         <CustomTitleChango user={user} setUser={setUser} />
       )}
@@ -2792,7 +2792,7 @@ const CustomTitleChango: React.FC<{ user: User | null; setUser: (u: User) => voi
   return (
     <div className="problem-card">
       <h3 style={{ margin: '0 0 0.5rem', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        🎫 개발자의 창호
+        🎫 개발자의 칭호
       </h3>
       <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', margin: '0 0 1rem' }}>
         원하는 맞춤형 칭호 문구를 입력하면 관리자에게 전송됩니다. 관리자가 확인 후 적용해드립니다!
@@ -3379,9 +3379,6 @@ const Shop: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ use
     } else if (itemId === 'firework_effect') {
       url = '/api/store/buy-firework-effect';
       cost = 100;
-    } else if (itemId === 'developer_love') {
-      url = '/api/store/buy-developer-love';
-      cost = 1000;
     } else if (itemId === 'developer_chango') {
       url = '/api/store/buy-developer-chango';
       cost = 500;
@@ -3392,7 +3389,7 @@ const Shop: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ use
     });
     const data = await res.json();
     if (res.ok) {
-      const msg = itemId === 'streak_repair' ? '스트릭이 복구되었습니다.' : itemId === 'firework_effect' ? '폭죽 이펙트가 활성화되었습니다.' : itemId === 'developer_love' ? '💕 개발자에게 사랑이 전달되었습니다!' : '🎫 개발자의 창호를 구매했습니다! 프로필에서 칭호를 입력하세요.';
+      const msg = itemId === 'streak_repair' ? '스트릭이 복구되었습니다.' : itemId === 'firework_effect' ? '폭죽 이펙트가 활성화되었습니다.' : '🎫 개발자의 칭호를 구매했습니다! 프로필에서 칭호를 입력하세요.';
       setMessage(`✅ 구매 완료! ${msg}`);
       const updatedUser = { ...user!, tokens: (user!.tokens || 0) - cost };
       if (itemId === 'streak_repair') {
