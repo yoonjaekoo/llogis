@@ -1686,11 +1686,18 @@ app.get('/api/problems/templates/:id', async (req: Request, res: Response) => {
 app.post('/api/problems/templates/generate', authenticateToken, async (req: any, res: Response) => {
   if (!(await canGenerateProblems(req.user.id))) return res.status(403).json({ error: '문제 생성 권한이 없습니다.' });
   try {
-    const { templateId, unit, concept, count = 1 } = req.body;
+    const { templateId, templateIds, unit, concept, count = 1 } = req.body;
     const generationCount = Math.min(50, Math.max(1, parseInt(count) || 1));
 
-    let problems;
-    if (templateId) {
+    let problems: any[] = [];
+    if (Array.isArray(templateIds) && templateIds.length > 0) {
+      const perTemplate = Math.max(1, Math.floor(generationCount / templateIds.length));
+      for (const tid of templateIds) {
+        const template = getTemplateById(tid as string);
+        if (template) problems.push(...batchGenerate(template, perTemplate));
+      }
+      if (problems.length === 0) return res.status(404).json({ error: '선택한 템플릿을 찾을 수 없습니다.' });
+    } else if (templateId) {
       const template = getTemplateById(templateId as string);
       if (!template) return res.status(404).json({ error: 'Template not found' });
       problems = batchGenerate(template, generationCount);

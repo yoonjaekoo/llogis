@@ -2928,7 +2928,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
   const [templates, setTemplates] = useState<any[]>([]);
   const [units, setUnits] = useState<string[]>([]);
   const [concepts, setConcepts] = useState<string[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
   const [selectedUnit, setSelectedUnit] = useState<string>('');
   const [selectedConcept, setSelectedConcept] = useState<string>('');
   const [page, setPage] = useState(1);
@@ -3068,7 +3068,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
   const confirmGenerateTemplate = () => {
     const token = localStorage.getItem('token');
     const body: any = { count: generationCount };
-    if (selectedTemplateId) body.templateId = selectedTemplateId;
+    if (selectedTemplateIds.length > 0) body.templateIds = selectedTemplateIds;
     else if (selectedUnit) body.unit = selectedUnit;
     else if (selectedConcept) body.concept = selectedConcept;
     fetch('/api/problems/templates/generate', {
@@ -3283,11 +3283,11 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
               <>
                 <p style={{ marginBottom: '1rem', opacity: 0.8, fontSize: '0.9rem' }}>템플릿을 선택하거나 단원/개념으로 필터링하세요.</p>
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.8rem' }}>
-                  <select value={selectedUnit} onChange={e => { setSelectedUnit(e.target.value); setSelectedConcept(''); setSelectedTemplateId(''); }} style={{ flex: 1, padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontSize: '0.8rem' }}>
+                  <select value={selectedUnit} onChange={e => { setSelectedUnit(e.target.value); setSelectedConcept(''); }} style={{ flex: 1, padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontSize: '0.8rem' }}>
                     <option value="">전체 단원</option>
                     {units.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
-                  <select value={selectedConcept} onChange={e => { setSelectedConcept(e.target.value); setSelectedTemplateId(''); }} style={{ flex: 1, padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontSize: '0.8rem' }}>
+                  <select value={selectedConcept} onChange={e => { setSelectedConcept(e.target.value); }} style={{ flex: 1, padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontSize: '0.8rem' }}>
                     <option value="">전체 개념</option>
                     {concepts.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
@@ -3296,24 +3296,30 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
                   {templates
                     .filter(t => !selectedUnit || t.unit === selectedUnit)
                     .filter(t => !selectedConcept || t.concept === selectedConcept)
-                    .map(t => (
-                      <label key={t.id} style={{
-                        display: 'flex', alignItems: 'center', gap: '0.4rem',
-                        padding: '0.4rem 0.6rem', borderRadius: '0.4rem',
-                        background: selectedTemplateId === t.id ? 'var(--color-3)' : 'transparent',
-                        border: selectedTemplateId === t.id ? '1px solid var(--color-4)' : '1px solid var(--border)',
-                        cursor: 'pointer', fontSize: '0.8rem'
-                      }}>
-                        <input
-                          type="radio"
-                          name="template"
-                          checked={selectedTemplateId === t.id}
-                          onChange={() => setSelectedTemplateId(t.id)}
-                          style={{ accentColor: 'var(--color-4)' }}
-                        />
-                        <span><strong>{t.title}</strong> <span style={{ opacity: 0.6, fontSize: '0.75rem' }}>({t.id})</span></span>
-                      </label>
-                    ))}
+                    .map(t => {
+                      const isChecked = selectedTemplateIds.includes(t.id);
+                      return (
+                        <label key={t.id} style={{
+                          display: 'flex', alignItems: 'center', gap: '0.4rem',
+                          padding: '0.4rem 0.6rem', borderRadius: '0.4rem',
+                          background: isChecked ? 'var(--color-3)' : 'transparent',
+                          border: isChecked ? '1px solid var(--color-4)' : '1px solid var(--border)',
+                          cursor: 'pointer', fontSize: '0.8rem'
+                        }}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              setSelectedTemplateIds(prev =>
+                                prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
+                              );
+                            }}
+                            style={{ accentColor: 'var(--color-4)' }}
+                          />
+                          <span><strong>{t.title}</strong> <span style={{ opacity: 0.6, fontSize: '0.75rem' }}>({t.id})</span></span>
+                        </label>
+                      );
+                    })}
                 </div>
               </>
             )}
@@ -3331,7 +3337,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
               <button
-                onClick={() => { setShowGenerateModal(false); setSelectedTags([]); setGenerationCount(5); setTemplateMode(false); setSelectedTemplateId(''); setSelectedUnit(''); setSelectedConcept(''); }}
+                onClick={() => { setShowGenerateModal(false); setSelectedTags([]); setGenerationCount(5); setTemplateMode(false); setSelectedTemplateIds([]); setSelectedUnit(''); setSelectedConcept(''); }}
                 className="btn" style={{ background: 'var(--text-muted)', color: 'white', width: 'auto' }}
               >
                 취소
