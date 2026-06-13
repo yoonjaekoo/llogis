@@ -48,7 +48,7 @@ CREATE TABLE problem_tags (
 CREATE TABLE submissions (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    problem_id INTEGER REFERENCES problems(id) ON DELETE CASCADE,
+    problem_id INTEGER REFERENCES problems(id) ON DELETE SET NULL,
     is_correct BOOLEAN NOT NULL,
     user_answer VARCHAR(255),
     submitted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

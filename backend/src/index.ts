@@ -108,7 +108,9 @@ const ensureSchema = async () => {
   await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS is_custom BOOLEAN DEFAULT FALSE');
   await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS custom_reward_rating FLOAT DEFAULT 0.0');
   await pool.query("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS is_streak_repair BOOLEAN DEFAULT FALSE");
-  await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id) ON DELETE SET NULL');
+  // Drop the CASCADE constraint and recreate with SET NULL (submissions survive problem deletion)
+  await pool.query('ALTER TABLE submissions DROP CONSTRAINT IF EXISTS submissions_problem_id_fkey');
+  await pool.query('ALTER TABLE submissions ADD CONSTRAINT submissions_problem_id_fkey FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE SET NULL');
   await pool.query("UPDATE users SET can_generate_problems = TRUE WHERE username = 'admin'");
   await pool.query("INSERT INTO tags (name) VALUES ('이차방정식') ON CONFLICT (name) DO NOTHING");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_title VARCHAR(100) DEFAULT ''");
@@ -1416,7 +1418,7 @@ app.get('/api/problems', async (req: Request, res: Response) => {
     const total = parseInt(countRes.rows[0].count);
 
     let query = `
-      SELECT p.id, p.title, p.content, p.current_difficulty, p.is_custom, p.custom_reward_rating, p.created_by,
+      SELECT p.id, p.title, p.content, p.current_difficulty, p.is_custom, p.custom_reward_rating,
              COALESCE(NULLIF(array_agg(t.name), '{NULL}'), '{}') as tags
       FROM problems p
       LEFT JOIN problem_tags pt ON p.id = pt.problem_id
@@ -1470,8 +1472,8 @@ app.post('/api/problems/custom', authenticateToken, async (req: any, res: Respon
 
   try {
     const result = await pool.query(
-      'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type, is_custom, custom_reward_rating, created_by) VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8) RETURNING id',
-      [title, content, answer, ratingReward, 'Calculation', true, parseFloat(ratingReward), req.user.id]
+      'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type, is_custom, custom_reward_rating) VALUES ($1, $2, $3, $4, $4, $5, $6, $7) RETURNING id',
+      [title, content, answer, ratingReward, 'Calculation', true, parseFloat(ratingReward)]
     );
     const problemId = result.rows[0].id;
     for (const tagName of tags) {
@@ -1627,8 +1629,8 @@ app.post('/api/problems/generate-nim', authenticateToken, async (req: any, res: 
 
     for (const p of generatedProblems) {
       const result = await pool.query(
-        'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type, created_by) VALUES ($1, $2, $3, $4, $4, $5, $6) RETURNING id',
-        [p.title, p.content, p.answer, p.difficulty, 'Calculation', userId]
+        'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type) VALUES ($1, $2, $3, $4, $4, $5) RETURNING id',
+        [p.title, p.content, p.answer, p.difficulty, 'Calculation']
       );
       const problemId = result.rows[0].id;
 
@@ -1658,8 +1660,8 @@ app.post('/api/problems/generate', authenticateToken, async (req: any, res: Resp
     for (let i = 0; i < generationCount; i++) {
       const p = generateProblem(tags);
       const result = await pool.query(
-        'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
-        [p.title, p.content, p.answer, p.difficulty, p.difficulty, 'Calculation', req.user.id]
+        'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+        [p.title, p.content, p.answer, p.difficulty, p.difficulty, 'Calculation']
       );
       const problemId = result.rows[0].id;
       
@@ -1740,8 +1742,8 @@ app.post('/api/problems/templates/generate', authenticateToken, async (req: any,
     const newProblems = [];
     for (const p of problems) {
       const result = await pool.query(
-        'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
-        [p.title, p.problem, String(p.answer), p.difficulty, p.difficulty, 'Calculation', req.user.id],
+        'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+        [p.title, p.problem, String(p.answer), p.difficulty, p.difficulty, 'Calculation'],
       );
       const problemId = result.rows[0].id;
       newProblems.push({ id: problemId, title: p.title, content: p.problem, difficulty: p.difficulty, answer: p.answer });
@@ -1761,33 +1763,6 @@ app.post('/api/problems/templates/reload', authenticateToken, async (req: any, r
     res.json({ message: '템플릿이 다시 로드되었습니다.' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to reload templates' });
-  }
-});
-
-// Problem deletion (creator or admin)
-app.delete('/api/problems/:id', authenticateToken, async (req: any, res: Response) => {
-  const { id } = req.params;
-  const userId = req.user.id;
-  const isAdmin = req.user.username === 'admin';
-
-  try {
-    // Check problem exists and get creator
-    const problemRes = await pool.query('SELECT created_by FROM problems WHERE id = $1', [id]);
-    if (problemRes.rows.length === 0) return res.status(404).json({ error: '문제를 찾을 수 없습니다.' });
-    const problem = problemRes.rows[0];
-
-    // Only creator or admin can delete
-    if (!isAdmin && problem.created_by !== userId) {
-      return res.status(403).json({ error: '이 문제를 삭제할 권한이 없습니다.' });
-    }
-
-    // Delete submissions first, then problem (CASCADE handles it but explicit for clarity)
-    await pool.query('DELETE FROM submissions WHERE problem_id = $1', [id]);
-    await pool.query('DELETE FROM problems WHERE id = $1', [id]);
-    res.json({ message: '문제가 삭제되었습니다.' });
-  } catch (err) {
-    console.error('Failed to delete problem:', err);
-    res.status(500).json({ error: '문제 삭제에 실패했습니다.' });
   }
 });
 
@@ -1844,7 +1819,6 @@ app.post('/api/admin/cleanup-tags', authenticateToken, async (req: any, res: Res
 
       const problemIds = await pool.query('SELECT problem_id FROM problem_tags WHERE tag_id = $1', [tagId]);
       for (const row of problemIds.rows) {
-        await pool.query('DELETE FROM submissions WHERE problem_id = $1', [row.problem_id]);
         await pool.query('DELETE FROM problems WHERE id = $1', [row.problem_id]);
         deletedCount++;
       }
@@ -1930,10 +1904,10 @@ app.delete('/api/admin/problems/:id', authenticateToken, async (req: any, res: R
   const { id } = req.params;
 
   try {
-    await pool.query('DELETE FROM submissions WHERE problem_id = $1', [id]);
     await pool.query('DELETE FROM problems WHERE id = $1', [id]);
     res.json({ message: '문제가 삭제되었습니다.' });
   } catch (err) {
+    console.error('Failed to delete problem:', err);
     res.status(500).json({ error: 'Failed to delete problem' });
   }
 });
@@ -1946,8 +1920,8 @@ app.post('/api/admin/seed', authenticateToken, async (req: any, res: Response) =
     for (let i = 0; i < 10; i++) {
         const p = generateProblem();
         const result = await pool.query(
-            'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
-            [p.title, p.content, p.answer, p.difficulty, p.difficulty, 'Calculation', req.user.id]
+            'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+            [p.title, p.content, p.answer, p.difficulty, p.difficulty, 'Calculation']
         );
         generated.push(result.rows[0].id);
     }
