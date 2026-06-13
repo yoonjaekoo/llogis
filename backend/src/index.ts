@@ -1896,8 +1896,9 @@ app.post('/api/admin/reset', authenticateToken, async (req: any, res: Response) 
   if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
   
   try {
-    await pool.query('TRUNCATE problems, submissions RESTART IDENTITY CASCADE');
-    res.json({ message: 'Database reset successfully (all problems and submissions cleared)' });
+    await pool.query('DELETE FROM problems');
+    await pool.query("ALTER SEQUENCE problems_id_seq RESTART WITH 1");
+    res.json({ message: '모든 문제가 삭제되었습니다. (제출 기록은 유지됩니다)' });
   } catch (err) {
     res.status(500).json({ error: 'Database reset failed' });
   }

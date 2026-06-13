@@ -1855,7 +1855,7 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
 
           <div style={{ padding: '1.5rem', background: 'rgba(255, 118, 117, 0.1)', border: '1px solid #ff7675', borderRadius: '1rem' }}>
             <h3 style={{ marginBottom: '1rem', color: '#ff7675' }}>위험 구역</h3>
-            <p style={{ marginBottom: '1.5rem', opacity: 0.8 }}>모든 문제와 사용자의 제출 기록을 삭제하고 초기화합니다.</p>
+            <p style={{ marginBottom: '1.5rem', opacity: 0.8 }}>모든 문제를 삭제하고 초기화합니다. (제출 기록은 유지됩니다)</p>
             <button onClick={handleReset} className="btn" style={{ background: '#ff7675', color: 'white' }}>
               데이터베이스 초기화
             </button>
