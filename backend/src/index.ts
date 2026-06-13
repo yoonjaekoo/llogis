@@ -1714,7 +1714,7 @@ app.post('/api/problems/templates/generate', authenticateToken, async (req: any,
         [p.title, p.problem, String(p.answer), p.difficulty, p.difficulty, 'Calculation'],
       );
       const problemId = result.rows[0].id;
-      newProblems.push({ id: problemId, title: p.title, content: p.problem, difficulty: p.difficulty, answer: p.answer });
+      newProblems.push({ id: problemId, title: p.title, content: p.problem, difficulty: p.difficulty, answer: p.answer, tags: [], current_difficulty: p.difficulty });
     }
 
     res.json({ message: `${problems.length}개의 문제가 생성되었습니다!`, problems: newProblems });

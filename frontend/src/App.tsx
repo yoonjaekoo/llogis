@@ -40,23 +40,37 @@ interface User {
 }
 
 // LaTeX Helper
+const SafeBlockMath = ({ math, index }: { math: string; index: number }) => {
+  try {
+    return (
+      <div key={index} className="block-math-wrapper">
+        <BlockMath math={`\\displaystyle ${math}`} />
+      </div>
+    );
+  } catch {
+    return <div key={index} className="block-math-wrapper"><pre style={{ whiteSpace: 'pre-wrap', textAlign: 'left', fontSize: '1rem' }}>{math}</pre></div>;
+  }
+};
+
+const SafeInlineMath = ({ math, index }: { math: string; index: number }) => {
+  try {
+    return <InlineMath key={index} math={math} />;
+  } catch {
+    return <code key={index}>{math}</code>;
+  }
+};
+
 const renderMath = (content: any) => {
-  if (typeof content !== 'string') return null;
+  if (typeof content !== 'string' || !content) return null;
   const sanitizedContent = content.replace(/\\\\/g, '\\');
   const parts = sanitizedContent.split(/(\$\$.*?\$\$|\$.*?\$)/gs);
 
   return parts.map((part, index) => {
     if (part.startsWith('$$') && part.endsWith('$$')) {
-      const math = part.slice(2, -2).trim();
-      return (
-        <div key={index} className="block-math-wrapper">
-          <BlockMath math={`\\displaystyle ${math}`} />
-        </div>
-      );
+      return <SafeBlockMath key={index} math={part.slice(2, -2).trim()} index={index} />;
     }
     if (part.startsWith('$') && part.endsWith('$')) {
-      const math = part.slice(1, -1).trim();
-      return <InlineMath key={index} math={math} />;
+      return <SafeInlineMath key={index} math={part.slice(1, -1).trim()} index={index} />;
     }
     return part.split('\n').map((line, i) => (
       <React.Fragment key={`${index}-${i}`}>
@@ -3293,33 +3307,61 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
                   </select>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '1.5rem', maxHeight: '180px', overflowY: 'auto' }}>
-                  {templates
-                    .filter(t => !selectedUnit || t.unit === selectedUnit)
-                    .filter(t => !selectedConcept || t.concept === selectedConcept)
-                    .map(t => {
-                      const isChecked = selectedTemplateIds.includes(t.id);
-                      return (
-                        <label key={t.id} style={{
+                  {(() => {
+                    const filteredTemplates = templates
+                      .filter(t => !selectedUnit || t.unit === selectedUnit)
+                      .filter(t => !selectedConcept || t.concept === selectedConcept);
+                    const filteredIds = filteredTemplates.map(t => t.id);
+                    const allSelected = filteredIds.length > 0 && filteredIds.every(id => selectedTemplateIds.includes(id));
+                    return (
+                      <>
+                        <label style={{
                           display: 'flex', alignItems: 'center', gap: '0.4rem',
                           padding: '0.4rem 0.6rem', borderRadius: '0.4rem',
-                          background: isChecked ? 'var(--color-3)' : 'transparent',
-                          border: isChecked ? '1px solid var(--color-4)' : '1px solid var(--border)',
-                          cursor: 'pointer', fontSize: '0.8rem'
+                          cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700,
+                          border: '1px dashed var(--border)', background: 'var(--card-bg)'
                         }}>
                           <input
                             type="checkbox"
-                            checked={isChecked}
+                            checked={allSelected}
                             onChange={() => {
-                              setSelectedTemplateIds(prev =>
-                                prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
-                              );
+                              if (allSelected) {
+                                setSelectedTemplateIds(prev => prev.filter(id => !filteredIds.includes(id)));
+                              } else {
+                                setSelectedTemplateIds(prev => [...new Set([...prev, ...filteredIds])]);
+                              }
                             }}
                             style={{ accentColor: 'var(--color-4)' }}
                           />
-                          <span><strong>{t.title}</strong> <span style={{ opacity: 0.6, fontSize: '0.75rem' }}>({t.id})</span></span>
+                          <span>일괄 선택 ({filteredIds.length}개)</span>
                         </label>
-                      );
-                    })}
+                        {filteredTemplates.map(t => {
+                          const isChecked = selectedTemplateIds.includes(t.id);
+                          return (
+                            <label key={t.id} style={{
+                              display: 'flex', alignItems: 'center', gap: '0.4rem',
+                              padding: '0.4rem 0.6rem', borderRadius: '0.4rem',
+                              background: isChecked ? 'var(--color-3)' : 'transparent',
+                              border: isChecked ? '1px solid var(--color-4)' : '1px solid var(--border)',
+                              cursor: 'pointer', fontSize: '0.8rem'
+                            }}>
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {
+                                  setSelectedTemplateIds(prev =>
+                                    prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
+                                  );
+                                }}
+                                style={{ accentColor: 'var(--color-4)' }}
+                              />
+                              <span><strong>{t.title}</strong> <span style={{ opacity: 0.6, fontSize: '0.75rem' }}>({t.id})</span></span>
+                            </label>
+                          );
+                        })}
+                      </>
+                    );
+                  })()}
                 </div>
               </>
             )}
