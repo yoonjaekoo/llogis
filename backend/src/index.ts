@@ -1399,7 +1399,7 @@ app.get('/api/problems', async (req: Request, res: Response) => {
     
     query += `
       GROUP BY p.id
-      ORDER BY p.id ASC
+      ORDER BY p.id DESC
       LIMIT $${nextIdx++} OFFSET $${nextIdx++}
     `;
     queryParams.push(limitNum, offset);
