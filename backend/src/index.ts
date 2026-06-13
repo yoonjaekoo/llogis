@@ -107,6 +107,7 @@ const ensureSchema = async () => {
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS longest_streak INTEGER DEFAULT 0");
   await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS is_custom BOOLEAN DEFAULT FALSE');
   await pool.query("UPDATE problems SET is_custom = FALSE WHERE is_custom IS NULL");
+  await pool.query("ALTER TABLE problems ALTER COLUMN is_custom SET DEFAULT FALSE");
   await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS custom_reward_rating FLOAT DEFAULT 0.0');
   await pool.query("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS is_streak_repair BOOLEAN DEFAULT FALSE");
   // Drop the CASCADE constraint and recreate with SET NULL (submissions survive problem deletion)
