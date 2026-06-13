@@ -8,6 +8,17 @@ import { processSubmission, getTier } from './rating/ratingService';
 import { checkAndRepairStreak, handleDailyReset } from './rating/gameSystemService';
 import { generateProblem } from './problemGenerator';
 import { generateNimProblems } from './nimGenerator';
+import {
+  getAllTemplates,
+  getTemplateById,
+  getUnits,
+  getConcepts,
+  generateProblems as generateTemplateProblems,
+  generateProblemById,
+  generateRandomProblem,
+  batchGenerate,
+  reloadTemplates,
+} from './templateProblemGenerator';
 import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
@@ -1658,6 +1669,91 @@ app.post('/api/problems/generate', authenticateToken, async (req: any, res: Resp
     res.status(500).json({ error: 'Failed to generate problems' });
   }
 });
+app.get('/api/problems/templates', async (_req: Request, res: Response) => {
+  try {
+    const templates = getAllTemplates().map((t) => ({
+      id: t.id,
+      unit: t.unit,
+      title: t.title,
+      difficulty: t.difficulty,
+      concepts: t.concepts,
+    }));
+    res.json(templates);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load templates' });
+  }
+});
+
+app.get('/api/problems/templates/units', async (_req: Request, res: Response) => {
+  try {
+    res.json(getUnits());
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load units' });
+  }
+});
+
+app.get('/api/problems/templates/concepts', async (_req: Request, res: Response) => {
+  try {
+    res.json(getConcepts());
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load concepts' });
+  }
+});
+
+app.get('/api/problems/templates/:id', async (req: Request, res: Response) => {
+  try {
+    const template = getTemplateById(req.params.id);
+    if (!template) return res.status(404).json({ error: 'Template not found' });
+    res.json(template);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load template' });
+  }
+});
+
+app.post('/api/problems/templates/generate', authenticateToken, async (req: any, res: Response) => {
+  if (!(await canGenerateProblems(req.user.id))) return res.status(403).json({ error: '문제 생성 권한이 없습니다.' });
+  try {
+    const { templateId, unit, concept, count = 1 } = req.body;
+    const generationCount = Math.min(50, Math.max(1, parseInt(count) || 1));
+
+    let problems;
+    if (templateId) {
+      const template = getTemplateById(templateId as string);
+      if (!template) return res.status(404).json({ error: 'Template not found' });
+      problems = batchGenerate(template, generationCount);
+    } else if (unit || concept) {
+      problems = generateTemplateProblems({ unit, concept, count: generationCount });
+    } else {
+      problems = generateTemplateProblems({ count: generationCount });
+    }
+
+    const newProblems = [];
+    for (const p of problems) {
+      const result = await pool.query(
+        'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+        [p.title, p.problem, String(p.answer), p.difficulty, p.difficulty, 'Calculation'],
+      );
+      const problemId = result.rows[0].id;
+      newProblems.push({ id: problemId, title: p.title, content: p.problem, difficulty: p.difficulty, answer: p.answer });
+    }
+
+    res.json({ message: `${problems.length}개의 문제가 생성되었습니다!`, problems: newProblems });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to generate problems from templates' });
+  }
+});
+
+app.post('/api/problems/templates/reload', authenticateToken, async (req: any, res: Response) => {
+  if (!(await canGenerateProblems(req.user.id))) return res.status(403).json({ error: '문제 생성 권한이 없습니다.' });
+  try {
+    reloadTemplates();
+    res.json({ message: '템플릿이 다시 로드되었습니다.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to reload templates' });
+  }
+});
+
 app.post('/api/submissions', authenticateToken, async (req: any, res: any) => {
   const { problemId, userAnswer } = req.body;
   const userId = req.user.id;

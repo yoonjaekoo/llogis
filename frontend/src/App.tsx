@@ -2916,6 +2916,13 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [generationCount, setGenerationCount] = useState(5);
   const [problemType, setProblemType] = useState<'normal' | 'custom'>('normal');
+  const [templateMode, setTemplateMode] = useState(false);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [units, setUnits] = useState<string[]>([]);
+  const [concepts, setConcepts] = useState<string[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [selectedUnit, setSelectedUnit] = useState<string>('');
+  const [selectedConcept, setSelectedConcept] = useState<string>('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loadingProblems, setLoadingProblems] = useState(false);
@@ -2938,6 +2945,25 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
         if (Array.isArray(data)) {
           setAllTags(data);
         }
+      });
+  }, []);
+
+  // Fetch template metadata
+  useEffect(() => {
+    fetch('/api/problems/templates')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setTemplates(data);
+      });
+    fetch('/api/problems/templates/units')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setUnits(data);
+      });
+    fetch('/api/problems/templates/concepts')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setConcepts(data);
       });
   }, []);
 
@@ -3029,6 +3055,32 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
       setShowGenerateModal(false);
       setPage(1);
     });
+  };
+
+  const confirmGenerateTemplate = () => {
+    const token = localStorage.getItem('token');
+    const body: any = { count: generationCount };
+    if (selectedTemplateId) body.templateId = selectedTemplateId;
+    else if (selectedUnit) body.unit = selectedUnit;
+    else if (selectedConcept) body.concept = selectedConcept;
+    fetch('/api/problems/templates/generate', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.problems) {
+        setProblems(data.problems);
+        if (data.problems.length > 0) setSelectedProblemId(data.problems[0].id);
+      }
+      setShowGenerateModal(false);
+      setPage(1);
+    })
+    .catch(() => {});
   };
 
   const handleCreateCustom = async (e: React.FormEvent) => {
@@ -3186,31 +3238,78 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
             background: 'var(--card-bg)'
           }}>
             <h3 style={{ marginBottom: '1.5rem', color: 'var(--color-4)' }}>문제 생성</h3>
-            <p style={{ marginBottom: '1rem', opacity: 0.8, fontSize: '0.9rem' }}>생성할 문제 유형을 선택하세요.</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', marginBottom: '1.5rem' }}>
-              {allTags.map(tag => (
-                <label key={tag} style={{
-                  display: 'flex', alignItems: 'center', gap: '0.4rem',
-                  padding: '0.5rem 0.8rem', borderRadius: '0.5rem',
-                  background: selectedTags.includes(tag) ? 'var(--color-3)' : 'var(--card-bg)',
-                  border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.85rem'
-                }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedTags.includes(tag)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedTags([...selectedTags, tag]);
-                      } else {
-                        setSelectedTags(selectedTags.filter(t => t !== tag));
-                      }
-                    }}
-                    style={{ accentColor: 'var(--color-4)' }}
-                  />
-                  <span>{tag}</span>
-                </label>
-              ))}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+              <button onClick={() => setTemplateMode(false)} className="btn" style={{ width: 'auto', padding: '0.3rem 0.8rem', fontSize: '0.8rem', background: !templateMode ? 'var(--color-4)' : 'var(--card-bg)', color: !templateMode ? 'white' : 'var(--text-main)', border: '1px solid var(--border)', flex: 1 }}>태그 기반</button>
+              <button onClick={() => setTemplateMode(true)} className="btn" style={{ width: 'auto', padding: '0.3rem 0.8rem', fontSize: '0.8rem', background: templateMode ? 'var(--color-4)' : 'var(--card-bg)', color: templateMode ? 'white' : 'var(--text-main)', border: '1px solid var(--border)', flex: 1 }}>템플릿 기반</button>
             </div>
+
+            {!templateMode ? (
+              <>
+                <p style={{ marginBottom: '1rem', opacity: 0.8, fontSize: '0.9rem' }}>생성할 문제 유형을 선택하세요.</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', marginBottom: '1.5rem', maxHeight: '200px', overflowY: 'auto' }}>
+                  {allTags.map(tag => (
+                    <label key={tag} style={{
+                      display: 'flex', alignItems: 'center', gap: '0.4rem',
+                      padding: '0.5rem 0.8rem', borderRadius: '0.5rem',
+                      background: selectedTags.includes(tag) ? 'var(--color-3)' : 'var(--card-bg)',
+                      border: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.85rem'
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedTags.includes(tag)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedTags([...selectedTags, tag]);
+                          } else {
+                            setSelectedTags(selectedTags.filter(t => t !== tag));
+                          }
+                        }}
+                        style={{ accentColor: 'var(--color-4)' }}
+                      />
+                      <span>{tag}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <p style={{ marginBottom: '1rem', opacity: 0.8, fontSize: '0.9rem' }}>템플릿을 선택하거나 단원/개념으로 필터링하세요.</p>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.8rem' }}>
+                  <select value={selectedUnit} onChange={e => { setSelectedUnit(e.target.value); setSelectedConcept(''); setSelectedTemplateId(''); }} style={{ flex: 1, padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontSize: '0.8rem' }}>
+                    <option value="">전체 단원</option>
+                    {units.map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                  <select value={selectedConcept} onChange={e => { setSelectedConcept(e.target.value); setSelectedTemplateId(''); }} style={{ flex: 1, padding: '0.5rem', borderRadius: '0.4rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontSize: '0.8rem' }}>
+                    <option value="">전체 개념</option>
+                    {concepts.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '1.5rem', maxHeight: '180px', overflowY: 'auto' }}>
+                  {templates
+                    .filter(t => !selectedUnit || t.unit === selectedUnit)
+                    .filter(t => !selectedConcept || t.concept === selectedConcept)
+                    .map(t => (
+                      <label key={t.id} style={{
+                        display: 'flex', alignItems: 'center', gap: '0.4rem',
+                        padding: '0.4rem 0.6rem', borderRadius: '0.4rem',
+                        background: selectedTemplateId === t.id ? 'var(--color-3)' : 'transparent',
+                        border: selectedTemplateId === t.id ? '1px solid var(--color-4)' : '1px solid var(--border)',
+                        cursor: 'pointer', fontSize: '0.8rem'
+                      }}>
+                        <input
+                          type="radio"
+                          name="template"
+                          checked={selectedTemplateId === t.id}
+                          onChange={() => setSelectedTemplateId(t.id)}
+                          style={{ accentColor: 'var(--color-4)' }}
+                        />
+                        <span><strong>{t.title}</strong> <span style={{ opacity: 0.6, fontSize: '0.75rem' }}>({t.id})</span></span>
+                      </label>
+                    ))}
+                </div>
+              </>
+            )}
+
             <div style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', opacity: 0.75 }}>생성할 문제 수</label>
               <input
@@ -3224,12 +3323,12 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
               <button
-                onClick={() => { setShowGenerateModal(false); setSelectedTags([]); setGenerationCount(5); }}
+                onClick={() => { setShowGenerateModal(false); setSelectedTags([]); setGenerationCount(5); setTemplateMode(false); setSelectedTemplateId(''); setSelectedUnit(''); setSelectedConcept(''); }}
                 className="btn" style={{ background: 'var(--text-muted)', color: 'white', width: 'auto' }}
               >
                 취소
               </button>
-              <button onClick={confirmGenerate} className="btn" style={{ background: 'var(--color-2)', color: 'white', width: 'auto' }}>
+              <button onClick={templateMode ? confirmGenerateTemplate : confirmGenerate} className="btn" style={{ background: 'var(--color-2)', color: 'white', width: 'auto' }}>
                 {generationCount}개 생성
               </button>
             </div>
