@@ -16,6 +16,7 @@ interface Problem {
   tags: string[];
   custom_reward_rating?: number;
   is_custom?: boolean;
+  created_by?: number | null;
 }
 
 interface User {
@@ -1177,6 +1178,8 @@ const Ranking: React.FC = () => {
                     <div style={{ overflow: 'hidden' }}>
                       <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.username}</div>
                       <div style={{ fontSize: '0.8rem', color: tierColors[u.tier] }}>{u.tier}</div>
+                      {u.equipped_title && <div style={{ fontSize: '0.7rem', color: 'var(--color-4)', fontWeight: 700 }}>[{u.equipped_title}]</div>}
+                      {u.custom_title && <div style={{ fontSize: '0.7rem', color: '#ff6b9d', fontStyle: 'italic' }}>✨ {u.custom_title}</div>}
                     </div>
                   </div>
                 ))}
@@ -1195,6 +1198,7 @@ const Ranking: React.FC = () => {
                   <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-muted)' }}>
                     <th style={{ padding: '1rem' }}>순위</th>
                     <th style={{ padding: '1rem' }}>사용자</th>
+                    <th style={{ padding: '1rem' }}>칭호</th>
                     <th style={{ padding: '1rem' }}>티어</th>
                     <th style={{ padding: '1rem' }}>레이팅</th>
                   </tr>
@@ -1212,6 +1216,11 @@ const Ranking: React.FC = () => {
                         {i + 1 === 1 ? '🥇' : i + 1 === 2 ? '🥈' : i + 1 === 3 ? '🥉' : i + 1}
                       </td>
                       <td style={{ padding: '1.2rem 1rem', fontWeight: 600 }}>{u.username}</td>
+                      <td style={{ padding: '1.2rem 1rem', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {u.equipped_title && <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-4)' }}>[{u.equipped_title}]</div>}
+                        {u.custom_title && <div style={{ fontSize: '0.75rem', color: '#ff6b9d', fontStyle: 'italic' }}>✨ {u.custom_title}</div>}
+                        {!u.equipped_title && !u.custom_title && <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>-</span>}
+                      </td>
                       <td style={{ padding: '1.2rem 1rem' }}>
                         <span style={{ 
                           color: tierColors[u.tier], 
@@ -3083,6 +3092,27 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
     .catch(() => {});
   };
 
+  const handleDeleteProblem = async (problemId: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('정말 이 문제를 삭제하시겠습니까?\n제출 기록도 함께 삭제됩니다.')) return;
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`/api/problems/${problemId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (selectedProblemId === problemId) setSelectedProblemId(null);
+        fetchProblems();
+      } else {
+        alert(data.error || '삭제 실패');
+      }
+    } catch {
+      alert('삭제 중 오류가 발생했습니다.');
+    }
+  };
+
   const handleCreateCustom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || user.username !== 'admin') return;
@@ -3171,25 +3201,46 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
           {loadingProblems ? (
             <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>로딩 중...</div>
           ) : (
-            problems.map(p => (
-              <div 
-                key={p.id} 
-                onClick={() => setSelectedProblemId(p.id)}
-                style={{ 
-                  padding: '0.8rem 1rem', cursor: 'pointer', borderBottom: '1px solid var(--border)',
-                  background: selectedProblemId === p.id ? 'var(--color-3)' : 'transparent',
-                  color: selectedProblemId === p.id ? 'var(--color-4)' : 'inherit',
-                  fontWeight: selectedProblemId === p.id ? 800 : 400
-                }}
-              >
-                <div style={{ fontSize: '0.9rem' }}>{p.title}</div>
-                {!!p.custom_reward_rating && p.custom_reward_rating > 0 && (
-                  <div style={{ fontSize: '0.7rem', color: '#e6a800', marginTop: '0.2rem' }}>
-                    +{(p.custom_reward_rating as number).toLocaleString()} RP
+            problems.map(p => {
+              const canDelete = user && (user.username === 'admin' || p.created_by === user.id);
+              return (
+                <div 
+                  key={p.id} 
+                  onClick={() => setSelectedProblemId(p.id)}
+                  style={{ 
+                    padding: '0.8rem 1rem', cursor: 'pointer', borderBottom: '1px solid var(--border)',
+                    background: selectedProblemId === p.id ? 'var(--color-3)' : 'transparent',
+                    color: selectedProblemId === p.id ? 'var(--color-4)' : 'inherit',
+                    fontWeight: selectedProblemId === p.id ? 800 : 400,
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</div>
+                    {!!p.custom_reward_rating && p.custom_reward_rating > 0 && (
+                      <div style={{ fontSize: '0.7rem', color: '#e6a800', marginTop: '0.2rem' }}>
+                        +{(p.custom_reward_rating as number).toLocaleString()} RP
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            ))
+                  {canDelete && (
+                    <button
+                      onClick={(e) => handleDeleteProblem(p.id, e)}
+                      title="삭제"
+                      style={{
+                        background: 'none', border: 'none', color: '#ff4444', cursor: 'pointer',
+                        fontSize: '0.8rem', padding: '0.2rem 0.4rem', borderRadius: '0.3rem',
+                        opacity: 0.6, flexShrink: 0, marginLeft: '0.5rem'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                      onMouseLeave={e => e.currentTarget.style.opacity = '0.6'}
+                    >
+                      🗑
+                    </button>
+                  )}
+                </div>
+              );
+            })
           )}
           {!loadingProblems && problems.length === 0 && (
             <div style={{ padding: '2rem', textAlign: 'center' }}>
