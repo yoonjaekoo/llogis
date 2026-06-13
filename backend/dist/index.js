@@ -13,6 +13,7 @@ const ratingService_1 = require("./rating/ratingService");
 const gameSystemService_1 = require("./rating/gameSystemService");
 const problemGenerator_1 = require("./problemGenerator");
 const nimGenerator_1 = require("./nimGenerator");
+const templateProblemGenerator_1 = require("./templateProblemGenerator");
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const multer_1 = __importDefault(require("multer"));
@@ -82,9 +83,19 @@ const ensureSchema = async () => {
     await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS is_custom BOOLEAN DEFAULT FALSE');
     await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS custom_reward_rating FLOAT DEFAULT 0.0');
     await pool.query("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS is_streak_repair BOOLEAN DEFAULT FALSE");
+    // Drop the CASCADE constraint and recreate with SET NULL (submissions survive problem deletion)
+    await pool.query('ALTER TABLE submissions DROP CONSTRAINT IF EXISTS submissions_problem_id_fkey');
+    await pool.query('ALTER TABLE submissions ADD CONSTRAINT submissions_problem_id_fkey FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE SET NULL');
     await pool.query("UPDATE users SET can_generate_problems = TRUE WHERE username = 'admin'");
     await pool.query("INSERT INTO tags (name) VALUES ('이차방정식') ON CONFLICT (name) DO NOTHING");
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_title VARCHAR(100) DEFAULT ''");
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS problems_solved INTEGER DEFAULT 0");
+    // Initialize problems_solved from existing correct submissions
+    await pool.query(`
+    UPDATE users u SET problems_solved = (
+      SELECT COUNT(*) FROM submissions s WHERE s.user_id = u.id AND s.is_correct = true
+    ) WHERE u.problems_solved = 0
+  `);
     await pool.query(`
     CREATE TABLE IF NOT EXISTS admin_notifications (
       id SERIAL PRIMARY KEY,
@@ -260,6 +271,7 @@ app.post('/api/auth/login', async (req, res) => {
                 xp: updatedUser.xp,
                 quests: updatedUser.quests,
                 can_generate_problems: updatedUser.can_generate_problems,
+                problems_solved: parseInt(updatedUser.problems_solved) || 0,
                 equipped_title: equippedTitleName || updatedUser.equipped_title,
                 streakRepaired: repairResult.repaired,
                 streakRepairedFlag: updatedUser.streak_repaired,
@@ -287,7 +299,7 @@ app.get('/api/users/profile', authenticateToken, async (req, res) => {
         await (0, gameSystemService_1.handleDailyReset)(userId, client);
         const repairResult = await (0, gameSystemService_1.checkAndRepairStreak)(userId, client);
         await client.query('COMMIT');
-        const userResult = await client.query('SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, equipped_title, created_at, has_firework_effect, has_developer_chango, last_active_date, longest_streak, custom_title FROM users WHERE id = $1', [userId]);
+        const userResult = await client.query('SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, equipped_title, created_at, has_firework_effect, has_developer_chango, last_active_date, longest_streak, custom_title, problems_solved FROM users WHERE id = $1', [userId]);
         if (userResult.rows.length === 0) {
             client.release();
             return res.status(404).json({ error: 'User not found' });
@@ -300,9 +312,11 @@ app.get('/api/users/profile', authenticateToken, async (req, res) => {
             if (titleRes.rows.length > 0)
                 equippedTitleName = titleRes.rows[0].name;
         }
-        // Get submission statistics
-        const statsResult = await client.query('SELECT COUNT(*) as total, SUM(CASE WHEN is_correct THEN 1 ELSE 0 END) as correct FROM submissions WHERE user_id = $1', [userId]);
+        // Get submission statistics (total submissions for accuracy calculation)
+        const statsResult = await client.query('SELECT COUNT(*) as total FROM submissions WHERE user_id = $1', [userId]);
         const stats = statsResult.rows[0];
+        const totalSubmissions = parseInt(stats.total);
+        const correctSubmissions = parseInt(user.problems_solved) || 0;
         res.json({
             user: {
                 ...user,
@@ -312,9 +326,9 @@ app.get('/api/users/profile', authenticateToken, async (req, res) => {
                 streakRepairedFlag: user.streak_repaired
             },
             stats: {
-                totalSubmissions: parseInt(stats.total),
-                correctSubmissions: parseInt(stats.correct || 0),
-                accuracy: stats.total > 0 ? (stats.correct / stats.total) * 100 : 0
+                totalSubmissions,
+                correctSubmissions,
+                accuracy: totalSubmissions > 0 ? (correctSubmissions / totalSubmissions) * 100 : 0
             }
         });
     }
@@ -372,7 +386,7 @@ app.get('/api/users/search', async (req, res) => {
     if (!q)
         return res.json([]);
     try {
-        const result = await pool.query('SELECT id, username, rating, profile_image_url, bio, equipped_title FROM users WHERE username ILIKE $1 ORDER BY rating DESC LIMIT 10', [`%${q}%`]);
+        const result = await pool.query('SELECT id, username, rating, profile_image_url, bio, equipped_title, custom_title FROM users WHERE username ILIKE $1 ORDER BY rating DESC LIMIT 10', [`%${q}%`]);
         // Resolve equipped title display names
         const titleIds = [...new Set(result.rows.filter((r) => r.equipped_title).map((r) => r.equipped_title))];
         const titleMap = {};
@@ -385,6 +399,7 @@ app.get('/api/users/search', async (req, res) => {
         const users = result.rows.map((u) => ({
             ...u,
             equipped_title: u.equipped_title ? (titleMap[u.equipped_title] || u.equipped_title) : '',
+            custom_title: u.custom_title || '',
             tier: (0, ratingService_1.getTier)(u.rating)
         }));
         res.json(users);
@@ -396,7 +411,7 @@ app.get('/api/users/search', async (req, res) => {
 app.get('/api/users/:id/profile', async (req, res) => {
     const { id } = req.params;
     try {
-        const userResult = await pool.query('SELECT id, username, rating, profile_image_url, bio, equipped_title, streak, tokens, xp, created_at FROM users WHERE id = $1', [id]);
+        const userResult = await pool.query('SELECT id, username, rating, profile_image_url, bio, equipped_title, streak, tokens, xp, created_at, problems_solved FROM users WHERE id = $1', [id]);
         if (userResult.rows.length === 0)
             return res.status(404).json({ error: 'User not found' });
         const user = userResult.rows[0];
@@ -408,8 +423,10 @@ app.get('/api/users/:id/profile', async (req, res) => {
                 equippedTitleName = titleRes.rows[0].name;
         }
         // Get submission statistics
-        const statsResult = await pool.query('SELECT COUNT(*) as total, SUM(CASE WHEN is_correct THEN 1 ELSE 0 END) as correct FROM submissions WHERE user_id = $1', [id]);
+        const statsResult = await pool.query('SELECT COUNT(*) as total FROM submissions WHERE user_id = $1', [id]);
         const stats = statsResult.rows[0];
+        const totalSubmissions = parseInt(stats.total);
+        const correctSubmissions = parseInt(user.problems_solved) || 0;
         res.json({
             user: {
                 ...user,
@@ -417,9 +434,9 @@ app.get('/api/users/:id/profile', async (req, res) => {
                 tier: (0, ratingService_1.getTier)(user.rating)
             },
             stats: {
-                totalSubmissions: parseInt(stats.total),
-                correctSubmissions: parseInt(stats.correct || 0),
-                accuracy: stats.total > 0 ? (stats.correct / stats.total) * 100 : 0
+                totalSubmissions,
+                correctSubmissions,
+                accuracy: totalSubmissions > 0 ? (correctSubmissions / totalSubmissions) * 100 : 0
             }
         });
     }
@@ -445,14 +462,8 @@ app.get('/api/store/items', authenticateToken, async (req, res) => {
             description: '정답 시 화면 중앙에서 폭죽 파티클 이펙트가 재생됩니다.'
         },
         {
-            id: 'developer_love',
-            name: '💕 개발자의 사랑',
-            cost: 1000,
-            description: '개발자에게 사랑을 전하면 맞춤형 칭호를 전합니다!'
-        },
-        {
             id: 'developer_chango',
-            name: '🎫 개발자의 창호',
+            name: '🎫 개발자의 칭호',
             cost: 500,
             description: '구매 후 프로필에서 원하는 맞춤형 칭호 문구를 관리자에게 전송하세요!'
         }
@@ -520,38 +531,7 @@ app.post('/api/store/buy-firework-effect', authenticateToken, async (req, res) =
         client.release();
     }
 });
-// Purchase developer love item
-app.post('/api/store/buy-developer-love', authenticateToken, async (req, res) => {
-    const userId = req.user.id;
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        const userRes = await client.query('SELECT tokens, username FROM users WHERE id = $1 FOR UPDATE', [userId]);
-        if (userRes.rows.length === 0) {
-            client.release();
-            return res.status(404).json({ error: 'User not found' });
-        }
-        const user = userRes.rows[0];
-        if (user.tokens < 1000) {
-            client.release();
-            return res.status(400).json({ error: '토큰이 부족합니다. (필요: 1000 토큰)' });
-        }
-        // Deduct tokens
-        await client.query('UPDATE users SET tokens = tokens - 1000 WHERE id = $1', [userId]);
-        // Create admin notification
-        await client.query(`INSERT INTO admin_notifications (type, message, from_user_id, from_username) VALUES ($1, $2, $3, $4)`, ['developer_love', `💕 ${user.username}님이 개발자의 사랑을 구매했습니다!`, userId, user.username]);
-        await client.query('COMMIT');
-        res.json({ message: '💕 개발자의 사랑을 전달했습니다! 어드민에게 알림이 전송되었습니다.' });
-    }
-    catch (err) {
-        await client.query('ROLLBACK').catch(() => { });
-        res.status(500).json({ error: '상점 구매 중 오류가 발생했습니다.' });
-    }
-    finally {
-        client.release();
-    }
-});
-// Purchase developer chango item
+// Purchase developer title item
 app.post('/api/store/buy-developer-chango', authenticateToken, async (req, res) => {
     const userId = req.user.id;
     const client = await pool.connect();
@@ -573,7 +553,7 @@ app.post('/api/store/buy-developer-chango', authenticateToken, async (req, res) 
         }
         await client.query('UPDATE users SET tokens = tokens - 500, has_developer_chango = TRUE WHERE id = $1', [userId]);
         await client.query('COMMIT');
-        res.json({ message: '🎫 개발자의 창호를 구매했습니다! 프로필에서 맞춤형 칭호를 입력하세요.' });
+        res.json({ message: '🎫 개발자의 칭호를 구매했습니다! 프로필에서 맞춤형 칭호를 입력하세요.' });
     }
     catch (err) {
         await client.query('ROLLBACK').catch(() => { });
@@ -599,7 +579,7 @@ app.post('/api/store/submit-custom-title', authenticateToken, async (req, res) =
             return res.status(404).json({ error: 'User not found' });
         const user = userRes.rows[0];
         if (!user.has_developer_chango) {
-            return res.status(403).json({ error: '개발자의 창호 아이템을 보유하고 있어야 합니다.' });
+            return res.status(403).json({ error: '개발자의 칭호 아이템을 보유하고 있어야 합니다.' });
         }
         await pool.query(`INSERT INTO admin_notifications (type, message, from_user_id, from_username) VALUES ($1, $2, $3, $4)`, ['custom_title_request', `🎫 ${user.username}님이 맞춤형 칭호를 요청했습니다: "${customTitle.trim()}"`, userId, user.username]);
         res.json({ message: '맞춤형 칭호 요청이 전송되었습니다.' });
@@ -1181,9 +1161,18 @@ app.post('/api/users/change-password', authenticateToken, async (req, res) => {
 });
 app.get('/api/users/ranking', async (req, res) => {
     try {
-        const result = await pool.query("SELECT id, username, rating FROM users WHERE username != 'admin' ORDER BY rating DESC LIMIT 50");
+        const result = await pool.query("SELECT id, username, rating, profile_image_url, equipped_title, custom_title FROM users WHERE username != 'admin' ORDER BY rating DESC LIMIT 50");
+        // Resolve equipped title display names
+        const titleIds = [...new Set(result.rows.filter((r) => r.equipped_title).map((r) => r.equipped_title))];
+        const titleMap = {};
+        if (titleIds.length > 0) {
+            const titleRes = await pool.query('SELECT title_id, name FROM titles WHERE title_id = ANY($1)', [titleIds]);
+            for (const row of titleRes.rows)
+                titleMap[row.title_id] = row.name;
+        }
         const users = result.rows.map(u => ({
             ...u,
+            equipped_title: u.equipped_title ? (titleMap[u.equipped_title] || u.equipped_title) : '',
             tier: (0, ratingService_1.getTier)(u.rating)
         }));
         res.json(users);
@@ -1246,7 +1235,7 @@ app.get('/api/problems', async (req, res) => {
         }
         query += `
       GROUP BY p.id
-      ORDER BY p.id ASC
+      ORDER BY p.id DESC
       LIMIT $${nextIdx++} OFFSET $${nextIdx++}
     `;
         queryParams.push(limitNum, offset);
@@ -1462,6 +1451,101 @@ app.post('/api/problems/generate', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Failed to generate problems' });
     }
 });
+app.get('/api/problems/templates', async (_req, res) => {
+    try {
+        const templates = (0, templateProblemGenerator_1.getAllTemplates)().map((t) => ({
+            id: t.id,
+            unit: t.unit,
+            title: t.title,
+            difficulty: t.difficulty,
+            concepts: t.concepts,
+        }));
+        res.json(templates);
+    }
+    catch (err) {
+        res.status(500).json({ error: 'Failed to load templates' });
+    }
+});
+app.get('/api/problems/templates/units', async (_req, res) => {
+    try {
+        res.json((0, templateProblemGenerator_1.getUnits)());
+    }
+    catch (err) {
+        res.status(500).json({ error: 'Failed to load units' });
+    }
+});
+app.get('/api/problems/templates/concepts', async (_req, res) => {
+    try {
+        res.json((0, templateProblemGenerator_1.getConcepts)());
+    }
+    catch (err) {
+        res.status(500).json({ error: 'Failed to load concepts' });
+    }
+});
+app.get('/api/problems/templates/:id', async (req, res) => {
+    try {
+        const template = (0, templateProblemGenerator_1.getTemplateById)(req.params.id);
+        if (!template)
+            return res.status(404).json({ error: 'Template not found' });
+        res.json(template);
+    }
+    catch (err) {
+        res.status(500).json({ error: 'Failed to load template' });
+    }
+});
+app.post('/api/problems/templates/generate', authenticateToken, async (req, res) => {
+    if (!(await canGenerateProblems(req.user.id)))
+        return res.status(403).json({ error: '문제 생성 권한이 없습니다.' });
+    try {
+        const { templateId, templateIds, unit, concept, count = 1 } = req.body;
+        const generationCount = Math.min(50, Math.max(1, parseInt(count) || 1));
+        let problems = [];
+        if (Array.isArray(templateIds) && templateIds.length > 0) {
+            const perTemplate = Math.max(1, Math.floor(generationCount / templateIds.length));
+            for (const tid of templateIds) {
+                const template = (0, templateProblemGenerator_1.getTemplateById)(tid);
+                if (template)
+                    problems.push(...(0, templateProblemGenerator_1.batchGenerate)(template, perTemplate));
+            }
+            if (problems.length === 0)
+                return res.status(404).json({ error: '선택한 템플릿을 찾을 수 없습니다.' });
+        }
+        else if (templateId) {
+            const template = (0, templateProblemGenerator_1.getTemplateById)(templateId);
+            if (!template)
+                return res.status(404).json({ error: 'Template not found' });
+            problems = (0, templateProblemGenerator_1.batchGenerate)(template, generationCount);
+        }
+        else if (unit || concept) {
+            problems = (0, templateProblemGenerator_1.generateProblems)({ unit, concept, count: generationCount });
+        }
+        else {
+            problems = (0, templateProblemGenerator_1.generateProblems)({ count: generationCount });
+        }
+        const newProblems = [];
+        for (const p of problems) {
+            const result = await pool.query('INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id', [p.title, p.problem, String(p.answer), p.difficulty, p.difficulty, 'Calculation']);
+            const problemId = result.rows[0].id;
+            newProblems.push({ id: problemId, title: p.title, content: p.problem, difficulty: p.difficulty, answer: p.answer });
+        }
+        res.json({ message: `${problems.length}개의 문제가 생성되었습니다!`, problems: newProblems });
+    }
+    catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to generate problems from templates' });
+    }
+});
+app.post('/api/problems/templates/reload', authenticateToken, async (req, res) => {
+    if (!(await canGenerateProblems(req.user.id)))
+        return res.status(403).json({ error: '문제 생성 권한이 없습니다.' });
+    try {
+        (0, templateProblemGenerator_1.reloadTemplates)();
+        res.json({ message: '템플릿이 다시 로드되었습니다.' });
+    }
+    catch (err) {
+        res.status(500).json({ error: 'Failed to reload templates' });
+    }
+});
 app.post('/api/submissions', authenticateToken, async (req, res) => {
     const { problemId, userAnswer } = req.body;
     const userId = req.user.id;
@@ -1508,7 +1592,6 @@ app.post('/api/admin/cleanup-tags', authenticateToken, async (req, res) => {
             const tagId = tagRes.rows[0].id;
             const problemIds = await pool.query('SELECT problem_id FROM problem_tags WHERE tag_id = $1', [tagId]);
             for (const row of problemIds.rows) {
-                await pool.query('DELETE FROM submissions WHERE problem_id = $1', [row.problem_id]);
                 await pool.query('DELETE FROM problems WHERE id = $1', [row.problem_id]);
                 deletedCount++;
             }
@@ -1600,11 +1683,11 @@ app.delete('/api/admin/problems/:id', authenticateToken, async (req, res) => {
         return res.status(403).json({ error: 'Admin only' });
     const { id } = req.params;
     try {
-        await pool.query('DELETE FROM submissions WHERE problem_id = $1', [id]);
         await pool.query('DELETE FROM problems WHERE id = $1', [id]);
         res.json({ message: '문제가 삭제되었습니다.' });
     }
     catch (err) {
+        console.error('Failed to delete problem:', err);
         res.status(500).json({ error: 'Failed to delete problem' });
     }
 });
@@ -1628,8 +1711,9 @@ app.post('/api/admin/reset', authenticateToken, async (req, res) => {
     if (req.user.username !== 'admin')
         return res.status(403).json({ error: 'Admin only' });
     try {
-        await pool.query('TRUNCATE problems, submissions RESTART IDENTITY CASCADE');
-        res.json({ message: 'Database reset successfully (all problems and submissions cleared)' });
+        await pool.query('DELETE FROM problems');
+        await pool.query("ALTER SEQUENCE problems_id_seq RESTART WITH 1");
+        res.json({ message: '모든 문제가 삭제되었습니다. (제출 기록은 유지됩니다)' });
     }
     catch (err) {
         res.status(500).json({ error: 'Database reset failed' });

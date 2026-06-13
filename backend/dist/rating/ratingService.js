@@ -78,6 +78,8 @@ const processSubmission = async (userId, problemId, isCorrect) => {
             // 퀘스트 업데이트 ('solve' 및 최초 일일 스트릭 보상 액션 체크)
             await (0, gameSystemService_1.updateQuests)(userId, client, 'solve');
             await (0, gameSystemService_1.updateQuests)(userId, client, 'streak');
+            // problems_solved 증가 (데이터베이스에 저장되어 문제 초기화 시에도 유지)
+            await client.query('UPDATE users SET problems_solved = problems_solved + 1 WHERE id = $1', [userId]);
         }
         else {
             // 오답인 경우 시도(attempt)만 기록하여 정확도 퀘스트 갱신
@@ -86,7 +88,7 @@ const processSubmission = async (userId, problemId, isCorrect) => {
         // 6. 제출 기록 저장
         await client.query('INSERT INTO submissions (user_id, problem_id, is_correct) VALUES ($1, $2, $3)', [userId, problemId, isCorrect]);
         // 7. 업데이트 완료된 최신 유저 정보 조회
-        const finalUserRes = await client.query('SELECT streak, tokens, xp, quests, last_active_date, streak_repaired, longest_streak FROM users WHERE id = $1', [userId]);
+        const finalUserRes = await client.query('SELECT streak, tokens, xp, quests, last_active_date, streak_repaired, longest_streak, problems_solved FROM users WHERE id = $1', [userId]);
         const finalUser = finalUserRes.rows[0];
         await client.query('COMMIT');
         return {
@@ -97,7 +99,8 @@ const processSubmission = async (userId, problemId, isCorrect) => {
             xp: finalUser.xp,
             quests: finalUser.quests,
             streakRepaired: repairResult.repaired,
-            streakRepairedFlag: finalUser.streak_repaired
+            streakRepairedFlag: finalUser.streak_repaired,
+            problems_solved: finalUser.problems_solved
         };
     }
     catch (err) {
