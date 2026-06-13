@@ -2989,7 +2989,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
       });
   }, []);
 
-  const fetchProblems = useCallback(() => {
+  const fetchProblems = () => {
     setLoadingProblems(true);
     const token = localStorage.getItem('token');
     const headers: any = {};
@@ -3010,11 +3010,11 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
         setLoadingProblems(false);
       })
       .catch(() => setLoadingProblems(false));
-  }, [page, problemType]);
+  };
 
   useEffect(() => {
     fetchProblems();
-  }, [fetchProblems]);
+  }, [page, problemType]);
 
   const handleInputChange = (id: number, val: string) => {
     setAnswers(prev => ({ ...prev, [id]: val }));
