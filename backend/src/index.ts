@@ -1382,7 +1382,7 @@ app.get('/api/problems', async (req: Request, res: Response) => {
 
     let query = `
       SELECT p.id, p.title, p.content, p.current_difficulty, p.is_custom, p.custom_reward_rating,
-             COALESCE(NULLIF(array_agg(t.name), '{NULL}'), '{}') as tags
+             COALESCE(array_remove(array_agg(t.name), NULL), '{}') as tags
       FROM problems p
       LEFT JOIN problem_tags pt ON p.id = pt.problem_id
       LEFT JOIN tags t ON pt.tag_id = t.id
@@ -1547,7 +1547,7 @@ app.get('/api/problems/public', async (req: Request, res: Response) => {
     // Get paginated problems
     const query = `
       SELECT p.id, p.title, p.content, p.current_difficulty, p.created_at,
-             COALESCE(NULLIF(array_agg(t.name ORDER BY t.name), '{NULL}'), '{}') as tags
+             COALESCE(array_remove(array_agg(t.name ORDER BY t.name), NULL), '{}') as tags
       FROM problems p
       LEFT JOIN problem_tags pt ON p.id = pt.problem_id
       LEFT JOIN tags t ON pt.tag_id = t.id
@@ -1813,7 +1813,7 @@ app.get('/api/admin/problems', authenticateToken, async (req: any, res: Response
 
     const result = await pool.query(`
       SELECT p.id, p.title, p.content, p.answer, p.current_difficulty, p.created_at,
-             COALESCE(NULLIF(array_agg(t.name ORDER BY t.name), '{NULL}'), '{}') as tags
+             COALESCE(array_remove(array_agg(t.name ORDER BY t.name), NULL), '{}') as tags
       FROM problems p
       LEFT JOIN problem_tags pt ON p.id = pt.problem_id
       LEFT JOIN tags t ON pt.tag_id = t.id
