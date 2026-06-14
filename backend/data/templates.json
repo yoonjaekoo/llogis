@@ -277,7 +277,7 @@
     "id": "MS-ROOT-001",
     "unit": "근의 공식 활용",
     "title": "무리수의 정수 부분",
-    "difficulty": 16500,
+    "difficulty": 10000,
     "variables": { "n": { "type": "integer", "min": 10, "max": 20 } },
     "constraints": ["n == 10 || n == 11 || n == 12 || n == 13 || n == 14 || n == 15"],
     "problem_template": "$\\sqrt{{{n}}}$의 정수 부분을 $a$라 할 때, $a$의 값을 구하시오.",
