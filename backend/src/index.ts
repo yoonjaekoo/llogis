@@ -1371,7 +1371,7 @@ app.get('/api/problems', async (req: Request, res: Response) => {
         SELECT COUNT(DISTINCT p.id)
         FROM problems p
         WHERE p.is_custom = $1 AND p.id NOT IN (
-          SELECT problem_id FROM submissions WHERE user_id = $2 AND is_correct = true
+          SELECT problem_id FROM submissions WHERE user_id = $2 AND is_correct = true AND problem_id IS NOT NULL
         )
       `;
       countParams.push(userId);
@@ -1394,7 +1394,7 @@ app.get('/api/problems', async (req: Request, res: Response) => {
     
     if (userId) {
       query += ` AND p.id NOT IN (
-        SELECT problem_id FROM submissions WHERE user_id = $${nextIdx++} AND is_correct = true
+        SELECT problem_id FROM submissions WHERE user_id = $${nextIdx++} AND is_correct = true AND problem_id IS NOT NULL
       )`;
       queryParams.push(userId);
     }
