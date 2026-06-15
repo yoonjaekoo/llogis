@@ -5,6 +5,9 @@ exports.reloadTemplates = reloadTemplates;
 exports.getAllTemplates = getAllTemplates;
 exports.getTemplateById = getTemplateById;
 exports.updateTemplateRewardRating = updateTemplateRewardRating;
+exports.updateTemplate = updateTemplate;
+exports.addTemplate = addTemplate;
+exports.deleteTemplate = deleteTemplate;
 exports.getTemplatesByUnit = getTemplatesByUnit;
 exports.getTemplatesByConcept = getTemplatesByConcept;
 exports.getUnits = getUnits;
@@ -94,6 +97,38 @@ function updateTemplateRewardRating(id, rewardRating) {
         reward_rating: rewardRating,
     };
     return persistTemplates(updated)[index];
+}
+function updateTemplate(id, data) {
+    const current = loadTemplates();
+    const index = current.findIndex((t) => t.id === id);
+    if (index === -1) {
+        throw new Error('Template not found');
+    }
+    const updated = [...current];
+    updated[index] = {
+        ...updated[index],
+        ...data,
+        id: updated[index].id,
+    };
+    return persistTemplates(updated)[index];
+}
+function addTemplate(data) {
+    const current = loadTemplates();
+    if (current.find((t) => t.id === data.id)) {
+        throw new Error('Template ID already exists');
+    }
+    const updated = [...current, data];
+    return persistTemplates(updated)[updated.length - 1];
+}
+function deleteTemplate(id) {
+    const current = loadTemplates();
+    const index = current.findIndex((t) => t.id === id);
+    if (index === -1) {
+        throw new Error('Template not found');
+    }
+    const updated = [...current];
+    updated.splice(index, 1);
+    persistTemplates(updated);
 }
 function getTemplatesByUnit(unit) {
     return loadTemplates().filter((t) => t.unit === unit);

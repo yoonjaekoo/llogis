@@ -230,6 +230,7 @@ const Navbar: React.FC<{
           <li><Link to="/groups">그룹</Link></li>
           <li><Link to="/shop">상점</Link></li>
           <li><Link to="/about">소개</Link></li>
+          <li><Link to="/bug-report" style={{ color: '#ff7675' }}>버그제보</Link></li>
           {user ? (
             <>
               {user.username === 'admin' && <li><Link to="/admin" style={{ color: '#fab1a0', fontWeight: 800 }}>관리</Link></li>}
@@ -1699,7 +1700,12 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [activeTab, setActiveTab] = useState<'users' | 'notifications'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'notifications' | 'templates' | 'bugreports'>('users');
+  const [editingTemplate, setEditingTemplate] = useState<any>(null);
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [newTemplate, setNewTemplate] = useState<any>({ id: '', unit: '', title: '', difficulty: 10000, variables: {}, constraints: [], problem_template: '', answer_formula: { type: 'expression', value: '' }, concepts: [] });
+  const [bugReports, setBugReports] = useState<any[]>([]);
+  const [showTemplateJson, setShowTemplateJson] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -2164,30 +2170,18 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
         </div>
 
         {/* Tab Navigation */}
-        <div style={{ display: 'flex', gap: '1rem', borderBottom: '2px solid var(--border)', marginBottom: '2rem', paddingBottom: '0.5rem' }}>
-          <button 
-            onClick={() => setActiveTab('users')} 
-            style={{ 
-              background: 'none', border: 'none', 
-              color: activeTab === 'users' ? 'var(--color-4)' : 'var(--text-muted)', 
-              fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer',
-              borderBottom: activeTab === 'users' ? '3px solid var(--color-4)' : 'none',
-              paddingBottom: '0.5rem', marginBottom: '-0.7rem'
-            }}
-          >
+        <div style={{ display: 'flex', gap: '1rem', borderBottom: '2px solid var(--border)', marginBottom: '2rem', paddingBottom: '0.5rem', flexWrap: 'wrap' }}>
+          <button onClick={() => setActiveTab('users')} style={{ background: 'none', border: 'none', color: activeTab === 'users' ? 'var(--color-4)' : 'var(--text-muted)', fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer', borderBottom: activeTab === 'users' ? '3px solid var(--color-4)' : 'none', paddingBottom: '0.5rem', marginBottom: '-0.7rem' }}>
             사용자 관리 ({users.length})
           </button>
-          <button 
-            onClick={() => { setActiveTab('notifications'); fetchNotifications(); }} 
-            style={{ 
-              background: 'none', border: 'none', 
-              color: activeTab === 'notifications' ? 'var(--color-4)' : 'var(--text-muted)', 
-              fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer',
-              borderBottom: activeTab === 'notifications' ? '3px solid var(--color-4)' : 'none',
-              paddingBottom: '0.5rem', marginBottom: '-0.7rem'
-            }}
-          >
+          <button onClick={() => { setActiveTab('notifications'); fetchNotifications(); }} style={{ background: 'none', border: 'none', color: activeTab === 'notifications' ? 'var(--color-4)' : 'var(--text-muted)', fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer', borderBottom: activeTab === 'notifications' ? '3px solid var(--color-4)' : 'none', paddingBottom: '0.5rem', marginBottom: '-0.7rem' }}>
             💕 알림 {unreadCount > 0 && <span style={{ background: '#ff7675', color: 'white', borderRadius: '99px', padding: '0.1rem 0.5rem', fontSize: '0.75rem', marginLeft: '0.3rem' }}>{unreadCount}</span>}
+          </button>
+          <button onClick={() => { setActiveTab('templates'); fetchTemplates(); }} style={{ background: 'none', border: 'none', color: activeTab === 'templates' ? 'var(--color-4)' : 'var(--text-muted)', fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer', borderBottom: activeTab === 'templates' ? '3px solid var(--color-4)' : 'none', paddingBottom: '0.5rem', marginBottom: '-0.7rem' }}>
+            📋 템플릿 ({templates.length})
+          </button>
+          <button onClick={async () => { setActiveTab('bugreports'); const token = localStorage.getItem('token'); try { const res = await fetch('/api/admin/bug-reports', { headers: { 'Authorization': `Bearer ${token}` } }); if (res.ok) setBugReports(await res.json()); } catch {} }} style={{ background: 'none', border: 'none', color: activeTab === 'bugreports' ? 'var(--color-4)' : 'var(--text-muted)', fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer', borderBottom: activeTab === 'bugreports' ? '3px solid var(--color-4)' : 'none', paddingBottom: '0.5rem', marginBottom: '-0.7rem' }}>
+            🐛 버그제보
           </button>
         </div>
 
@@ -2288,6 +2282,65 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
         </div>
         )}
 
+        {/* Templates Tab */}
+        {activeTab === 'templates' && (
+        <div className="problem-card" style={{ margin: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <h3 style={{ margin: 0 }}>📋 템플릿 관리 ({templates.length})</h3>
+            <button onClick={() => { setCreatingTemplate(true); setNewTemplate({ id: '', unit: '', title: '', difficulty: 10000, variables: {}, constraints: [], problem_template: '', answer_formula: { type: 'expression', value: '' }, concepts: [] }); }} className="btn" style={{ background: 'var(--color-4)', color: 'white' }}>
+              + 새 템플릿
+            </button>
+          </div>
+          {loadingTemplates ? <p>로딩 중...</p> : (
+            <div style={{ display: 'grid', gap: '0.75rem', maxHeight: '600px', overflowY: 'auto' }}>
+              {templates.map((template) => (
+                <div key={template.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0.75rem', alignItems: 'center', padding: '0.75rem', borderRadius: '0.75rem', background: 'var(--bg-color)', border: '1px solid var(--border)' }}>
+                  <div>
+                    <div style={{ fontWeight: 800 }}>{template.title}</div>
+                    <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>{template.id} · {template.unit || '단원 미지정'} · 난이도: {template.difficulty} · 보상: {template.reward_rating}</div>
+                  </div>
+                  <button onClick={() => { setEditingTemplate(template); setShowTemplateJson(false); }} className="btn" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', width: 'auto', background: 'var(--color-2)', color: 'white' }}>수정</button>
+                  <button onClick={async () => {
+                    if (!window.confirm(`템플릿 "${template.title}"을(를) 삭제하시겠습니까?`)) return;
+                    const token = localStorage.getItem('token');
+                    const res = await fetch(`/api/admin/templates/${template.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+                    const data = await res.json();
+                    alert(data.message || data.error);
+                    if (res.ok) fetchTemplates();
+                  }} className="btn" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', width: 'auto', background: '#ff7675', color: 'white' }}>삭제</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        )}
+
+        {/* Bug Reports Tab */}
+        {activeTab === 'bugreports' && (
+        <div className="problem-card" style={{ margin: 0 }}>
+          <h3 style={{ marginBottom: '1.5rem' }}>🐛 버그 제보 목록 ({bugReports.length})</h3>
+          {bugReports.length === 0 ? (
+            <p style={{ opacity: 0.5, textAlign: 'center', padding: '2rem' }}>버그 제보가 없습니다.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {bugReports.map((r: any) => (
+                <div key={r.id} style={{ padding: '0.8rem 1rem', borderRadius: '0.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.3rem' }}>
+                    <div style={{ fontWeight: 800, fontSize: '0.95rem' }}>{r.title}</div>
+                    <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '99px', background: 'rgba(255, 118, 117, 0.15)', color: '#ff7675', fontWeight: 600 }}>{r.category}</span>
+                  </div>
+                  <div style={{ fontSize: '0.85rem', opacity: 0.8, marginBottom: '0.3rem', whiteSpace: 'pre-wrap' }}>{r.description}</div>
+                  {r.steps && <div style={{ fontSize: '0.8rem', opacity: 0.6, marginBottom: '0.3rem' }}>재현 방법: {r.steps}</div>}
+                  <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>
+                    {r.username} · {new Date(r.created_at).toLocaleString()} · 상태: {r.status}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        )}
+
         {/* Problem Management */}
         <div className="problem-card" style={{ margin: 0, marginTop: '2rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -2372,6 +2425,187 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
             </div>
           </div>
         )}
+
+        {/* Template Editor Modal */}
+        {(editingTemplate || creatingTemplate) && (
+          <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '1rem', boxSizing: 'border-box' }}>
+            <div className="problem-card" style={{ width: '100%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto', margin: 0, position: 'relative' }}>
+              <button onClick={() => { setEditingTemplate(null); setCreatingTemplate(false); }} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: 'var(--text-muted)' }}>✕</button>
+              <h3 style={{ color: 'var(--color-4)', marginBottom: '1.5rem' }}>{creatingTemplate ? '새 템플릿 추가' : `템플릿 수정 (${editingTemplate.id})`}</h3>
+              <div style={{ marginBottom: '0.5rem', textAlign: 'right' }}>
+                <button onClick={() => setShowTemplateJson(!showTemplateJson)} className="btn" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', width: 'auto', background: 'var(--color-3)', color: 'white' }}>
+                  {showTemplateJson ? '폼 보기' : 'JSON 에디터'}
+                </button>
+              </div>
+              {showTemplateJson ? (
+                <div>
+                  <textarea value={JSON.stringify(creatingTemplate ? newTemplate : editingTemplate, null, 2)} onChange={e => {
+                    try { const parsed = JSON.parse(e.target.value); if (creatingTemplate) setNewTemplate(parsed); else setEditingTemplate(parsed); } catch {}
+                  }} rows={25} style={{ width: '100%', padding: '0.7rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: '0.8rem', resize: 'vertical' }} />
+                </div>
+              ) : (
+                <div>
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', opacity: 0.7 }}>ID</label>
+                    <input type="text" value={creatingTemplate ? newTemplate.id : editingTemplate.id} onChange={e => creatingTemplate ? setNewTemplate({ ...newTemplate, id: e.target.value }) : setEditingTemplate({ ...editingTemplate, id: e.target.value })} style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box' }} />
+                  </div>
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', opacity: 0.7 }}>단원 (unit)</label>
+                    <input type="text" value={creatingTemplate ? newTemplate.unit : editingTemplate.unit} onChange={e => creatingTemplate ? setNewTemplate({ ...newTemplate, unit: e.target.value }) : setEditingTemplate({ ...editingTemplate, unit: e.target.value })} style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box' }} />
+                  </div>
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', opacity: 0.7 }}>제목 (title)</label>
+                    <input type="text" value={creatingTemplate ? newTemplate.title : editingTemplate.title} onChange={e => creatingTemplate ? setNewTemplate({ ...newTemplate, title: e.target.value }) : setEditingTemplate({ ...editingTemplate, title: e.target.value })} style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box' }} />
+                  </div>
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', opacity: 0.7 }}>난이도 (difficulty)</label>
+                    <input type="number" value={creatingTemplate ? newTemplate.difficulty : editingTemplate.difficulty} onChange={e => { const v = parseFloat(e.target.value) || 0; if (creatingTemplate) setNewTemplate({ ...newTemplate, difficulty: v }); else setEditingTemplate({ ...editingTemplate, difficulty: v }); }} style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box' }} />
+                  </div>
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', opacity: 0.7 }}>문제 템플릿 (problem_template, {'{{'}변수명{'}}'} 사용)</label>
+                    <textarea value={creatingTemplate ? newTemplate.problem_template : editingTemplate.problem_template} onChange={e => creatingTemplate ? setNewTemplate({ ...newTemplate, problem_template: e.target.value }) : setEditingTemplate({ ...editingTemplate, problem_template: e.target.value })} rows={4} style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'monospace', fontSize: '0.85rem' }} />
+                  </div>
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', opacity: 0.7 }}>정답 공식 (answer_formula.value)</label>
+                    <input type="text" value={creatingTemplate ? newTemplate.answer_formula.value : editingTemplate.answer_formula?.value || ''} onChange={e => { const v = { type: 'expression', value: e.target.value }; if (creatingTemplate) setNewTemplate({ ...newTemplate, answer_formula: v }); else setEditingTemplate({ ...editingTemplate, answer_formula: v }); }} style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box', fontFamily: 'monospace' }} />
+                  </div>
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', opacity: 0.7 }}>변수 (variables, JSON)</label>
+                    <textarea value={JSON.stringify(creatingTemplate ? newTemplate.variables : editingTemplate.variables || {}, null, 2)} onChange={e => {
+                      try { const parsed = JSON.parse(e.target.value); if (creatingTemplate) setNewTemplate({ ...newTemplate, variables: parsed }); else setEditingTemplate({ ...editingTemplate, variables: parsed }); } catch {}
+                    }} rows={5} style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: '0.8rem', resize: 'vertical' }} />
+                  </div>
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', opacity: 0.7 }}>제약 조건 (constraints, JSON 배열)</label>
+                    <textarea value={JSON.stringify(creatingTemplate ? newTemplate.constraints : editingTemplate.constraints || [])} onChange={e => {
+                      try { const parsed = JSON.parse(e.target.value); if (Array.isArray(parsed)) { if (creatingTemplate) setNewTemplate({ ...newTemplate, constraints: parsed }); else setEditingTemplate({ ...editingTemplate, constraints: parsed }); } } catch {}
+                    }} rows={3} style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: '0.8rem', resize: 'vertical' }} />
+                  </div>
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', opacity: 0.7 }}>개념 (concepts, JSON 배열)</label>
+                    <textarea value={JSON.stringify(creatingTemplate ? newTemplate.concepts : editingTemplate.concepts || [])} onChange={e => {
+                      try { const parsed = JSON.parse(e.target.value); if (Array.isArray(parsed)) { if (creatingTemplate) setNewTemplate({ ...newTemplate, concepts: parsed }); else setEditingTemplate({ ...editingTemplate, concepts: parsed }); } } catch {}
+                    }} rows={2} style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: '0.8rem', resize: 'vertical' }} />
+                  </div>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                <button onClick={async () => {
+                  const token = localStorage.getItem('token');
+                  const data = creatingTemplate ? newTemplate : editingTemplate;
+                  const url = creatingTemplate ? '/api/admin/templates' : `/api/admin/templates/${editingTemplate.id}`;
+                  const method = creatingTemplate ? 'POST' : 'PUT';
+                  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(data) });
+                  const result = await res.json();
+                  alert(result.message || result.error);
+                  if (res.ok) { setEditingTemplate(null); setCreatingTemplate(false); fetchTemplates(); }
+                }} className="btn" style={{ background: 'var(--color-4)', color: 'white' }}>
+                  {creatingTemplate ? '추가' : '저장'}
+                </button>
+                <button onClick={() => { setEditingTemplate(null); setCreatingTemplate(false); }} className="btn" style={{ background: 'var(--border)', color: 'var(--text-main)' }}>취소</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+};
+
+const BugReport: React.FC<{ user: User | null }> = ({ user }) => {
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState('버그');
+  const [description, setDescription] = useState('');
+  const [steps, setSteps] = useState('');
+  const [message, setMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !description.trim()) {
+      setMessage('제목과 설명을 입력해주세요.');
+      return;
+    }
+    setSubmitting(true);
+    setMessage('');
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('/api/bug-reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ title: title.trim(), category, description: description.trim(), steps: steps.trim() || undefined })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage('✅ 버그 제보가 접수되었습니다. 감사합니다!');
+        setTitle('');
+        setDescription('');
+        setSteps('');
+      } else {
+        setMessage(data.error || '제보에 실패했습니다.');
+      }
+    } catch {
+      setMessage('네트워크 오류가 발생했습니다.');
+    }
+    setSubmitting(false);
+  };
+
+  if (!user) {
+    return (
+      <main className="container" style={{ padding: '4rem 0', maxWidth: '700px' }}>
+        <Helmet><title>버그 제보 | Logis</title></Helmet>
+        <div className="problem-card" style={{ textAlign: 'center', padding: '3rem' }}>
+          <h2 style={{ color: 'var(--color-4)', marginBottom: '1rem' }}>로그인이 필요합니다</h2>
+          <p style={{ marginBottom: '1.5rem', opacity: 0.8 }}>버그 제보는 로그인 후 이용할 수 있습니다.</p>
+          <button onClick={() => navigate('/login')} className="btn" style={{ background: 'var(--color-4)', color: 'white' }}>로그인</button>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="container" style={{ padding: '4rem 0', maxWidth: '700px' }}>
+      <Helmet>
+        <title>버그 제보 | Logis</title>
+        <meta name="robots" content="noindex, nofollow" />
+      </Helmet>
+      <div className="problem-card">
+        <h2 style={{ color: 'var(--color-4)', marginBottom: '0.5rem' }}>🐛 버그 제보</h2>
+        <p style={{ marginBottom: '2rem', opacity: 0.8 }}>발견한 버그를 제보해주세요. 소중한 의견은 서비스 개선에 큰 도움이 됩니다.</p>
+        {message && (
+          <div style={{ padding: '1rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '0.5rem', fontWeight: 600, textAlign: 'center', marginBottom: '1.5rem' }}>
+            {message}
+          </div>
+        )}
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>제목</label>
+            <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="버그의 제목을 간략히 입력해주세요" style={{ width: '100%', padding: '0.7rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box' }} required />
+          </div>
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>카테고리</label>
+            <select value={category} onChange={e => setCategory(e.target.value)} style={{ width: '100%', padding: '0.7rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box' }}>
+              <option value="버그">버그</option>
+              <option value="UI/UX">UI/UX 문제</option>
+              <option value="문제 오류">문제 오류</option>
+              <option value="성능">성능/속도</option>
+              <option value="건의사항">건의사항</option>
+              <option value="기타">기타</option>
+            </select>
+          </div>
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>상세 설명</label>
+            <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="버그가 발생한 상황을 자세히 설명해주세요" rows={5} style={{ width: '100%', padding: '0.7rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box', resize: 'vertical' }} required />
+          </div>
+          <div style={{ marginBottom: '1.5rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>재현 방법 <span style={{ opacity: 0.6, fontWeight: 400 }}>(선택사항)</span></label>
+            <textarea value={steps} onChange={e => setSteps(e.target.value)} placeholder="버그를 재현하는 방법을 단계별로 알려주세요" rows={3} style={{ width: '100%', padding: '0.7rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box', resize: 'vertical' }} />
+          </div>
+          <button type="submit" disabled={submitting} className="btn" style={{ background: 'var(--color-4)', color: 'white', opacity: submitting ? 0.6 : 1 }}>
+            {submitting ? '제출 중...' : '버그 제보하기'}
+          </button>
+        </form>
       </div>
     </main>
   );
@@ -4014,6 +4248,7 @@ const AppContent: React.FC = () => {
           <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
           <Route path="/shop" element={<Shop user={user} setUser={setUser} />} />
           <Route path="/admin" element={<Admin user={user} />} />
+          <Route path="/bug-report" element={<BugReport user={user} />} />
           <Route path="/goose-room" element={<GooseRoom />} />
           <Route path="/cat-room" element={<CatRoom />} />
         </Routes>

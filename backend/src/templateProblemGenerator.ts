@@ -107,6 +107,46 @@ export function updateTemplateRewardRating(
   return persistTemplates(updated)[index];
 }
 
+export function updateTemplate(
+  id: string,
+  data: Partial<ProblemTemplateInput>,
+): ProblemTemplateInput {
+  const current = loadTemplates();
+  const index = current.findIndex((t) => t.id === id);
+  if (index === -1) {
+    throw new Error('Template not found');
+  }
+
+  const updated = [...current];
+  updated[index] = {
+    ...updated[index],
+    ...data,
+    id: updated[index].id,
+  };
+
+  return persistTemplates(updated)[index];
+}
+
+export function addTemplate(data: ProblemTemplateInput): ProblemTemplateInput {
+  const current = loadTemplates();
+  if (current.find((t) => t.id === data.id)) {
+    throw new Error('Template ID already exists');
+  }
+  const updated = [...current, data];
+  return persistTemplates(updated)[updated.length - 1];
+}
+
+export function deleteTemplate(id: string): void {
+  const current = loadTemplates();
+  const index = current.findIndex((t) => t.id === id);
+  if (index === -1) {
+    throw new Error('Template not found');
+  }
+  const updated = [...current];
+  updated.splice(index, 1);
+  persistTemplates(updated);
+}
+
 export function getTemplatesByUnit(unit: string): ProblemTemplateInput[] {
   return loadTemplates().filter((t) => t.unit === unit);
 }

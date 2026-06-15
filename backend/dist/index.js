@@ -133,6 +133,19 @@ const ensureSchema = async () => {
     )
   `);
     await pool.query(`
+    CREATE TABLE IF NOT EXISTS bug_reports (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      username VARCHAR(50) NOT NULL,
+      title VARCHAR(255) NOT NULL,
+      category VARCHAR(50) NOT NULL DEFAULT '기타',
+      description TEXT NOT NULL,
+      steps TEXT,
+      status VARCHAR(20) DEFAULT 'pending',
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+    await pool.query(`
     CREATE TABLE IF NOT EXISTS titles (
       id SERIAL PRIMARY KEY,
       title_id VARCHAR(50) UNIQUE NOT NULL,
@@ -1608,6 +1621,74 @@ app.post('/api/problems/templates/reload', authenticateToken, async (req, res) =
     }
     catch (err) {
         res.status(500).json({ error: 'Failed to reload templates' });
+    }
+});
+// --- Bug Report API ---
+app.post('/api/bug-reports', authenticateToken, async (req, res) => {
+    const userId = req.user.id;
+    const { title, category, description, steps } = req.body;
+    if (!title || !description) {
+        return res.status(400).json({ error: '제목과 설명을 입력해주세요.' });
+    }
+    try {
+        const userRes = await pool.query('SELECT username FROM users WHERE id = $1', [userId]);
+        if (userRes.rows.length === 0)
+            return res.status(404).json({ error: 'User not found' });
+        const username = userRes.rows[0].username;
+        const result = await pool.query(`INSERT INTO bug_reports (user_id, username, title, category, description, steps) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`, [userId, username, title, category || '기타', description, steps || null]);
+        await pool.query(`INSERT INTO admin_notifications (type, message, from_user_id, from_username, related_id) VALUES ($1, $2, $3, $4, $5)`, ['bug_report', `🐛 ${username}님이 버그를 제보했습니다: "${title}"`, userId, username, result.rows[0].id]);
+        res.status(201).json({ message: '버그 제보가 접수되었습니다. 감사합니다!', id: result.rows[0].id });
+    }
+    catch (err) {
+        console.error('Bug report error:', err);
+        res.status(500).json({ error: '버그 제보 접수에 실패했습니다.' });
+    }
+});
+app.get('/api/admin/bug-reports', authenticateToken, async (req, res) => {
+    if (req.user.username !== 'admin')
+        return res.status(403).json({ error: 'Admin only' });
+    try {
+        const result = await pool.query('SELECT * FROM bug_reports ORDER BY created_at DESC LIMIT 100');
+        res.json(result.rows);
+    }
+    catch (err) {
+        res.status(500).json({ error: '버그 제보 조회에 실패했습니다.' });
+    }
+});
+// --- Admin Template CRUD ---
+app.put('/api/admin/templates/:id', authenticateToken, async (req, res) => {
+    if (req.user.username !== 'admin')
+        return res.status(403).json({ error: 'Admin only' });
+    const { id } = req.params;
+    try {
+        const template = (0, templateProblemGenerator_1.updateTemplate)(id, req.body);
+        res.json({ message: '템플릿이 수정되었습니다.', template });
+    }
+    catch (err) {
+        res.status(404).json({ error: err.message || 'Template not found' });
+    }
+});
+app.post('/api/admin/templates', authenticateToken, async (req, res) => {
+    if (req.user.username !== 'admin')
+        return res.status(403).json({ error: 'Admin only' });
+    try {
+        const template = (0, templateProblemGenerator_1.addTemplate)(req.body);
+        res.status(201).json({ message: '템플릿이 추가되었습니다.', template });
+    }
+    catch (err) {
+        res.status(400).json({ error: err.message || 'Failed to add template' });
+    }
+});
+app.delete('/api/admin/templates/:id', authenticateToken, async (req, res) => {
+    if (req.user.username !== 'admin')
+        return res.status(403).json({ error: 'Admin only' });
+    const { id } = req.params;
+    try {
+        (0, templateProblemGenerator_1.deleteTemplate)(id);
+        res.json({ message: '템플릿이 삭제되었습니다.' });
+    }
+    catch (err) {
+        res.status(404).json({ error: err.message || 'Template not found' });
     }
 });
 app.patch('/api/admin/templates/:id', authenticateToken, async (req, res) => {
