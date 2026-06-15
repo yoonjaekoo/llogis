@@ -3431,7 +3431,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
                   {(() => {
                     const filteredTemplates = templates
                       .filter(t => !selectedUnit || t.unit === selectedUnit)
-                      .filter(t => !selectedConcept || t.concept === selectedConcept);
+                      .filter(t => !selectedConcept || Array.isArray(t.concepts) && t.concepts.includes(selectedConcept));
                     const filteredIds = filteredTemplates.map(t => t.id);
                     const allSelected = filteredIds.length > 0 && filteredIds.every(id => selectedTemplateIds.includes(id));
                     return (
