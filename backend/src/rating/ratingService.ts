@@ -35,6 +35,14 @@ export const getTier = (rating: number): string => {
   return '정답';
 };
 
+const getWrongAnswerPenalty = (rating: number): number => {
+  const tier = getTier(rating);
+  if (tier === 'Bronze') return 500;
+  if (tier === 'Silver') return 1000;
+  if (tier === 'Gold') return 2000;
+  return 3000;
+};
+
 export const processSubmission = async (userId: number, problemId: number, isCorrect: boolean) => {
   const client = await pool.connect();
 
@@ -74,11 +82,31 @@ export const processSubmission = async (userId: number, problemId: number, isCor
     }
 
     const currentRating = parseFloat(userRes.rows[0].rating);
-    const finalRating = isCorrect ? currentRating + rewardRating : currentRating;
+    const ratingDelta = isCorrect ? rewardRating : -getWrongAnswerPenalty(currentRating);
+    const finalRating = Math.max(0, currentRating + ratingDelta);
 
     await client.query(
       'UPDATE users SET rating = $1 WHERE id = $2',
       [finalRating, userId]
+    );
+
+    const activityType = isCorrect ? 'correct_reward' : 'wrong_penalty';
+    const activityDescription = isCorrect
+      ? `정답 제출 보상 +${Math.round(rewardRating).toLocaleString()} RP`
+      : `오답 패널티 -${Math.abs(Math.round(ratingDelta)).toLocaleString()} RP`;
+    await client.query(
+      `INSERT INTO rating_activity_logs (
+        user_id, problem_id, activity_type, change_amount, before_rating, after_rating, description
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        userId,
+        problemId,
+        activityType,
+        Math.round(ratingDelta),
+        currentRating,
+        finalRating,
+        activityDescription,
+      ]
     );
 
     // 5. 스트릭 및 토큰 지급 로직 실행

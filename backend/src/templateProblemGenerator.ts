@@ -12,10 +12,32 @@ const TEMPLATES_PATH = join(__dirname, '..', 'data', 'templates.json');
 
 let templates: ProblemTemplateInput[] | null = null;
 
-function normalizeTemplate(template: ProblemTemplateInput): ProblemTemplateInput {
+function getDefaultRewardRatingByRank(rank: number, total: number): number {
+  if (total <= 1) return 5000;
+
+  const ratio = rank / (total - 1);
+  if (ratio < 1 / 3) {
+    const t = ratio * 3;
+    return Math.round(5000 + t * 5000);
+  }
+  if (ratio < 2 / 3) {
+    const t = (ratio - 1 / 3) * 3;
+    return Math.round(10000 + t * 4000);
+  }
+  const t = (ratio - 2 / 3) * 3;
+  return Math.round(15000 + t * 5000);
+}
+
+function normalizeTemplate(
+  template: ProblemTemplateInput,
+  defaultRewardRating?: number,
+): ProblemTemplateInput {
   return {
     ...template,
-    reward_rating: typeof template.reward_rating === 'number' ? template.reward_rating : template.difficulty,
+    reward_rating:
+      typeof template.reward_rating === 'number'
+        ? template.reward_rating
+        : defaultRewardRating ?? template.difficulty,
   };
 }
 
@@ -26,7 +48,23 @@ function loadTemplates(): ProblemTemplateInput[] {
     if (!Array.isArray(parsed) || parsed.length === 0) {
       throw new Error('templates.json is empty or invalid');
     }
-    templates = parsed.map(normalizeTemplate);
+    const ranked = parsed
+      .map((template, index) => ({ template, index }))
+      .sort((a, b) => {
+        if (a.template.difficulty !== b.template.difficulty) {
+          return a.template.difficulty - b.template.difficulty;
+        }
+        return a.index - b.index;
+      });
+
+    const defaultRewards = new Map<string, number>();
+    ranked.forEach(({ template }, rank) => {
+      if (typeof template.reward_rating !== 'number') {
+        defaultRewards.set(template.id, getDefaultRewardRatingByRank(rank, ranked.length));
+      }
+    });
+
+    templates = parsed.map((template) => normalizeTemplate(template, defaultRewards.get(template.id)));
   }
   return templates;
 }

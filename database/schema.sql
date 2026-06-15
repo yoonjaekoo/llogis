@@ -54,6 +54,20 @@ CREATE TABLE submissions (
     submitted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS rating_activity_logs (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    problem_id INTEGER REFERENCES problems(id) ON DELETE SET NULL,
+    activity_type VARCHAR(50) NOT NULL,
+    change_amount INTEGER NOT NULL,
+    before_rating FLOAT NOT NULL,
+    after_rating FLOAT NOT NULL,
+    description TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_rating_activity_logs_user_created ON rating_activity_logs(user_id, created_at DESC);
+
 -- Groups Table
 CREATE TABLE IF NOT EXISTS groups (
     id SERIAL PRIMARY KEY,

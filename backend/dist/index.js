@@ -100,6 +100,20 @@ const ensureSchema = async () => {
     await pool.query("INSERT INTO tags (name) VALUES ('이차방정식') ON CONFLICT (name) DO NOTHING");
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_title VARCHAR(100) DEFAULT ''");
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS problems_solved INTEGER DEFAULT 0");
+    await pool.query(`
+    CREATE TABLE IF NOT EXISTS rating_activity_logs (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      problem_id INTEGER REFERENCES problems(id) ON DELETE SET NULL,
+      activity_type VARCHAR(50) NOT NULL,
+      change_amount INTEGER NOT NULL,
+      before_rating FLOAT NOT NULL,
+      after_rating FLOAT NOT NULL,
+      description TEXT NOT NULL,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_rating_activity_logs_user_created ON rating_activity_logs(user_id, created_at DESC)');
     // Initialize problems_solved from existing correct submissions
     await pool.query(`
     UPDATE users u SET problems_solved = (
@@ -324,6 +338,12 @@ app.get('/api/users/profile', authenticateToken, async (req, res) => {
         }
         // Get submission statistics (total submissions for accuracy calculation)
         const statsResult = await client.query('SELECT COUNT(*) as total FROM submissions WHERE user_id = $1', [userId]);
+        const activityResult = await client.query(`SELECT id, activity_type, change_amount, before_rating, after_rating, description,
+              created_at, problem_id
+       FROM rating_activity_logs
+       WHERE user_id = $1
+       ORDER BY created_at DESC
+       LIMIT 12`, [userId]);
         const stats = statsResult.rows[0];
         const totalSubmissions = parseInt(stats.total);
         const correctSubmissions = parseInt(user.problems_solved) || 0;
@@ -339,7 +359,8 @@ app.get('/api/users/profile', authenticateToken, async (req, res) => {
                 totalSubmissions,
                 correctSubmissions,
                 accuracy: totalSubmissions > 0 ? (correctSubmissions / totalSubmissions) * 100 : 0
-            }
+            },
+            recentActivities: activityResult.rows
         });
     }
     catch (err) {
@@ -1202,6 +1223,25 @@ app.get('/api/users/ranking', async (req, res) => {
     }
     catch (err) {
         res.status(500).json({ error: 'Failed to fetch ranking' });
+    }
+});
+app.get('/api/stats/overview', async (_req, res) => {
+    try {
+        const [userCount, problemCount, topRating, submissionCount] = await Promise.all([
+            pool.query("SELECT COUNT(*)::int AS count FROM users WHERE username != 'admin'"),
+            pool.query('SELECT COUNT(*)::int AS count FROM problems'),
+            pool.query("SELECT COALESCE(MAX(rating), 0)::int AS rating FROM users WHERE username != 'admin'"),
+            pool.query('SELECT COUNT(*)::int AS count FROM submissions'),
+        ]);
+        res.json({
+            totalUsers: userCount.rows[0].count,
+            totalProblems: problemCount.rows[0].count,
+            topRating: topRating.rows[0].rating,
+            totalSubmissions: submissionCount.rows[0].count,
+        });
+    }
+    catch (err) {
+        res.status(500).json({ error: 'Failed to load stats' });
     }
 });
 // --- Problems Endpoint (Pagination & is_custom filter) ---

@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
+import { animate, motion, useInView, useReducedMotion, useScroll, useTransform } from 'framer-motion';
 import './styles/globals.css';
 import 'katex/dist/katex.min.css';
 import { InlineMath, BlockMath } from 'react-katex';
@@ -79,6 +80,71 @@ const renderMath = (content: any) => {
       </React.Fragment>
     ));
   });
+};
+
+const SectionReveal: React.FC<{
+  children: React.ReactNode;
+  delay?: number;
+  className?: string;
+  style?: React.CSSProperties;
+}> = ({ children, delay = 0, className, style }) => {
+  const reducedMotion = useReducedMotion();
+  const ref = useRef<HTMLDivElement | null>(null);
+  const inView = useInView(ref, { once: true, margin: '-12% 0px -8% 0px' });
+
+  return (
+    <motion.div
+      ref={ref}
+      className={className}
+      style={style}
+      initial={false}
+      animate={inView ? 'visible' : 'hidden'}
+      variants={{
+        hidden: { opacity: 0, y: reducedMotion ? 0 : 24 },
+        visible: { opacity: 1, y: 0 },
+      }}
+      transition={{ duration: reducedMotion ? 0 : 0.55, ease: 'easeOut', delay }}
+    >
+      {children}
+    </motion.div>
+  );
+};
+
+const CountUp: React.FC<{
+  value: number;
+  duration?: number;
+  prefix?: string;
+  suffix?: string;
+  className?: string;
+}> = ({ value, duration = 1.5, prefix = '', suffix = '', className }) => {
+  const reducedMotion = useReducedMotion();
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const inView = useInView(ref, { once: true, margin: '-10% 0px -10% 0px' });
+  const [displayValue, setDisplayValue] = useState(reducedMotion ? value : 0);
+
+  useEffect(() => {
+    if (!inView) return;
+    if (reducedMotion) {
+      setDisplayValue(value);
+      return;
+    }
+
+    const controls = animate(0, value, {
+      duration,
+      ease: 'easeOut',
+      onUpdate(latest) {
+        setDisplayValue(Math.round(latest));
+      },
+    });
+
+    return () => controls.stop();
+  }, [inView, value, duration, reducedMotion]);
+
+  return (
+    <span ref={ref} className={className} aria-label={`${value}`}>
+      {prefix}{displayValue.toLocaleString()}{suffix}
+    </span>
+  );
 };
 
 // --- Components ---
@@ -281,6 +347,15 @@ const About: React.FC<{ user: User | null }> = ({ user }) => {
 };
 const Landing: React.FC<{ user: User | null }> = ({ user }) => {
   const navigate = useNavigate();
+  const reducedMotion = useReducedMotion();
+  const heroRef = useRef<HTMLElement | null>(null);
+  const { scrollYProgress } = useScroll({
+    target: heroRef,
+    offset: ['start start', 'end start'],
+  });
+  const heroGlowY = useTransform(scrollYProgress, [0, 1], [0, reducedMotion ? 0 : 120]);
+  const heroOrbY = useTransform(scrollYProgress, [0, 1], [0, reducedMotion ? 0 : -80]);
+  const heroOrbX = useTransform(scrollYProgress, [0, 1], [0, reducedMotion ? 0 : 50]);
   const tierColors: { [key: string]: string } = {
     'Bronze': '#cd7f32', 'Silver': '#c0c0c0', 'Gold': '#ffd700',
     'Platinum': '#e5e4e2', 'Diamond': '#b9f2ff', 'Ruby': '#e0115f',
@@ -289,6 +364,39 @@ const Landing: React.FC<{ user: User | null }> = ({ user }) => {
     '출제자': '#ffb300', '주인장': '#6a0dad', '정답': '#00e5ff'
   };
   const tier = user ? (user as any).tier || 'Bronze' : null;
+  const [overviewStats, setOverviewStats] = useState({
+    totalUsers: 0,
+    totalProblems: 0,
+    topRating: 0,
+    totalSubmissions: 0,
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/stats/overview', { signal: controller.signal })
+      .then(res => res.json())
+      .then(data => {
+        if (!data.error) {
+          setOverviewStats({
+            totalUsers: Number(data.totalUsers) || 0,
+            totalProblems: Number(data.totalProblems) || 0,
+            topRating: Number(data.topRating) || 0,
+            totalSubmissions: Number(data.totalSubmissions) || 0,
+          });
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
+
+  const featureItems = [
+    { icon: '📈', title: 'Glicko-2 레이팅', desc: '체스 세계에서 검증된 Glicko-2 알고리즘으로 나의 수학 실력을 정밀하게 측정합니다.' },
+    { icon: '🔥', title: '연속 스트릭', desc: '매일 1문제 이상 풀면 스트릭이 쌓입니다. 토큰으로 긴급 수리도 가능해요!' },
+    { icon: '🪙', title: '토큰 경제', desc: '정답을 맞힐 때마다 토큰을 획득하세요. 스트릭 수리, 혜택 등에 활용할 수 있습니다.' },
+    { icon: '📅', title: '일일 퀘스트', desc: '매일 새로운 퀘스트가 갱신됩니다. 완료하면 XP와 토큰을 대량으로 획득할 수 있어요.' },
+    { icon: '🏆', title: '티어 시스템', desc: 'Bronze부터 정답까지 14개 티어 — 레이팅이 오를수록 더 높은 티어를 달성하세요.' },
+    { icon: '🤖', title: 'AI 문제 생성', desc: 'NVIDIA NIM 기반 AI가 원하는 단원의 문제를 즉시 만들어 드립니다.' },
+  ];
 
   return (
     <main>
@@ -298,111 +406,163 @@ const Landing: React.FC<{ user: User | null }> = ({ user }) => {
       </Helmet>
 
       {/* ── Hero ── */}
-      <section className="landing-hero">
-        <div style={{ position: 'relative', zIndex: 1, maxWidth: '720px' }}>
+      <section ref={heroRef} className="landing-hero">
+        <motion.div
+          aria-hidden="true"
+          style={{ y: heroGlowY }}
+          className="landing-hero-glow"
+        />
+        <motion.div
+          aria-hidden="true"
+          style={{ y: heroOrbY, x: heroOrbX }}
+          className="landing-hero-orb landing-hero-orb-a"
+        />
+        <motion.div
+          aria-hidden="true"
+          style={{ y: heroGlowY, x: heroOrbX }}
+          className="landing-hero-orb landing-hero-orb-b"
+        />
+
+        <SectionReveal style={{ position: 'relative', zIndex: 1, maxWidth: '720px' }}>
           {user ? (
-            <div style={{ marginBottom: '1.5rem' }}>
+            <motion.div style={{ marginBottom: '1.5rem' }} initial={false} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
               <div className="stats-chip-row">
-                <span className="stats-chip" style={{ borderColor: tierColors[tier] || 'var(--border)', color: tierColors[tier] || 'var(--text-main)' }}>
+                <motion.span
+                  className="stats-chip"
+                  whileHover={reducedMotion ? undefined : { scale: 1.04, y: -2 }}
+                  style={{ borderColor: tierColors[tier] || 'var(--border)', color: tierColors[tier] || 'var(--text-main)' }}
+                >
                   🏅 {tier}
-                </span>
-                <span className="stats-chip">✨ {Math.round(user.rating).toLocaleString()} RP</span>
-                <span className="stats-chip">🔥 {(user as any).streak ?? 0}일 연속</span>
-                <span className="stats-chip">🪙 {(user as any).tokens ?? 0} 토큰</span>
+                </motion.span>
+                <motion.span className="stats-chip" whileHover={reducedMotion ? undefined : { scale: 1.04, y: -2 }}>
+                  ✨ <CountUp value={Math.round(user.rating)} suffix=" RP" />
+                </motion.span>
+                <motion.span className="stats-chip" whileHover={reducedMotion ? undefined : { scale: 1.04, y: -2 }}>
+                  🔥 {(user as any).streak ?? 0}일 연속
+                </motion.span>
+                <motion.span className="stats-chip" whileHover={reducedMotion ? undefined : { scale: 1.04, y: -2 }}>
+                  🪙 {(user as any).tokens ?? 0} 토큰
+                </motion.span>
               </div>
-            </div>
+            </motion.div>
           ) : null}
 
-          <h1 className="landing-hero-title">
+          <motion.h1
+            className="landing-hero-title"
+            initial={false}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, ease: 'easeOut' }}
+            style={{ willChange: 'transform' }}
+          >
             {user ? `어서 오세요,\n${user.username}!` : '수학 실력을\n레이팅으로 증명하세요'}
-          </h1>
-          <p className="landing-hero-sub">
+          </motion.h1>
+          <motion.p
+            className="landing-hero-sub"
+            initial={false}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.65, delay: 0.08 }}
+          >
             {user
               ? '오늘의 퀘스트를 완료하고 스트릭을 이어가세요. 매일 문제를 풀면 레이팅이 오릅니다.'
               : 'Glicko-2 레이팅으로 나의 수준을 객관적으로 파악하고, 매일 문제를 풀어 성장하세요.'}
-          </p>
+          </motion.p>
 
           <div className="landing-cta-group">
-            <button
+            <motion.button
               onClick={() => navigate('/solve')}
               className="btn-hero btn-hero-primary"
+              whileHover={reducedMotion ? undefined : { scale: 1.04, y: -3 }}
+              whileTap={reducedMotion ? undefined : { scale: 0.98 }}
             >
               🧮 문제 풀기
-            </button>
+            </motion.button>
             {!user && (
-              <button
+              <motion.button
                 onClick={() => navigate('/signup')}
                 className="btn-hero btn-hero-secondary"
+                whileHover={reducedMotion ? undefined : { scale: 1.04, y: -3 }}
+                whileTap={reducedMotion ? undefined : { scale: 0.98 }}
               >
                 무료로 시작하기
-              </button>
+              </motion.button>
             )}
             {user && (
-              <button
+              <motion.button
                 onClick={() => navigate('/profile')}
                 className="btn-hero btn-hero-secondary"
+                whileHover={reducedMotion ? undefined : { scale: 1.04, y: -3 }}
+                whileTap={reducedMotion ? undefined : { scale: 0.98 }}
               >
                 내 대시보드
-              </button>
+              </motion.button>
             )}
           </div>
-        </div>
+        </SectionReveal>
       </section>
 
       {/* ── Stats strip ── */}
-      <div className="landing-stats-strip">
+      <SectionReveal className="landing-stats-strip">
         <div className="landing-stats-grid">
-          <div className="landing-stat-item">
-            <div className="landing-stat-number">100+</div>
-            <div className="landing-stat-label">수학 문제</div>
-          </div>
-          <div className="landing-stat-item">
-            <div className="landing-stat-number">9개</div>
-            <div className="landing-stat-label">티어 등급</div>
-          </div>
-          <div className="landing-stat-item">
-            <div className="landing-stat-number">AI</div>
-            <div className="landing-stat-label">문제 자동 생성</div>
-          </div>
-          <div className="landing-stat-item">
-            <div className="landing-stat-number">∞</div>
-            <div className="landing-stat-label">성장의 가능성</div>
-          </div>
+          <motion.div className="landing-stat-item" whileHover={reducedMotion ? undefined : { scale: 1.03, y: -4 }}>
+            <div className="landing-stat-number">
+              <CountUp value={overviewStats.topRating} suffix=" RP" />
+            </div>
+            <div className="landing-stat-label">최고 레이팅</div>
+          </motion.div>
+          <motion.div className="landing-stat-item" whileHover={reducedMotion ? undefined : { scale: 1.03, y: -4 }}>
+            <div className="landing-stat-number">
+              <CountUp value={overviewStats.totalUsers} />
+            </div>
+            <div className="landing-stat-label">활성 사용자</div>
+          </motion.div>
+          <motion.div className="landing-stat-item" whileHover={reducedMotion ? undefined : { scale: 1.03, y: -4 }}>
+            <div className="landing-stat-number">
+              <CountUp value={overviewStats.totalProblems} />
+            </div>
+            <div className="landing-stat-label">문제 수</div>
+          </motion.div>
+          <motion.div className="landing-stat-item" whileHover={reducedMotion ? undefined : { scale: 1.03, y: -4 }}>
+            <div className="landing-stat-number">
+              <CountUp value={overviewStats.totalSubmissions} />
+            </div>
+            <div className="landing-stat-label">누적 제출</div>
+          </motion.div>
         </div>
-      </div>
+      </SectionReveal>
 
       {/* ── Features ── */}
       <section className="landing-features">
-        <div style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
+        <SectionReveal style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
           <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-4)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             왜 Logis인가?
           </span>
-        </div>
-        <h2 style={{ textAlign: 'center', fontSize: 'clamp(1.8rem, 4vw, 2.8rem)', fontWeight: 900, margin: '0.5rem 0 0', letterSpacing: '-1px', color: 'var(--text-main)' }}>
-          게임처럼 수학을 즐기세요
-        </h2>
+        </SectionReveal>
+        <SectionReveal delay={0.05}>
+          <h2 style={{ textAlign: 'center', fontSize: 'clamp(1.8rem, 4vw, 2.8rem)', fontWeight: 900, margin: '0.5rem 0 0', letterSpacing: '-1px', color: 'var(--text-main)' }}>
+            게임처럼 수학을 즐기세요
+          </h2>
+        </SectionReveal>
 
         <div className="landing-features-grid">
-          {[
-            { icon: '📈', title: 'Glicko-2 레이팅', desc: '체스 세계에서 검증된 Glicko-2 알고리즘으로 나의 수학 실력을 정밀하게 측정합니다.' },
-            { icon: '🔥', title: '연속 스트릭', desc: '매일 1문제 이상 풀면 스트릭이 쌓입니다. 토큰으로 긴급 수리도 가능해요!' },
-            { icon: '🪙', title: '토큰 경제', desc: '정답을 맞힐 때마다 토큰을 획득하세요. 스트릭 수리, 혜택 등에 활용할 수 있습니다.' },
-            { icon: '📅', title: '일일 퀘스트', desc: '매일 새로운 퀘스트가 갱신됩니다. 완료하면 XP와 토큰을 대량으로 획득할 수 있어요.' },
-            { icon: '🏆', title: '티어 시스템', desc: 'Bronze부터 정답까지 14개 티어 — 레이팅이 오를수록 더 높은 티어를 달성하세요.' },
-            { icon: '🤖', title: 'AI 문제 생성', desc: 'NVIDIA NIM 기반 AI가 원하는 단원의 문제를 즉시 만들어 드립니다.' },
-          ].map(f => (
-            <div key={f.title} className="feature-card">
-              <span className="feature-icon">{f.icon}</span>
-              <h3 className="feature-title">{f.title}</h3>
-              <p className="feature-desc">{f.desc}</p>
-            </div>
+          {featureItems.map((f, index) => (
+            <SectionReveal key={f.title} delay={index * 0.04}>
+              <motion.div
+                className="feature-card"
+                whileHover={reducedMotion ? undefined : { y: -8, scale: 1.02 }}
+                transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+              >
+                <span className="feature-icon">{f.icon}</span>
+                <h3 className="feature-title">{f.title}</h3>
+                <p className="feature-desc">{f.desc}</p>
+              </motion.div>
+            </SectionReveal>
           ))}
         </div>
       </section>
 
       {/* ── Bottom CTA ── */}
       {!user && (
-        <section style={{ textAlign: 'center', padding: '5rem 1.5rem', background: 'var(--card-bg)', borderTop: '1px solid var(--border)' }}>
+        <SectionReveal style={{ textAlign: 'center', padding: '5rem 1.5rem', background: 'var(--card-bg)', borderTop: '1px solid var(--border)' }}>
           <h2 style={{ fontSize: '2rem', fontWeight: 900, marginBottom: '1rem', color: 'var(--color-4)' }}>
             지금 바로 시작하세요
           </h2>
@@ -410,10 +570,14 @@ const Landing: React.FC<{ user: User | null }> = ({ user }) => {
             무료로 가입하고 수학 문제 풀이를 시작하세요.
           </p>
           <div className="landing-cta-group">
-            <button onClick={() => navigate('/signup')} className="btn-hero btn-hero-primary">🚀 무료 가입</button>
-            <button onClick={() => navigate('/login')} className="btn-hero btn-hero-secondary">로그인</button>
+            <motion.button onClick={() => navigate('/signup')} className="btn-hero btn-hero-primary" whileHover={reducedMotion ? undefined : { scale: 1.04, y: -3 }} whileTap={reducedMotion ? undefined : { scale: 0.98 }}>
+              🚀 무료 가입
+            </motion.button>
+            <motion.button onClick={() => navigate('/login')} className="btn-hero btn-hero-secondary" whileHover={reducedMotion ? undefined : { scale: 1.04, y: -3 }} whileTap={reducedMotion ? undefined : { scale: 0.98 }}>
+              로그인
+            </motion.button>
           </div>
-        </section>
+        </SectionReveal>
       )}
     </main>
   );
@@ -1986,9 +2150,10 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
                     style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box' }}
                   />
                   <button
+                    type="button"
                     onClick={() => handleUpdateTemplateReward(template.id)}
                     className="btn"
-                    style={{ width: 'auto', background: 'var(--color-4)', color: 'white' }}
+                    style={{ width: 'auto', background: 'var(--color-4)', color: 'white', position: 'relative', zIndex: 1, pointerEvents: 'auto' }}
                   >
                     저장
                   </button>
@@ -2326,6 +2491,7 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
 
   // Problem type stats for radar chart
   const [problemTypeStats, setProblemTypeStats] = useState<any[]>([]);
+  const [recentActivities, setRecentActivities] = useState<any[]>([]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -2348,6 +2514,7 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
     .then(data => {
       if (data.error) return;
       setProfileData(data);
+      setRecentActivities(Array.isArray(data.recentActivities) ? data.recentActivities : []);
       if (!isEditingProfile) {
         setEditedUsername(data.user.username);
         setEditedBio(data.user.bio || '');
@@ -2624,6 +2791,50 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
               </button>
             </div>
           </>
+        )}
+      </div>
+
+      <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
+        <h3 style={{ margin: '0 0 0.75rem', color: 'var(--color-4)', fontSize: '1.05rem', fontWeight: 800 }}>활동 기록</h3>
+        {recentActivities.length > 0 ? (
+          <div style={{ display: 'grid', gap: '0.75rem' }}>
+            {recentActivities.map((activity) => (
+              <div
+                key={activity.id}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: '1rem',
+                  alignItems: 'center',
+                  padding: '0.9rem 1rem',
+                  borderRadius: '0.9rem',
+                  background: 'var(--bg-color)',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, marginBottom: '0.25rem' }}>
+                    {activity.description || '활동 기록'}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    {activity.created_at ? new Date(activity.created_at).toLocaleString('ko-KR') : ''}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    fontWeight: 900,
+                    color: Number(activity.change_amount) >= 0 ? '#5fae35' : '#ff7675',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {Number(activity.change_amount) >= 0 ? '+' : ''}
+                  {Number(activity.change_amount).toLocaleString()} RP
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p style={{ margin: 0, color: 'var(--text-muted)', textAlign: 'center' }}>아직 활동 기록이 없습니다.</p>
         )}
       </div>
 
