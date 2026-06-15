@@ -2348,8 +2348,10 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
     .then(data => {
       if (data.error) return;
       setProfileData(data);
-      setEditedUsername(data.user.username);
-      setEditedBio(data.user.bio || '');
+      if (!isEditingProfile) {
+        setEditedUsername(data.user.username);
+        setEditedBio(data.user.bio || '');
+      }
       if (data.user) {
         setUser({ ...user!, ...data.user });
       }
@@ -2610,7 +2612,11 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
             )}
             <div>
               <button
-                onClick={() => setIsEditingProfile(true)}
+                onClick={() => {
+                  setEditedUsername(u.username);
+                  setEditedBio(u.bio || '');
+                  setIsEditingProfile(true);
+                }}
                 className="btn"
                 style={{ width: 'auto', padding: '0.5rem 1.6rem', background: 'transparent', border: '1.5px solid var(--color-4)', color: 'var(--color-4)', fontSize: '0.9rem' }}
               >
