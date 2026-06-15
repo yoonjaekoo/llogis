@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import {
   generateProblem as engineGenerateProblem,
@@ -12,6 +12,13 @@ const TEMPLATES_PATH = join(__dirname, '..', 'data', 'templates.json');
 
 let templates: ProblemTemplateInput[] | null = null;
 
+function normalizeTemplate(template: ProblemTemplateInput): ProblemTemplateInput {
+  return {
+    ...template,
+    reward_rating: typeof template.reward_rating === 'number' ? template.reward_rating : template.difficulty,
+  };
+}
+
 function loadTemplates(): ProblemTemplateInput[] {
   if (!templates) {
     const raw = readFileSync(TEMPLATES_PATH, 'utf-8');
@@ -19,8 +26,14 @@ function loadTemplates(): ProblemTemplateInput[] {
     if (!Array.isArray(parsed) || parsed.length === 0) {
       throw new Error('templates.json is empty or invalid');
     }
-    templates = parsed;
+    templates = parsed.map(normalizeTemplate);
   }
+  return templates;
+}
+
+function persistTemplates(nextTemplates: ProblemTemplateInput[]): ProblemTemplateInput[] {
+  templates = nextTemplates.map(normalizeTemplate);
+  writeFileSync(TEMPLATES_PATH, `${JSON.stringify(templates, null, 2)}\n`, 'utf-8');
   return templates;
 }
 
@@ -35,6 +48,25 @@ export function getAllTemplates(): ProblemTemplateInput[] {
 
 export function getTemplateById(id: string): ProblemTemplateInput | undefined {
   return loadTemplates().find((t) => t.id === id);
+}
+
+export function updateTemplateRewardRating(
+  id: string,
+  rewardRating: number,
+): ProblemTemplateInput {
+  const current = loadTemplates();
+  const index = current.findIndex((t) => t.id === id);
+  if (index === -1) {
+    throw new Error('Template not found');
+  }
+
+  const updated = [...current];
+  updated[index] = {
+    ...updated[index],
+    reward_rating: rewardRating,
+  };
+
+  return persistTemplates(updated)[index];
 }
 
 export function getTemplatesByUnit(unit: string): ProblemTemplateInput[] {

@@ -17,6 +17,7 @@ export interface ProblemTemplateInput {
   unit?: string;
   title: string;
   difficulty: number;
+  reward_rating?: number;
   variables: Record<string, VariableDef>;
   constraints: string[];
   problem_template: string;
@@ -32,6 +33,7 @@ export interface GeneratedProblem {
   typeId: string;
   title: string;
   difficulty: number;
+  rewardRating: number;
   variables: GeneratedValues;
   problem: string;
   answer: number | number[] | string;

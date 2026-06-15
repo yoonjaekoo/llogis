@@ -49,16 +49,19 @@ export const processSubmission = async (userId: number, problemId: number, isCor
 
     // 3. 문제 정보 조회 (커스텀 보상 레이팅 확인)
     const problemRes = await client.query(
-      'SELECT is_custom, custom_reward_rating FROM problems WHERE id = $1',
+      'SELECT is_custom, custom_reward_rating, reward_rating FROM problems WHERE id = $1',
       [problemId]
     );
     if (problemRes.rows.length === 0) {
       throw new Error('Problem not found');
     }
     const problem = problemRes.rows[0];
-    const rewardRating = problem.is_custom && problem.custom_reward_rating > 0
-      ? parseFloat(problem.custom_reward_rating)
-      : 10000;
+    const rewardRating =
+      problem.reward_rating !== null && problem.reward_rating !== undefined
+        ? parseFloat(problem.reward_rating)
+        : problem.is_custom && problem.custom_reward_rating > 0
+          ? parseFloat(problem.custom_reward_rating)
+          : 10000;
 
     // 4. 기존 레이팅 계산 로직 실행
     const userRes = await client.query(

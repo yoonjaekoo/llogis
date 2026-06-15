@@ -18,6 +18,7 @@ import {
   generateRandomProblem,
   batchGenerate,
   reloadTemplates,
+  updateTemplateRewardRating,
 } from './templateProblemGenerator';
 import path from 'path';
 import fs from 'fs';
@@ -62,13 +63,13 @@ const upload = multer({
     file: Express.Multer.File,
     cb: multer.FileFilterCallback
   ) => {
-    const allowedTypes = /jpeg|jpg|png|gif/;
+    const allowedTypes = /jpeg|jpg|png|gif|webp|heic|heif/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
+    const mimetype = allowedTypes.test(file.mimetype.toLowerCase());
     if (extname && mimetype) {
       return cb(null, true);
     }
-    cb(new Error('Only images are allowed (jpeg, jpg, png, gif)'));
+    cb(new Error('Only images are allowed (jpeg, jpg, png, gif, webp, heic, heif)'));
   },
 });
 
@@ -109,6 +110,14 @@ const ensureSchema = async () => {
   await pool.query("UPDATE problems SET is_custom = FALSE WHERE is_custom IS NULL");
   await pool.query("ALTER TABLE problems ALTER COLUMN is_custom SET DEFAULT FALSE");
   await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS custom_reward_rating FLOAT DEFAULT 0.0');
+  await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS reward_rating FLOAT');
+  await pool.query(`
+    UPDATE problems
+    SET reward_rating = custom_reward_rating
+    WHERE is_custom = TRUE
+      AND reward_rating IS NULL
+      AND custom_reward_rating IS NOT NULL
+  `);
   await pool.query("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS is_streak_repair BOOLEAN DEFAULT FALSE");
   // Drop the CASCADE constraint and recreate with SET NULL (submissions survive problem deletion)
   await pool.query('ALTER TABLE submissions DROP CONSTRAINT IF EXISTS submissions_problem_id_fkey');
@@ -410,18 +419,39 @@ app.patch('/api/users/profile', authenticateToken, async (req: any, res: Respons
   const userId = req.user.id;
 
   try {
-    if (username) {
-      // Check if username already exists for another user
-      const existingUser = await pool.query('SELECT id FROM users WHERE username = $1 AND id != $2', [username, userId]);
+    const updates: string[] = [];
+    const params: any[] = [];
+    let idx = 1;
+
+    if (typeof username === 'string' && username.trim()) {
+      const nextUsername = username.trim();
+      const existingUser = await pool.query('SELECT id FROM users WHERE username = $1 AND id != $2', [nextUsername, userId]);
       if (existingUser.rows.length > 0) {
         return res.status(400).json({ error: 'Username already exists' });
       }
-      await pool.query('UPDATE users SET username = $1, bio = $2 WHERE id = $3', [username, bio, userId]);
-    } else {
-      await pool.query('UPDATE users SET bio = $1 WHERE id = $2', [bio, userId]);
+      updates.push(`username = $${idx++}`);
+      params.push(nextUsername);
     }
-    
-    res.json({ message: 'Profile updated successfully' });
+
+    if (typeof bio === 'string') {
+      updates.push(`bio = $${idx++}`);
+      params.push(bio);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No profile fields provided' });
+    }
+
+    params.push(userId);
+    const result = await pool.query(
+      `UPDATE users SET ${updates.join(', ')} WHERE id = $${idx} RETURNING id, username, bio, profile_image_url`,
+      params
+    );
+
+    res.json({
+      message: 'Profile updated successfully',
+      user: result.rows[0],
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update profile' });
   }
@@ -1435,8 +1465,8 @@ app.post('/api/problems/custom', authenticateToken, async (req: any, res: Respon
 
   try {
     const result = await pool.query(
-      'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type, is_custom, custom_reward_rating) VALUES ($1, $2, $3, $4, $4, $5, $6, $7) RETURNING id',
-      [title, content, answer, ratingReward, 'Calculation', true, parseFloat(ratingReward)]
+      'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type, is_custom, custom_reward_rating, reward_rating) VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8) RETURNING id',
+      [title, content, answer, ratingReward, 'Calculation', true, parseFloat(ratingReward), parseFloat(ratingReward)]
     );
     const problemId = result.rows[0].id;
     for (const tagName of tags) {
@@ -1651,6 +1681,7 @@ app.get('/api/problems/templates', async (_req: Request, res: Response) => {
       unit: t.unit,
       title: t.title,
       difficulty: t.difficulty,
+      reward_rating: t.reward_rating ?? t.difficulty,
       concepts: t.concepts,
     }));
     res.json(templates);
@@ -1712,11 +1743,11 @@ app.post('/api/problems/templates/generate', authenticateToken, async (req: any,
     const newProblems = [];
     for (const p of problems) {
       const result = await pool.query(
-        'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-        [p.title, p.problem, String(p.answer), p.difficulty, p.difficulty, 'Calculation'],
+        'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type, reward_rating) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
+        [p.title, p.problem, String(p.answer), p.difficulty, p.difficulty, 'Calculation', p.rewardRating],
       );
       const problemId = result.rows[0].id;
-      newProblems.push({ id: problemId, title: p.title, content: p.problem, difficulty: p.difficulty, answer: p.answer, tags: [], current_difficulty: p.difficulty });
+      newProblems.push({ id: problemId, title: p.title, content: p.problem, difficulty: p.difficulty, rewardRating: p.rewardRating, answer: p.answer, tags: [], current_difficulty: p.difficulty });
     }
 
     res.json({ message: `${problems.length}개의 문제가 생성되었습니다!`, problems: newProblems });
@@ -1733,6 +1764,30 @@ app.post('/api/problems/templates/reload', authenticateToken, async (req: any, r
     res.json({ message: '템플릿이 다시 로드되었습니다.' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to reload templates' });
+  }
+});
+
+app.patch('/api/admin/templates/:id', authenticateToken, async (req: any, res: Response) => {
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const { id } = req.params;
+  const parsedRewardRating = Number(req.body.rewardRating);
+
+  if (!Number.isFinite(parsedRewardRating) || parsedRewardRating < 0) {
+    return res.status(400).json({ error: '올바른 레이팅 값을 입력해주세요.' });
+  }
+
+  try {
+    const template = updateTemplateRewardRating(id, parsedRewardRating);
+    res.json({
+      message: '템플릿 해결 시 레이팅이 저장되었습니다.',
+      template: {
+        id: template.id,
+        title: template.title,
+        reward_rating: template.reward_rating ?? template.difficulty,
+      },
+    });
+  } catch (err) {
+    res.status(404).json({ error: 'Template not found' });
   }
 });
 

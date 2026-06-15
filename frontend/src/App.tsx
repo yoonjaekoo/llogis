@@ -1529,6 +1529,9 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
   const [problemsTotalPages, setProblemsTotalPages] = useState(1);
   const [loadingProblems, setLoadingProblems] = useState(false);
   const [editingProblem, setEditingProblem] = useState<any>(null);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [templateRewardDrafts, setTemplateRewardDrafts] = useState<Record<string, string>>({});
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -1554,6 +1557,34 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
       navigate('/');
     });
   }, [navigate]);
+
+  const fetchTemplates = useCallback(() => {
+    setLoadingTemplates(true);
+    const token = localStorage.getItem('token');
+    fetch('/api/problems/templates', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => {
+      if (!res.ok) throw new Error('Failed to load templates');
+      return res.json();
+    })
+    .then(data => {
+      if (Array.isArray(data)) {
+        setTemplates(data);
+        setTemplateRewardDrafts(prev => {
+          const next: Record<string, string> = { ...prev };
+          data.forEach((t: any) => {
+            next[t.id] = String(t.reward_rating ?? t.difficulty ?? 0);
+          });
+          return next;
+        });
+      }
+      setLoadingTemplates(false);
+    })
+    .catch(() => {
+      setLoadingTemplates(false);
+    });
+  }, []);
 
   const fetchNotifications = useCallback(() => {
     const token = localStorage.getItem('token');
@@ -1588,8 +1619,9 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
       return;
     }
     fetchUsers();
+    fetchTemplates();
     fetchNotifications();
-  }, [user, navigate, fetchUsers, fetchNotifications]);
+  }, [user, navigate, fetchUsers, fetchTemplates, fetchNotifications]);
 
   const handleSeed = async () => {
     const token = localStorage.getItem('token');
@@ -1736,6 +1768,30 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
     }
   };
 
+  const handleUpdateTemplateReward = async (templateId: string) => {
+    const rewardRating = parseFloat(templateRewardDrafts[templateId]);
+    if (isNaN(rewardRating) || rewardRating < 0) {
+      return alert('올바른 레이팅 값을 입력해주세요.');
+    }
+
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/admin/templates/${templateId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ rewardRating })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(data.message);
+      fetchTemplates();
+    } else {
+      alert(data.error);
+    }
+  };
+
   const handleUpdateTokens = async (userId: number, currentTokens: number) => {
     const newTokensStr = window.prompt('새로운 토큰 수를 입력하세요:', currentTokens.toString());
     if (newTokensStr === null) return;
@@ -1834,6 +1890,13 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
             </button>
           </div>
           <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--color-4)', borderRadius: '1rem' }}>
+            <h3 style={{ marginBottom: '1rem', color: 'var(--color-4)' }}>템플릿 해결 레이팅</h3>
+            <p style={{ marginBottom: '1rem', opacity: 0.8 }}>각 템플릿으로 생성된 문제를 맞혔을 때 지급되는 레이팅을 수정합니다.</p>
+            <button onClick={fetchTemplates} className="btn" style={{ background: 'var(--color-4)', color: 'white' }}>
+              템플릿 목록 새로고침
+            </button>
+          </div>
+          <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--color-4)', borderRadius: '1rem' }}>
             <h3 style={{ marginBottom: '1rem', color: 'var(--color-4)' }}>AI 문제 생성 (NVIDIA NIM)</h3>
             <p style={{ marginBottom: '1rem', opacity: 0.8 }}>NVIDIA NIM API로 AI 문제를 생성합니다. 프로필에서 API 키를 먼저 등록하세요.</p>
             <input
@@ -1884,6 +1947,56 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
             {message}
           </div>
         )}
+
+        <div className="problem-card" style={{ marginBottom: '2rem' }}>
+          <h3 style={{ marginBottom: '1rem' }}>템플릿 보상 관리</h3>
+          <p style={{ marginBottom: '1rem', opacity: 0.8 }}>
+            문제 생성기에 사용되는 각 템플릿의 해결 시 레이팅을 조정합니다.
+          </p>
+          {loadingTemplates ? (
+            <p>템플릿 로딩 중...</p>
+          ) : (
+            <div style={{ display: 'grid', gap: '0.75rem', maxHeight: '420px', overflowY: 'auto' }}>
+              {templates.map((template) => (
+                <div
+                  key={template.id}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1.4fr 0.5fr auto',
+                    gap: '0.75rem',
+                    alignItems: 'center',
+                    padding: '0.75rem',
+                    borderRadius: '0.75rem',
+                    background: 'var(--bg-color)',
+                    border: '1px solid var(--border)',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 800 }}>{template.title}</div>
+                    <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>
+                      {template.id} · {template.unit || '단원 미지정'}
+                    </div>
+                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    step="1"
+                    value={templateRewardDrafts[template.id] ?? String(template.reward_rating ?? template.difficulty ?? 0)}
+                    onChange={(e) => setTemplateRewardDrafts(prev => ({ ...prev, [template.id]: e.target.value }))}
+                    style={{ width: '100%', padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', boxSizing: 'border-box' }}
+                  />
+                  <button
+                    onClick={() => handleUpdateTemplateReward(template.id)}
+                    className="btn"
+                    style={{ width: 'auto', background: 'var(--color-4)', color: 'white' }}
+                  >
+                    저장
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Tab Navigation */}
         <div style={{ display: 'flex', gap: '1rem', borderBottom: '2px solid var(--border)', marginBottom: '2rem', paddingBottom: '0.5rem' }}>
@@ -2300,7 +2413,12 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
       const data = await res.json();
       if (res.ok) {
         setIsEditingProfile(false);
-        const updatedUser = { ...user!, username: editedUsername.trim(), bio: editedBio || '' };
+        const updatedUser = {
+          ...user!,
+          ...(data.user || {}),
+          username: data.user?.username || editedUsername.trim(),
+          bio: (data.user?.bio ?? editedBio) || '',
+        };
         localStorage.setItem('user', JSON.stringify(updatedUser));
         setUser(updatedUser);
         fetchProfile();
@@ -2439,7 +2557,7 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
         {isUpdatingImage && (
           <form onSubmit={handleUpdateProfileImage} style={{ marginBottom: '1.5rem', maxWidth: '380px', margin: '0 auto 1.5rem' }}>
             <input
-              type="file" accept="image/jpeg,image/png,image/gif"
+              type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif"
               onChange={e => setNewProfileImageFile(e.target.files?.[0] ?? null)}
               style={{ width: '100%', padding: '0.7rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', marginBottom: '0.5rem', boxSizing: 'border-box' }}
               required

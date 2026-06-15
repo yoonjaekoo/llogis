@@ -40,13 +40,13 @@ const upload = (0, multer_1.default)({
     storage,
     limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
     fileFilter: (_req, file, cb) => {
-        const allowedTypes = /jpeg|jpg|png|gif/;
+        const allowedTypes = /jpeg|jpg|png|gif|webp|heic|heif/;
         const extname = allowedTypes.test(path_1.default.extname(file.originalname).toLowerCase());
-        const mimetype = allowedTypes.test(file.mimetype);
+        const mimetype = allowedTypes.test(file.mimetype.toLowerCase());
         if (extname && mimetype) {
             return cb(null, true);
         }
-        cb(new Error('Only images are allowed (jpeg, jpg, png, gif)'));
+        cb(new Error('Only images are allowed (jpeg, jpg, png, gif, webp, heic, heif)'));
     },
 });
 const pool = new pg_1.Pool({
@@ -81,7 +81,17 @@ const ensureSchema = async () => {
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_developer_chango BOOLEAN DEFAULT FALSE");
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS longest_streak INTEGER DEFAULT 0");
     await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS is_custom BOOLEAN DEFAULT FALSE');
+    await pool.query("UPDATE problems SET is_custom = FALSE WHERE is_custom IS NULL");
+    await pool.query("ALTER TABLE problems ALTER COLUMN is_custom SET DEFAULT FALSE");
     await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS custom_reward_rating FLOAT DEFAULT 0.0');
+    await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS reward_rating FLOAT');
+    await pool.query(`
+    UPDATE problems
+    SET reward_rating = custom_reward_rating
+    WHERE is_custom = TRUE
+      AND reward_rating IS NULL
+      AND custom_reward_rating IS NOT NULL
+  `);
     await pool.query("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS is_streak_repair BOOLEAN DEFAULT FALSE");
     // Drop the CASCADE constraint and recreate with SET NULL (submissions survive problem deletion)
     await pool.query('ALTER TABLE submissions DROP CONSTRAINT IF EXISTS submissions_problem_id_fkey');
@@ -364,18 +374,31 @@ app.patch('/api/users/profile', authenticateToken, async (req, res) => {
     const { username, bio } = req.body;
     const userId = req.user.id;
     try {
-        if (username) {
-            // Check if username already exists for another user
-            const existingUser = await pool.query('SELECT id FROM users WHERE username = $1 AND id != $2', [username, userId]);
+        const updates = [];
+        const params = [];
+        let idx = 1;
+        if (typeof username === 'string' && username.trim()) {
+            const nextUsername = username.trim();
+            const existingUser = await pool.query('SELECT id FROM users WHERE username = $1 AND id != $2', [nextUsername, userId]);
             if (existingUser.rows.length > 0) {
                 return res.status(400).json({ error: 'Username already exists' });
             }
-            await pool.query('UPDATE users SET username = $1, bio = $2 WHERE id = $3', [username, bio, userId]);
+            updates.push(`username = $${idx++}`);
+            params.push(nextUsername);
         }
-        else {
-            await pool.query('UPDATE users SET bio = $1 WHERE id = $2', [bio, userId]);
+        if (typeof bio === 'string') {
+            updates.push(`bio = $${idx++}`);
+            params.push(bio);
         }
-        res.json({ message: 'Profile updated successfully' });
+        if (updates.length === 0) {
+            return res.status(400).json({ error: 'No profile fields provided' });
+        }
+        params.push(userId);
+        const result = await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = $${idx} RETURNING id, username, bio, profile_image_url`, params);
+        res.json({
+            message: 'Profile updated successfully',
+            user: result.rows[0],
+        });
     }
     catch (err) {
         res.status(500).json({ error: 'Failed to update profile' });
@@ -1210,7 +1233,7 @@ app.get('/api/problems', async (req, res) => {
         SELECT COUNT(DISTINCT p.id)
         FROM problems p
         WHERE p.is_custom = $1 AND p.id NOT IN (
-          SELECT problem_id FROM submissions WHERE user_id = $2 AND is_correct = true
+          SELECT problem_id FROM submissions WHERE user_id = $2 AND is_correct = true AND problem_id IS NOT NULL
         )
       `;
             countParams.push(userId);
@@ -1219,7 +1242,7 @@ app.get('/api/problems', async (req, res) => {
         const total = parseInt(countRes.rows[0].count);
         let query = `
       SELECT p.id, p.title, p.content, p.current_difficulty, p.is_custom, p.custom_reward_rating,
-             COALESCE(NULLIF(array_agg(t.name), '{NULL}'), '{}') as tags
+             COALESCE(array_remove(array_agg(t.name), NULL), '{}') as tags
       FROM problems p
       LEFT JOIN problem_tags pt ON p.id = pt.problem_id
       LEFT JOIN tags t ON pt.tag_id = t.id
@@ -1229,7 +1252,7 @@ app.get('/api/problems', async (req, res) => {
         let nextIdx = 2;
         if (userId) {
             query += ` AND p.id NOT IN (
-        SELECT problem_id FROM submissions WHERE user_id = $${nextIdx++} AND is_correct = true
+        SELECT problem_id FROM submissions WHERE user_id = $${nextIdx++} AND is_correct = true AND problem_id IS NOT NULL
       )`;
             queryParams.push(userId);
         }
@@ -1265,7 +1288,7 @@ app.post('/api/problems/custom', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: '필수 필드가 누락되었습니다.' });
     }
     try {
-        const result = await pool.query('INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type, is_custom, custom_reward_rating) VALUES ($1, $2, $3, $4, $4, $5, $6, $7) RETURNING id', [title, content, answer, ratingReward, 'Calculation', true, parseFloat(ratingReward)]);
+        const result = await pool.query('INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type, is_custom, custom_reward_rating, reward_rating) VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8) RETURNING id', [title, content, answer, ratingReward, 'Calculation', true, parseFloat(ratingReward), parseFloat(ratingReward)]);
         const problemId = result.rows[0].id;
         for (const tagName of tags) {
             let tagRes = await pool.query('SELECT id FROM tags WHERE name = $1', [tagName]);
@@ -1366,7 +1389,7 @@ app.get('/api/problems/public', async (req, res) => {
         // Get paginated problems
         const query = `
       SELECT p.id, p.title, p.content, p.current_difficulty, p.created_at,
-             COALESCE(NULLIF(array_agg(t.name ORDER BY t.name), '{NULL}'), '{}') as tags
+             COALESCE(array_remove(array_agg(t.name ORDER BY t.name), NULL), '{}') as tags
       FROM problems p
       LEFT JOIN problem_tags pt ON p.id = pt.problem_id
       LEFT JOIN tags t ON pt.tag_id = t.id
@@ -1458,6 +1481,7 @@ app.get('/api/problems/templates', async (_req, res) => {
             unit: t.unit,
             title: t.title,
             difficulty: t.difficulty,
+            reward_rating: t.reward_rating ?? t.difficulty,
             concepts: t.concepts,
         }));
         res.json(templates);
@@ -1524,9 +1548,9 @@ app.post('/api/problems/templates/generate', authenticateToken, async (req, res)
         }
         const newProblems = [];
         for (const p of problems) {
-            const result = await pool.query('INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id', [p.title, p.problem, String(p.answer), p.difficulty, p.difficulty, 'Calculation']);
+            const result = await pool.query('INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type, reward_rating) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id', [p.title, p.problem, String(p.answer), p.difficulty, p.difficulty, 'Calculation', p.rewardRating]);
             const problemId = result.rows[0].id;
-            newProblems.push({ id: problemId, title: p.title, content: p.problem, difficulty: p.difficulty, answer: p.answer });
+            newProblems.push({ id: problemId, title: p.title, content: p.problem, difficulty: p.difficulty, rewardRating: p.rewardRating, answer: p.answer, tags: [], current_difficulty: p.difficulty });
         }
         res.json({ message: `${problems.length}개의 문제가 생성되었습니다!`, problems: newProblems });
     }
@@ -1544,6 +1568,29 @@ app.post('/api/problems/templates/reload', authenticateToken, async (req, res) =
     }
     catch (err) {
         res.status(500).json({ error: 'Failed to reload templates' });
+    }
+});
+app.patch('/api/admin/templates/:id', authenticateToken, async (req, res) => {
+    if (req.user.username !== 'admin')
+        return res.status(403).json({ error: 'Admin only' });
+    const { id } = req.params;
+    const parsedRewardRating = Number(req.body.rewardRating);
+    if (!Number.isFinite(parsedRewardRating) || parsedRewardRating < 0) {
+        return res.status(400).json({ error: '올바른 레이팅 값을 입력해주세요.' });
+    }
+    try {
+        const template = (0, templateProblemGenerator_1.updateTemplateRewardRating)(id, parsedRewardRating);
+        res.json({
+            message: '템플릿 해결 시 레이팅이 저장되었습니다.',
+            template: {
+                id: template.id,
+                title: template.title,
+                reward_rating: template.reward_rating ?? template.difficulty,
+            },
+        });
+    }
+    catch (err) {
+        res.status(404).json({ error: 'Template not found' });
     }
 });
 app.post('/api/submissions', authenticateToken, async (req, res) => {
@@ -1615,7 +1662,7 @@ app.get('/api/admin/problems', authenticateToken, async (req, res) => {
         const total = parseInt(countRes.rows[0].count);
         const result = await pool.query(`
       SELECT p.id, p.title, p.content, p.answer, p.current_difficulty, p.created_at,
-             COALESCE(NULLIF(array_agg(t.name ORDER BY t.name), '{NULL}'), '{}') as tags
+             COALESCE(array_remove(array_agg(t.name ORDER BY t.name), NULL), '{}') as tags
       FROM problems p
       LEFT JOIN problem_tags pt ON p.id = pt.problem_id
       LEFT JOIN tags t ON pt.tag_id = t.id

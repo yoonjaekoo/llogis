@@ -37,6 +37,7 @@ export function generateProblem(
       typeId: template.id,
       title: template.title,
       difficulty: template.difficulty,
+      rewardRating: template.reward_rating ?? template.difficulty,
       variables: vars,
       problem,
       answer,

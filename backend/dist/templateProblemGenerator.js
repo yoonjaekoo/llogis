@@ -4,6 +4,7 @@ exports.resetEngine = exports.batchGenerate = void 0;
 exports.reloadTemplates = reloadTemplates;
 exports.getAllTemplates = getAllTemplates;
 exports.getTemplateById = getTemplateById;
+exports.updateTemplateRewardRating = updateTemplateRewardRating;
 exports.getTemplatesByUnit = getTemplatesByUnit;
 exports.getTemplatesByConcept = getTemplatesByConcept;
 exports.getUnits = getUnits;
@@ -18,6 +19,12 @@ Object.defineProperty(exports, "batchGenerate", { enumerable: true, get: functio
 Object.defineProperty(exports, "resetEngine", { enumerable: true, get: function () { return index_js_1.resetEngine; } });
 const TEMPLATES_PATH = (0, path_1.join)(__dirname, '..', 'data', 'templates.json');
 let templates = null;
+function normalizeTemplate(template) {
+    return {
+        ...template,
+        reward_rating: typeof template.reward_rating === 'number' ? template.reward_rating : template.difficulty,
+    };
+}
 function loadTemplates() {
     if (!templates) {
         const raw = (0, fs_1.readFileSync)(TEMPLATES_PATH, 'utf-8');
@@ -25,8 +32,13 @@ function loadTemplates() {
         if (!Array.isArray(parsed) || parsed.length === 0) {
             throw new Error('templates.json is empty or invalid');
         }
-        templates = parsed;
+        templates = parsed.map(normalizeTemplate);
     }
+    return templates;
+}
+function persistTemplates(nextTemplates) {
+    templates = nextTemplates.map(normalizeTemplate);
+    (0, fs_1.writeFileSync)(TEMPLATES_PATH, `${JSON.stringify(templates, null, 2)}\n`, 'utf-8');
     return templates;
 }
 function reloadTemplates() {
@@ -38,6 +50,19 @@ function getAllTemplates() {
 }
 function getTemplateById(id) {
     return loadTemplates().find((t) => t.id === id);
+}
+function updateTemplateRewardRating(id, rewardRating) {
+    const current = loadTemplates();
+    const index = current.findIndex((t) => t.id === id);
+    if (index === -1) {
+        throw new Error('Template not found');
+    }
+    const updated = [...current];
+    updated[index] = {
+        ...updated[index],
+        reward_rating: rewardRating,
+    };
+    return persistTemplates(updated)[index];
 }
 function getTemplatesByUnit(unit) {
     return loadTemplates().filter((t) => t.unit === unit);
