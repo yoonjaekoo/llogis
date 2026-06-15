@@ -3628,20 +3628,25 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
 
   const confirmGenerate = () => {
     const token = localStorage.getItem('token');
-    fetch('/api/problems/generate', { 
-      method: 'POST', 
-      headers: { 
+    fetch('/api/problems/generate', {
+      method: 'POST',
+      headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ tags: selectedTags, count: generationCount })
     })
-    .then(res => res.json())
-    .then(data => {
-      setProblems(data.problems);
-      if (data.problems.length > 0) setSelectedProblemId(data.problems[0].id);
-      setShowGenerateModal(false);
-      setPage(1);
+    .then(async res => {
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || '문제 생성에 실패했습니다.'); return; }
+      if (data.problems && data.problems.length > 0) {
+        setProblems(data.problems);
+        setSelectedProblemId(data.problems[0].id);
+        setShowGenerateModal(false);
+        setPage(1);
+      } else {
+        alert('생성된 문제가 없습니다.');
+      }
     });
   };
 
@@ -3659,16 +3664,18 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
       },
       body: JSON.stringify(body)
     })
-    .then(res => res.json())
-    .then(data => {
-      if (data.problems) {
+    .then(async res => {
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || '템플릿 문제 생성에 실패했습니다.'); return; }
+      if (data.problems && data.problems.length > 0) {
         setProblems(data.problems);
-        if (data.problems.length > 0) setSelectedProblemId(data.problems[0].id);
+        setSelectedProblemId(data.problems[0].id);
+        setShowGenerateModal(false);
+        setPage(1);
+      } else {
+        alert('생성된 문제가 없습니다.');
       }
-      setShowGenerateModal(false);
-      setPage(1);
-    })
-    .catch(() => {});
+    });
   };
 
   const handleCreateCustom = async (e: React.FormEvent) => {
