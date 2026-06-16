@@ -206,12 +206,12 @@
     "title": "일에 대한 문제",
     "difficulty": 19000,
     "variables": {
-      "days_a": { "type": "integer", "min": 10, "max": 12 },
-      "days_b": { "type": "integer", "min": 15, "max": 20 }
+      "days_a": { "type": "integer", "min": 6, "max": 30 },
+      "multiplier": { "type": "choice", "choices": [2, 3, 4, 5] }
     },
-    "constraints": ["(days_a * days_b) % (days_a + days_b) == 0"],
-    "problem_template": "어떤 일을 완성하는 데 $A$는 {{days_a}}일, $B$는 {{days_b}}일이 걸린다고 한다. 두 사람이 함께 이 일을 하면 며칠이 걸리는지 구하시오.",
-    "answer_formula": { "type": "expression", "value": "(days_a * days_b) / (days_a + days_b)" },
+    "constraints": ["days_a * multiplier % (1 + multiplier) == 0"],
+    "problem_template": "어떤 일을 완성하는 데 $A$는 {{days_a}}일, $B$는 {{days_a * multiplier}}일이 걸린다고 한다. 두 사람이 함께 이 일을 하면 며칠이 걸리는지 구하시오.",
+    "answer_formula": { "type": "expression", "value": "days_a * multiplier / (1 + multiplier)" },
     "concepts": ["일차방정식의 활용", "일의 양"]
   },
   {
