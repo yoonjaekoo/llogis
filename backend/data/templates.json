@@ -293,7 +293,7 @@
       "cost": { "type": "integer", "min": 5000, "max": 10000 },
       "rate": { "type": "integer", "min": 10, "max": 30 }
     },
-    "constraints": ["cost % 100 == 0"],
+    "constraints": ["cost % 10 == 0"],
     "problem_template": "원가가 {{cost}}원인 물건에 {{rate}}\\%의 이익을 붙여서 정가를 정하였다. 이 물건의 정가를 구하시오.",
     "answer_formula": { "type": "expression", "value": "cost * (1 + rate / 100)" },
     "concepts": ["일차방정식의 활용", "원가 정가"]
