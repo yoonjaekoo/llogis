@@ -474,15 +474,37 @@ const Landing: React.FC<{ user: User | null }> = ({ user }) => {
             </motion.div>
           ) : null}
 
-          <motion.h1
-            className="landing-hero-title"
-            initial={false}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease: 'easeOut' }}
-            style={{ willChange: 'transform' }}
-          >
-            {user ? `어서 오세요,\n${user.username}!` : '수학 실력을\n레이팅으로 증명하세요'}
-          </motion.h1>
+          {user ? (
+            <>
+              <motion.div
+                className="landing-hero-welcome"
+                initial={false}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, ease: 'easeOut' }}
+              >
+                어서 오세요,
+              </motion.div>
+              <motion.h1
+                className="landing-hero-title"
+                initial={false}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, ease: 'easeOut', delay: 0.1 }}
+                style={{ willChange: 'transform' }}
+              >
+                {user.username}!
+              </motion.h1>
+            </>
+          ) : (
+            <motion.h1
+              className="landing-hero-title"
+              initial={false}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, ease: 'easeOut' }}
+              style={{ willChange: 'transform' }}
+            >
+              수학 실력을<br />레이팅으로 증명하세요
+            </motion.h1>
+          )}
           <motion.p
             className="landing-hero-sub"
             initial={false}
