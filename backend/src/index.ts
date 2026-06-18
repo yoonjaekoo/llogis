@@ -531,51 +531,6 @@ app.get('/api/users/search', async (req: Request, res: Response) => {
   }
 });
 
-app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
-  const { id } = req.params;
-  try {
-    const userResult = await pool.query(
-      'SELECT id, username, rating, profile_image_url, bio, equipped_title, streak, tokens, xp, created_at, problems_solved FROM users WHERE id = $1',
-      [id]
-    );
-
-    if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
-
-    const user = userResult.rows[0];
-
-    // Look up equipped title display name
-    let equippedTitleName = '';
-    if (user.equipped_title) {
-      const titleRes = await pool.query('SELECT name FROM titles WHERE title_id = $1', [user.equipped_title]);
-      if (titleRes.rows.length > 0) equippedTitleName = titleRes.rows[0].name;
-    }
-
-    // Get submission statistics
-    const statsResult = await pool.query(
-      'SELECT COUNT(*) as total FROM submissions WHERE user_id = $1',
-      [id]
-    );
-    const stats = statsResult.rows[0];
-    const totalSubmissions = parseInt(stats.total);
-    const correctSubmissions = parseInt(user.problems_solved) || 0;
-
-    res.json({
-      user: {
-        ...user,
-        equipped_title: equippedTitleName,
-        tier: getTier(user.rating)
-      },
-      stats: {
-        totalSubmissions,
-        correctSubmissions,
-        accuracy: totalSubmissions > 0 ? (correctSubmissions / totalSubmissions) * 100 : 0
-      }
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch user profile' });
-  }
-});
-
 // --- Store API ---
 // --- Store API Endpoints ---
 // List available store items
@@ -797,12 +752,12 @@ app.post('/api/store/submit-custom-title', authenticateToken, async (req: any, r
   }
 });
 
-// Public user profile (others can view streak, tokens, xp)
+// Public user profile (others can view all info: streak, tokens, xp, quests, titles, fever)
 app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const userResult = await pool.query(
-      'SELECT id, username, rating, profile_image_url, bio, streak, tokens, xp, equipped_title, has_firework_effect, has_developer_chango, last_active_date, longest_streak, custom_title FROM users WHERE id = $1',
+      'SELECT id, username, rating, profile_image_url, bio, streak, tokens, xp, quests, equipped_title, has_firework_effect, has_developer_chango, last_active_date, longest_streak, custom_title, problems_solved, created_at, fever_multiplier, fever_expires_at FROM users WHERE id = $1',
       [id]
     );
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
@@ -818,13 +773,26 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
       'SELECT t.title_id, t.name, t.description FROM user_titles ut JOIN titles t ON t.title_id = ut.title_id WHERE ut.user_id = $1 ORDER BY ut.unlocked_at',
       [id]
     );
+    // Get submission statistics
+    const statsResult = await pool.query(
+      'SELECT COUNT(*) as total FROM submissions WHERE user_id = $1',
+      [id]
+    );
+    const stats = statsResult.rows[0];
+    const totalSubmissions = parseInt(stats.total);
+    const correctSubmissions = parseInt(user.problems_solved) || 0;
     res.json({
       user: {
         ...user,
         equipped_title: equippedTitleName || user.equipped_title,
         tier: getTier(parseFloat(user.rating))
       },
-      titles: titlesRes.rows
+      titles: titlesRes.rows,
+      stats: {
+        totalSubmissions,
+        correctSubmissions,
+        accuracy: totalSubmissions > 0 ? (correctSubmissions / totalSubmissions) * 100 : 0
+      }
     });
   } catch (err) {
     console.error('Failed to fetch public profile:', err);

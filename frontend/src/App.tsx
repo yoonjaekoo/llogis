@@ -1584,11 +1584,58 @@ const UserProfile: React.FC = () => {
             </div>
           </section>
 
-          <div style={{ textAlign: 'center', opacity: 0.6, fontSize: '0.9rem' }}>
+          {(u.fever_expires_at && new Date(u.fever_expires_at) > new Date()) && (
+            <div style={{ marginTop: '1rem', padding: '0.6rem', background: 'linear-gradient(90deg, #ff6b6b22, #ff6b6b44, #ff6b6b22)', border: '1px solid #ff6b6b', borderRadius: '0.5rem', fontWeight: 800, color: '#ff6b6b', fontSize: '1rem' }}>
+              🔥 {u.fever_multiplier}배 피버타임 활성중!
+            </div>
+          )}
+
+          {/* 프로필 아이콘 뱃지 */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+            {u.has_firework_effect && <span style={{ padding: '0.2rem 0.6rem', borderRadius: '99px', background: 'var(--card-bg)', border: '1px solid var(--border)', fontSize: '0.8rem', fontWeight: 700 }}>🎆 폭죽 이펙트</span>}
+            {u.has_developer_chango && <span style={{ padding: '0.2rem 0.6rem', borderRadius: '99px', background: 'var(--card-bg)', border: '1px solid var(--border)', fontSize: '0.8rem', fontWeight: 700 }}>🎫 개발자의 칭호</span>}
+          </div>
+
+          <div style={{ textAlign: 'center', opacity: 0.6, fontSize: '0.9rem', marginTop: '1rem' }}>
             가입일: {new Date(u.created_at).toLocaleDateString()}
             {u.last_active_date ? ` · 마지막 활동: ${new Date(u.last_active_date).toLocaleDateString()}` : ''}
           </div>
         </article>
+
+        {/* 일일 퀘스트 */}
+        {u.quests && Array.isArray(u.quests) && u.quests.length > 0 && (
+          <div className="problem-card" style={{ marginTop: '1.5rem' }}>
+            <h3 style={{ margin: '0 0 0.75rem', color: '#5fae35', fontWeight: 800, fontSize: '1.1rem' }}>
+              📋 일일 퀘스트
+            </h3>
+            <div style={{ display: 'grid', gap: '0.75rem' }}>
+              {u.quests.map((q: any, i: number) => (
+                <div key={i} style={{
+                  padding: '0.8rem 1rem',
+                  borderRadius: '0.5rem',
+                  background: q.completed ? 'rgba(95,174,53,0.1)' : 'var(--card-bg)',
+                  border: `1px solid ${q.completed ? '#5fae35' : 'var(--border)'}`,
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  opacity: q.completed ? 0.8 : 1
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{q.title}</div>
+                    {q.type === 'accuracy' ? (
+                      <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>{q.current}% / {q.target}%</div>
+                    ) : (
+                      <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>{q.current} / {q.target}</div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'right', fontSize: '0.8rem' }}>
+                    <div style={{ fontWeight: 700, color: '#e6a800' }}>+{q.tokenReward}🪙</div>
+                    <div style={{ fontWeight: 700, color: '#00b360' }}>+{q.xpReward}⚡</div>
+                    {q.completed && <div style={{ color: '#5fae35', fontWeight: 800 }}>✅ 완료</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* 6-month streak calendar for public profile */}
         {
