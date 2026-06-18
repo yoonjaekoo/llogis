@@ -38,6 +38,8 @@ interface User {
   has_developer_chango?: boolean;
   custom_title?: string;
   problems_solved?: number;
+  fever_multiplier?: number;
+  fever_expires_at?: string;
 }
 
 // LaTeX Helper
@@ -208,6 +210,24 @@ const RadarChart: React.FC<{ data: { tag: string; count: number }[]; maxValue: n
   );
 };
 
+const FeverTimer: React.FC<{ expiresAt: string }> = ({ expiresAt }) => {
+  const [remaining, setRemaining] = useState('');
+  useEffect(() => {
+    const update = () => {
+      const diff = new Date(expiresAt).getTime() - Date.now();
+      if (diff <= 0) { setRemaining(''); return; }
+      const m = Math.floor(diff / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setRemaining(`${m}:${s.toString().padStart(2, '0')}`);
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [expiresAt]);
+  if (!remaining) return null;
+  return <span style={{ color: '#ff6b6b', fontWeight: 800, fontSize: '0.8rem', marginLeft: '0.3rem' }}>🔥 {remaining}</span>;
+};
+
 const Navbar: React.FC<{ 
   user: User | null; 
   onLogout: () => void; 
@@ -244,6 +264,7 @@ const Navbar: React.FC<{
                     </div>
                   )}
                   {user.username} <span style={{ fontSize: '0.8rem', opacity: 0.8 }}>({user.tier})</span> <b style={{ color: 'white' }}>{Math.round(user.rating).toLocaleString()}</b>
+                  {user.fever_expires_at && new Date(user.fever_expires_at) > new Date() && <FeverTimer expiresAt={user.fever_expires_at} />}
                 </Link>
               </li>
               <li><button onClick={onLogout} aria-label="로그아웃" style={{ background: 'none', border: 'none', color: '#ff7675', cursor: 'pointer', fontWeight: 800 }}>로그아웃</button></li>
@@ -444,6 +465,11 @@ const Landing: React.FC<{ user: User | null }> = ({ user }) => {
                 <motion.span className="stats-chip" whileHover={reducedMotion ? undefined : { scale: 1.04, y: -2 }}>
                   🪙 {(user as any).tokens ?? 0} 토큰
                 </motion.span>
+                {(user as any).fever_expires_at && new Date((user as any).fever_expires_at) > new Date() && (
+                  <motion.span className="stats-chip" whileHover={reducedMotion ? undefined : { scale: 1.04, y: -2 }} style={{ borderColor: '#ff6b6b', color: '#ff6b6b' }}>
+                    🔥 {(user as any).fever_multiplier ?? 1}배 피버 <FeverTimer expiresAt={(user as any).fever_expires_at} />
+                  </motion.span>
+                )}
               </div>
             </motion.div>
           ) : null}
@@ -3610,12 +3636,15 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
         setWrongGlowTrigger(prev => prev + 1);
       }
       
-      const updatedUser = { 
+      const updatedUser: any = { 
         ...user, 
         rating: data.newUserRating,
         tier: data.tier,
         problems_solved: data.problems_solved
       };
+      if (data.tokens !== undefined) updatedUser.tokens = data.tokens;
+      if (data.streak !== undefined) updatedUser.streak = data.streak;
+      if (data.xp !== undefined) updatedUser.xp = data.xp;
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setUser(updatedUser);
       setAnswers(prev => ({ ...prev, [problemId]: '' }));
@@ -3720,6 +3749,11 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
         <meta property="og:title" content="문제 풀기 | Logis - 수학 문제 풀이 플랫폼" />
         <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
       </Helmet>
+      {user?.fever_expires_at && new Date(user.fever_expires_at) > new Date() && (
+        <div style={{ textAlign: 'center', padding: '0.6rem', background: 'linear-gradient(90deg, #ff6b6b22, #ff6b6b44, #ff6b6b22)', border: '1px solid #ff6b6b', borderRadius: '0.5rem', marginBottom: '1rem', fontWeight: 800, color: '#ff6b6b', fontSize: '1.1rem' }}>
+          🔥 {user.fever_multiplier}배 피버타임 활성중! — <FeverTimer expiresAt={user.fever_expires_at} />
+        </div>
+      )}
       <nav className="problem-sidebar" aria-label="문제 목록" style={{ width: '300px', flexShrink: 0 }}>
         {/* 탭: 일반 / 커스텀 */}
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
@@ -4003,14 +4037,22 @@ const Shop: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ use
     } else if (itemId === 'developer_chango') {
       url = '/api/store/buy-developer-chango';
       cost = 500;
+    } else if (itemId === 'fever_3x' || itemId === 'fever_5x') {
+      url = '/api/store/buy-fever';
+      cost = itemId === 'fever_3x' ? 100 : 500;
     }
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      ...(itemId === 'fever_3x' || itemId === 'fever_5x' ? { body: JSON.stringify({ type: itemId }) } : {})
     });
     const data = await res.json();
     if (res.ok) {
-      const msg = itemId === 'streak_repair' ? '스트릭이 복구되었습니다.' : itemId === 'firework_effect' ? '폭죽 이펙트가 활성화되었습니다.' : '🎫 개발자의 칭호를 구매했습니다! 프로필에서 칭호를 입력하세요.';
+      let msg = '';
+      if (itemId === 'streak_repair') msg = '스트릭이 복구되었습니다.';
+      else if (itemId === 'firework_effect') msg = '폭죽 이펙트가 활성화되었습니다.';
+      else if (itemId === 'developer_chango') msg = '🎫 개발자의 칭호를 구매했습니다! 프로필에서 칭호를 입력하세요.';
+      else if (itemId === 'fever_3x' || itemId === 'fever_5x') msg = data.message || '🔥 피버타임이 활성화되었습니다!';
       setMessage(`✅ 구매 완료! ${msg}`);
       const updatedUser = { ...user!, tokens: (user!.tokens || 0) - cost };
       if (itemId === 'streak_repair') {
@@ -4018,6 +4060,9 @@ const Shop: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ use
         updatedUser.streak_repaired = true;
       } else if (itemId === 'firework_effect') {
         updatedUser.has_firework_effect = true;
+      } else if (itemId === 'fever_3x' || itemId === 'fever_5x') {
+        updatedUser.fever_multiplier = data.fever_multiplier;
+        updatedUser.fever_expires_at = data.fever_expires_at;
       }
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setUser(updatedUser);

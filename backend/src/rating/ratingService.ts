@@ -64,14 +64,37 @@ export const processSubmission = async (userId: number, problemId: number, isCor
       throw new Error('Problem not found');
     }
     const problem = problemRes.rows[0];
-    const rewardRating =
+    let rewardRating =
       problem.reward_rating !== null && problem.reward_rating !== undefined
         ? parseFloat(problem.reward_rating)
         : problem.is_custom && problem.custom_reward_rating > 0
           ? parseFloat(problem.custom_reward_rating)
           : 10000;
 
-    // 4. 기존 레이팅 계산 로직 실행
+    // 4. 피버타임 확인 및 적용
+    const feverRes = await client.query(
+      'SELECT fever_multiplier, fever_expires_at FROM users WHERE id = $1',
+      [userId]
+    );
+    let feverMultiplier = 1;
+    let feverActive = false;
+    if (feverRes.rows.length > 0) {
+      const fm = feverRes.rows[0].fever_multiplier;
+      const expiresAt = feverRes.rows[0].fever_expires_at;
+      if (expiresAt && new Date(expiresAt) > new Date() && fm && fm > 1) {
+        feverMultiplier = fm;
+        feverActive = true;
+      } else if (expiresAt && new Date(expiresAt) <= new Date()) {
+        // 만료된 피버타임 초기화
+        await client.query(
+          'UPDATE users SET fever_multiplier = 1.0, fever_expires_at = NULL WHERE id = $1',
+          [userId]
+        );
+      }
+    }
+    const feverDescription = feverActive ? ` (🔥${feverMultiplier}배 피버타임 적용)` : '';
+
+    // 5. 기존 레이팅 계산 로직 실행 (피버타임 반영)
     const userRes = await client.query(
       'SELECT rating FROM users WHERE id = $1 FOR UPDATE',
       [userId]
@@ -82,7 +105,8 @@ export const processSubmission = async (userId: number, problemId: number, isCor
     }
 
     const currentRating = parseFloat(userRes.rows[0].rating);
-    const ratingDelta = isCorrect ? rewardRating : -getWrongAnswerPenalty(currentRating);
+    const baseDelta = isCorrect ? rewardRating : -getWrongAnswerPenalty(currentRating);
+    const ratingDelta = isCorrect ? Math.round(baseDelta * feverMultiplier) : baseDelta;
     const finalRating = Math.max(0, currentRating + ratingDelta);
 
     await client.query(
@@ -92,7 +116,7 @@ export const processSubmission = async (userId: number, problemId: number, isCor
 
     const activityType = isCorrect ? 'correct_reward' : 'wrong_penalty';
     const activityDescription = isCorrect
-      ? `정답 제출 보상 +${Math.round(rewardRating).toLocaleString()} RP`
+      ? `정답 제출 보상 +${Math.round(rewardRating).toLocaleString()} RP${feverDescription}`
       : `오답 패널티 -${Math.abs(Math.round(ratingDelta)).toLocaleString()} RP`;
     await client.query(
       `INSERT INTO rating_activity_logs (
@@ -152,7 +176,9 @@ export const processSubmission = async (userId: number, problemId: number, isCor
       quests: finalUser.quests,
       streakRepaired: repairResult.repaired,
       streakRepairedFlag: finalUser.streak_repaired,
-      problems_solved: finalUser.problems_solved
+      problems_solved: finalUser.problems_solved,
+      feverActive,
+      feverMultiplier
     };
   } catch (err) {
     await client.query('ROLLBACK');

@@ -129,6 +129,8 @@ const ensureSchema = async () => {
   await pool.query("INSERT INTO tags (name) VALUES ('이차방정식') ON CONFLICT (name) DO NOTHING");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_title VARCHAR(100) DEFAULT ''");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS problems_solved INTEGER DEFAULT 0");
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS fever_multiplier FLOAT DEFAULT 1.0");
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS fever_expires_at TIMESTAMP");
   await pool.query(`
     CREATE TABLE IF NOT EXISTS rating_activity_logs (
       id SERIAL PRIMARY KEY,
@@ -348,7 +350,9 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         streakRepairedFlag: updatedUser.streak_repaired,
         has_firework_effect: updatedUser.has_firework_effect,
         has_developer_chango: updatedUser.has_developer_chango,
-        custom_title: updatedUser.custom_title || ''
+        custom_title: updatedUser.custom_title || '',
+        fever_multiplier: updatedUser.fever_multiplier || 1.0,
+        fever_expires_at: updatedUser.fever_expires_at || null
       } 
     });
   } catch (err) {
@@ -372,7 +376,7 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
     await client.query('COMMIT');
 
     const userResult = await client.query(
-      'SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, equipped_title, created_at, has_firework_effect, has_developer_chango, last_active_date, longest_streak, custom_title, problems_solved FROM users WHERE id = $1',
+      'SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, equipped_title, created_at, has_firework_effect, has_developer_chango, last_active_date, longest_streak, custom_title, problems_solved, fever_multiplier, fever_expires_at FROM users WHERE id = $1',
       [userId]
     );
 
@@ -594,6 +598,18 @@ app.get('/api/store/items', authenticateToken, async (req: any, res: Response) =
       name: '🎫 개발자의 칭호',
       cost: 500,
       description: '구매 후 프로필에서 원하는 맞춤형 칭호 문구를 관리자에게 전송하세요!'
+    },
+    {
+      id: 'fever_3x',
+      name: '🔥 3배 피버타임 (3분)',
+      cost: 100,
+      description: '3분 동안 레이팅 획득량이 3배가 됩니다! (피버타임 중첩 불가)'
+    },
+    {
+      id: 'fever_5x',
+      name: '⚡ 5배 피버타임 (10분)',
+      cost: 500,
+      description: '10분 동안 레이팅 획득량이 5배가 됩니다! (피버타임 중첩 불가)'
     }
   ];
   res.json({ items });
@@ -690,6 +706,62 @@ app.post('/api/store/buy-developer-chango', authenticateToken, async (req: any, 
     );
     await client.query('COMMIT');
     res.json({ message: '🎫 개발자의 칭호를 구매했습니다! 프로필에서 맞춤형 칭호를 입력하세요.' });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    res.status(500).json({ error: '상점 구매 중 오류가 발생했습니다.' });
+  } finally {
+    client.release();
+  }
+});
+
+// Purchase fever time
+app.post('/api/store/buy-fever', authenticateToken, async (req: any, res: Response) => {
+  const userId = req.user.id;
+  const { type } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const userRes = await client.query('SELECT tokens, fever_multiplier, fever_expires_at FROM users WHERE id = $1 FOR UPDATE', [userId]);
+    if (userRes.rows.length === 0) {
+      client.release();
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const user = userRes.rows[0];
+
+    // Define fever types
+    const feverTypes: Record<string, { cost: number; multiplier: number; durationMs: number }> = {
+      fever_3x: { cost: 100, multiplier: 3, durationMs: 3 * 60 * 1000 },
+      fever_5x: { cost: 500, multiplier: 5, durationMs: 10 * 60 * 1000 },
+    };
+
+    const fever = feverTypes[type];
+    if (!fever) {
+      client.release();
+      return res.status(400).json({ error: '올바르지 않은 피버타임 유형입니다.' });
+    }
+
+    // Check if fever is already active
+    if (user.fever_expires_at) {
+      const now = new Date();
+      const expiresAt = new Date(user.fever_expires_at);
+      if (expiresAt > now) {
+        client.release();
+        return res.status(400).json({ error: '이미 피버타임이 활성화되어 있습니다.' });
+      }
+    }
+
+    if (user.tokens < fever.cost) {
+      client.release();
+      return res.status(400).json({ error: `토큰이 부족합니다. (필요: ${fever.cost} 토큰)` });
+    }
+
+    const expiresAt = new Date(Date.now() + fever.durationMs);
+    await client.query(
+      'UPDATE users SET tokens = tokens - $1, fever_multiplier = $2, fever_expires_at = $3 WHERE id = $4',
+      [fever.cost, fever.multiplier, expiresAt, userId]
+    );
+    await client.query('COMMIT');
+    res.json({ message: `🔥 ${fever.multiplier}배 피버타임이 활성화되었습니다! (${fever.durationMs / 60000}분)`, fever_multiplier: fever.multiplier, fever_expires_at: expiresAt.toISOString() });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     res.status(500).json({ error: '상점 구매 중 오류가 발생했습니다.' });
