@@ -164,7 +164,14 @@ nav a.active::after {
   color: var(--text-main);
   text-align: center;
   min-height: 80px;
-  display: block; /* Change from flex to block to allow BlockMath own centering */
+  display: block;
+}
+
+.math-content,
+.block-math-wrapper,
+.katex,
+.katex * {
+  font-family: 'Noto Sans Math', 'KaTeX_Main', serif;
 }
 
 .block-math-wrapper {
@@ -184,6 +191,7 @@ nav a.active::after {
   border: 2px solid var(--border);
   border-radius: 0.4rem;
   font-size: 1.1rem;
+  font-family: 'Noto Sans Math', 'KaTeX_Main', serif;
   background: var(--bg-color);
   color: var(--text-main);
   box-sizing: border-box;
