@@ -2142,6 +2142,60 @@ app.post('/api/admin/seed', authenticateToken, async (req: any, res: Response) =
   }
 });
 
+app.post('/api/admin/problems/import-csv', authenticateToken, async (req: any, res: Response) => {
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const { problems } = req.body;
+  if (!Array.isArray(problems) || problems.length === 0) {
+    return res.status(400).json({ error: 'problems 배열이 필요합니다.' });
+  }
+
+  const optionKeys = ['A', 'B', 'C', 'D'];
+  const inserted: number[] = [];
+  let errors = 0;
+
+  for (const row of problems) {
+    try {
+      const question = row.question || '';
+      const answerNum = parseInt(row.answer);
+      const options = optionKeys.map(k => row[k] || '');
+
+      if (!question || isNaN(answerNum) || answerNum < 1 || answerNum > 4) {
+        errors++;
+        continue;
+      }
+
+      const correctAnswer = options[answerNum - 1];
+      const formattedContent = `${question}\n\n선택지:\nA. ${options[0]}\nB. ${options[1]}\nC. ${options[2]}\nD. ${options[3]}`;
+      const title = question.replace(/\$+/g, '').replace(/[{}]/g, '').substring(0, 60);
+
+      const result = await pool.query(
+        'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type, is_custom, custom_reward_rating, reward_rating) VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8) RETURNING id',
+        [title, formattedContent, correctAnswer, 10000, 'Calculation', true, 10000, 10000]
+      );
+
+      const tags = ['CSV'];
+      if (row.Category) tags.push(row.Category);
+      for (const tagName of tags) {
+        let tagRes = await pool.query('SELECT id FROM tags WHERE name = $1', [tagName]);
+        let tagId;
+        if (tagRes.rows.length === 0) {
+          const insertTagRes = await pool.query('INSERT INTO tags (name) VALUES ($1) RETURNING id', [tagName]);
+          tagId = insertTagRes.rows[0].id;
+        } else {
+          tagId = tagRes.rows[0].id;
+        }
+        await pool.query('INSERT INTO problem_tags (problem_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [result.rows[0].id, tagId]);
+      }
+
+      inserted.push(result.rows[0].id);
+    } catch {
+      errors++;
+    }
+  }
+
+  res.json({ message: `${inserted.length}개 문제를 커스텀 문제로 추가했습니다.${errors > 0 ? ` (${errors}개 실패)` : ''}`, ids: inserted });
+});
+
 app.post('/api/admin/reset', authenticateToken, async (req: any, res: Response) => {
   if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
   
