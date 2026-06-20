@@ -2233,6 +2233,32 @@ app.patch('/api/admin/users/:id/custom-title', authenticateToken, async (req: an
   }
 });
 
+app.patch('/api/admin/users/:id/username', authenticateToken, async (req: any, res: Response) => {
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const { id } = req.params;
+  const { username } = req.body;
+
+  if (!username || typeof username !== 'string' || username.trim().length === 0) {
+    return res.status(400).json({ error: '올바른 사용자명을 입력해주세요.' });
+  }
+
+  try {
+    const existing = await pool.query('SELECT id FROM users WHERE username = $1 AND id != $2', [username.trim(), id]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: '이미 사용 중인 사용자명입니다.' });
+    }
+
+    const result = await pool.query(
+      'UPDATE users SET username = $1 WHERE id = $2 RETURNING id, username',
+      [username.trim(), id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    res.json({ message: '사용자명이 변경되었습니다.', user: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: '사용자명 변경에 실패했습니다.' });
+  }
+});
+
 app.get('/api/admin/notifications', authenticateToken, async (req: any, res: Response) => {
   if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
 

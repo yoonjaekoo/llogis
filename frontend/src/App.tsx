@@ -2120,6 +2120,27 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
     }
   };
 
+  const handleUpdateUsername = async (userId: number, currentUsername: string) => {
+    const newUsername = window.prompt('새로운 사용자명을 입력하세요:', currentUsername);
+    if (newUsername === null || newUsername.trim() === '') return;
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/admin/users/${userId}/username`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ username: newUsername.trim() })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(data.message);
+      fetchUsers();
+    } else {
+      alert(data.error);
+    }
+  };
+
   const handleDeleteUser = async (userId: number, username: string) => {
     if (!window.confirm(`정말로 ${username} 계정을 삭제하시겠습니까?`)) return;
     const token = localStorage.getItem('token');
@@ -2330,6 +2351,7 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
                           <button onClick={() => handleUpdateRating(u.id, u.rating)} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: 'var(--color-3)', color: 'white' }}>⭐</button>
                           <button onClick={() => handleUpdateTokens(u.id, u.tokens || 0)} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: '#e6a800', color: 'white' }}>🪙</button>
                           <button onClick={() => handleUpdateCustomTitle(u.id, u.custom_title || '')} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: 'var(--color-4)', color: 'white' }}>🏷️</button>
+                          <button onClick={() => handleUpdateUsername(u.id, u.username)} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: '#6c5ce7', color: 'white' }}>✏️</button>
                           {u.username !== 'admin' && (
                             <button onClick={() => handleDeleteUser(u.id, u.username)} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: '#ff7675', color: 'white' }}>🗑️</button>
                           )}
