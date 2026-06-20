@@ -6,6 +6,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { processSubmission, getTier } from './rating/ratingService';
 import { checkAndRepairStreak, handleDailyReset } from './rating/gameSystemService';
+import { evaluateExpression } from './generation/mathParser.js';
 import { generateProblem } from './problemGenerator';
 import { generateNimProblems } from './nimGenerator';
 import {
@@ -1980,10 +1981,24 @@ app.post('/api/submissions', authenticateToken, async (req: any, res: any) => {
     if (problemRes.rows.length === 0) return res.status(404).json({ error: 'Problem not found' });
 
     const correctAnswer = problemRes.rows[0].answer;
-    // 공백 전체 제거 및 소문자 변환 비교
+    // 공백 전체 제거 및 소문자 변환 비교 (기본)
     const normalizedUserAnswer = userAnswer.replace(/\s+/g, '').toLowerCase();
     const normalizedCorrectAnswer = correctAnswer.replace(/\s+/g, '').toLowerCase();
-    const isCorrect = normalizedUserAnswer === normalizedCorrectAnswer;
+    let isCorrect = normalizedUserAnswer === normalizedCorrectAnswer;
+    // 수학적 동등성 평가 시도 (둘 다 숫자로 평가되면 1e-9 이내 비교)
+    if (!isCorrect) {
+      try {
+        const cleanedUser = userAnswer.replace(/\$/g, '').trim();
+        const cleanedCorrect = correctAnswer.replace(/\$/g, '').trim();
+        const userVal = evaluateExpression(cleanedUser, {});
+        const correctVal = evaluateExpression(cleanedCorrect, {});
+        if (typeof userVal === 'number' && typeof correctVal === 'number') {
+          isCorrect = Math.abs(userVal - correctVal) < 1e-9;
+        }
+      } catch {
+        // 평가 실패 시 문자열 비교 결과 유지
+      }
+    }
 
     const updateResult = await processSubmission(userId, problemId, isCorrect);
     res.json({ 

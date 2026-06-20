@@ -105,7 +105,7 @@ export const processSubmission = async (userId: number, problemId: number, isCor
     }
 
     const currentRating = parseFloat(userRes.rows[0].rating);
-    const baseDelta = isCorrect ? rewardRating : -getWrongAnswerPenalty(currentRating);
+    const baseDelta = isCorrect ? rewardRating : (problem.is_custom ? -40000 : -getWrongAnswerPenalty(currentRating));
     const ratingDelta = isCorrect ? Math.round(baseDelta * feverMultiplier) : baseDelta;
     const finalRating = Math.max(0, currentRating + ratingDelta);
 
