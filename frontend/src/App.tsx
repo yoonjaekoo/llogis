@@ -2467,6 +2467,14 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
               <span style={{ fontSize: '0.85rem' }}>{problemsPage} / {problemsTotalPages}</span>
               <button onClick={() => { setProblemsPage(p => Math.min(problemsTotalPages, p + 1)); fetchProblems(); }} disabled={problemsPage >= problemsTotalPages} className="btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: 'var(--color-3)', color: 'white', opacity: problemsPage >= problemsTotalPages ? 0.5 : 1 }}>→</button>
               <button onClick={() => fetchProblems()} className="btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: 'var(--color-2)', color: 'white' }}>새로고침</button>
+              <button onClick={async () => {
+                if (!window.confirm('양산 문제(is_custom=FALSE)를 모두 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+                const token = localStorage.getItem('token');
+                const res = await fetch('/api/admin/problems/delete-mass-produced', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                setMessage(data.message || data.error);
+                if (res.ok) fetchProblems();
+              }} className="btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: '#e17055', color: 'white' }}>양산 문제 일괄 삭제</button>
             </div>
           </div>
 

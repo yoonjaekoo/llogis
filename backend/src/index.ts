@@ -2106,6 +2106,23 @@ app.delete('/api/admin/problems/:id', authenticateToken, async (req: any, res: R
   }
 });
 
+app.post('/api/admin/problems/delete-mass-produced', authenticateToken, async (req: any, res: Response) => {
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+
+  try {
+    const countRes = await pool.query("SELECT COUNT(*) FROM problems WHERE is_custom = FALSE");
+    const total = parseInt(countRes.rows[0].count);
+
+    if (total === 0) return res.json({ message: '삭제할 양산 문제가 없습니다.', deletedCount: 0 });
+
+    await pool.query("DELETE FROM problems WHERE is_custom = FALSE");
+    res.json({ message: `${total}개의 양산 문제가 삭제되었습니다.`, deletedCount: total });
+  } catch (err) {
+    console.error('Failed to delete mass-produced problems:', err);
+    res.status(500).json({ error: '양산 문제 삭제에 실패했습니다.' });
+  }
+});
+
 app.post('/api/admin/seed', authenticateToken, async (req: any, res: Response) => {
   if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
   
