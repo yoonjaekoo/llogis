@@ -1977,14 +1977,27 @@ app.post('/api/submissions', authenticateToken, async (req: any, res: any) => {
     }
 
     // DB에서 실제 정답 가져오기
-    const problemRes = await pool.query('SELECT answer FROM problems WHERE id = $1', [problemId]);
+    const problemRes = await pool.query('SELECT answer, content FROM problems WHERE id = $1', [problemId]);
     if (problemRes.rows.length === 0) return res.status(404).json({ error: 'Problem not found' });
 
     const correctAnswer = problemRes.rows[0].answer;
+    const problemContent = problemRes.rows[0].content || '';
     // 공백 전체 제거 및 소문자 변환 비교 (기본)
     const normalizedUserAnswer = userAnswer.replace(/\s+/g, '').toLowerCase();
     const normalizedCorrectAnswer = correctAnswer.replace(/\s+/g, '').toLowerCase();
     let isCorrect = normalizedUserAnswer === normalizedCorrectAnswer;
+
+    // A/B/C/D 단일 문자 입력 처리: 선택지에서 해당 글자의 텍스트를 추출하여 정답과 비교
+    if (!isCorrect && /^[a-dA-D]$/.test(userAnswer.trim())) {
+      const letter = userAnswer.trim().toUpperCase();
+      const optionMatch = problemContent.match(new RegExp(`${letter}\\.\\s*([^\\n]+)`));
+      if (optionMatch) {
+        const optionText = optionMatch[1].trim().replace(/\s+/g, '').toLowerCase();
+        isCorrect = optionText === normalizedCorrectAnswer
+          || optionText === normalizedUserAnswer;
+      }
+    }
+
     // 수학적 동등성 평가 시도 (둘 다 숫자로 평가되면 1e-9 이내 비교)
     if (!isCorrect) {
       try {
