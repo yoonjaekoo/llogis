@@ -154,6 +154,21 @@ const ensureSchema = async () => {
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS fever_expires_at TIMESTAMP");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS rr FLOAT");
   await pool.query("UPDATE users SET rr = rating WHERE rr IS NULL");
+  // RR 공식 v2 마이그레이션 (problems_solved > 0인 사용자의 rr 재계산)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      migration_id VARCHAR(100) PRIMARY KEY,
+      applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  const rrMigrationDone = await pool.query(
+    "SELECT 1 FROM schema_migrations WHERE migration_id = 'rr_formula_v2'"
+  );
+  if (rrMigrationDone.rows.length === 0) {
+    await pool.query("UPDATE users SET rr = NULL WHERE problems_solved > 0");
+    await pool.query("UPDATE users SET rr = rating WHERE rr IS NULL");
+    await pool.query("INSERT INTO schema_migrations (migration_id) VALUES ('rr_formula_v2')");
+  }
   await pool.query(`
     CREATE TABLE IF NOT EXISTS rating_activity_logs (
       id SERIAL PRIMARY KEY,

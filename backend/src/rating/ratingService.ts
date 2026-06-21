@@ -102,40 +102,48 @@ export const calculateDifficultyFromSolveRate = (solveRate: number): number => {
   return Math.round(MAX_REWARD - (MAX_REWARD - MIN_REWARD) * solveRate);
 };
 
-// RR = R + 100 × (√N / (√N + 20)) + 100 × tanh((H30 - R)/400) × tanh(M/50)
-// R = rating, N = problems_solved, H30 = avg difficulty of last 30d correct solves, M = count of last 30d solves
-export const calculateRR = (R: number, N: number, H30: number, M: number): number => {
-  const term1 = 100 * (Math.sqrt(N) / (Math.sqrt(N) + 20));
-  const term2 = 100 * Math.tanh((H30 - R) / 400) * Math.tanh(M / 50);
-  return Math.round(R + term1 + term2);
+// RR = 0.4 × Davg + 0.4 × D30 + 0.2 × Dmax
+// Confidence = √N / (√N + 20)
+// Final RR = RR × (0.5 + 0.5 × Confidence)
+export const calculateRR = (Davg: number, D30: number, Dmax: number, N: number): number => {
+  const base = 0.4 * Davg + 0.4 * D30 + 0.2 * Dmax;
+  const confidence = Math.sqrt(N) / (Math.sqrt(N) + 20);
+  return Math.round(base * (0.5 + 0.5 * confidence));
 };
 
-export const getUserRRData = async (userId: number, client?: any): Promise<{ rr: number; tier: string; h30: number; m: number }> => {
+export const getUserRRData = async (userId: number, client?: any): Promise<{ rr: number; tier: string; davg: number; d30: number; dmax: number; n: number }> => {
   const c = client || pool;
   const userRes = await c.query(
-    'SELECT rating, problems_solved FROM users WHERE id = $1',
+    'SELECT problems_solved FROM users WHERE id = $1',
     [userId]
   );
   if (userRes.rows.length === 0) throw new Error('User not found');
-  const { rating, problems_solved } = userRes.rows[0];
-  const R = parseFloat(rating);
-  const N = problems_solved || 0;
+  const N = userRes.rows[0].problems_solved || 0;
 
-  const statsRes = await c.query(
+  const allStatsRes = await c.query(
     `SELECT 
-      COALESCE(AVG(p.current_difficulty), 0) as avg_diff,
-      COUNT(*) as solve_count
+      COALESCE(AVG(p.current_difficulty), 0) as davg,
+      COALESCE(MAX(p.current_difficulty), 0) as dmax
+    FROM submissions s
+    JOIN problems p ON s.problem_id = p.id
+    WHERE s.user_id = $1 AND s.is_correct = true`,
+    [userId]
+  );
+  const Davg = parseFloat(allStatsRes.rows[0].davg) || 0;
+  const Dmax = parseFloat(allStatsRes.rows[0].dmax) || 0;
+
+  const recentRes = await c.query(
+    `SELECT COALESCE(AVG(p.current_difficulty), 0) as d30
     FROM submissions s
     JOIN problems p ON s.problem_id = p.id
     WHERE s.user_id = $1 AND s.is_correct = true
       AND s.created_at > NOW() - INTERVAL '30 days'`,
     [userId]
   );
-  const H30 = parseFloat(statsRes.rows[0].avg_diff) || 0;
-  const M = parseInt(statsRes.rows[0].solve_count) || 0;
+  const D30 = parseFloat(recentRes.rows[0].d30) || 0;
 
-  const rr = calculateRR(R, N, H30, M);
-  return { rr, tier: getTier(rr), h30: H30, m: M };
+  const rr = calculateRR(Davg, D30, Dmax, N);
+  return { rr, tier: getTier(rr), davg: Davg, d30: D30, dmax: Dmax, n: N };
 };
 
 export const processSubmission = async (userId: number, problemId: number, isCorrect: boolean) => {

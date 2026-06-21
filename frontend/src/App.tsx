@@ -23,6 +23,7 @@ interface User {
   id: number;
   username: string;
   rating: number;
+  rr?: number;
   tier: string;
   profile_image_url?: string;
   bio?: string;
