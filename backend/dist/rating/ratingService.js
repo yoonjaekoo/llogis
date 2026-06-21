@@ -1,8 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.processSubmission = exports.getTier = void 0;
+exports.processSubmission = exports.calculateDifficultyFromSolveRate = exports.getTier = void 0;
 const pg_1 = require("pg");
-const glicko2_1 = require("./glicko2");
 const gameSystemService_1 = require("./gameSystemService");
 const pool = new pg_1.Pool({
     user: process.env.DB_USER || 'mathuser',
@@ -11,7 +10,9 @@ const pool = new pg_1.Pool({
     password: process.env.DB_PASSWORD || 'mathpass',
     port: parseInt(process.env.DB_PORT || '5432'),
 });
-const engine = new glicko2_1.Glicko2Engine();
+const MIN_REWARD = 5000;
+const MAX_REWARD = 150000;
+const getDefaultDifficulty = (isCustom) => isCustom ? 60000 : 10000;
 const getTier = (rating) => {
     if (rating < 100000)
         return 'Bronze';
@@ -52,6 +53,12 @@ const getWrongAnswerPenalty = (rating) => {
         return 2000;
     return 3000;
 };
+const calculateDifficultyFromSolveRate = (solveRate) => {
+    if (solveRate < 0 || solveRate > 1 || isNaN(solveRate))
+        return 10000;
+    return Math.round(MAX_REWARD - (MAX_REWARD - MIN_REWARD) * solveRate);
+};
+exports.calculateDifficultyFromSolveRate = calculateDifficultyFromSolveRate;
 const processSubmission = async (userId, problemId, isCorrect) => {
     const client = await pool.connect();
     try {
@@ -60,29 +67,44 @@ const processSubmission = async (userId, problemId, isCorrect) => {
         await (0, gameSystemService_1.handleDailyReset)(userId, client);
         // 2. 스트릭 만료 검사 및 자동 스트릭 복구 시도
         const repairResult = await (0, gameSystemService_1.checkAndRepairStreak)(userId, client);
-        // 3. 문제 정보 조회 (커스텀 보상 레이팅 확인)
-        const problemRes = await client.query('SELECT is_custom, custom_reward_rating, reward_rating FROM problems WHERE id = $1', [problemId]);
+        // 3. 문제 정보 조회 (is_custom에 따라 기본 보상 10000/60000)
+        const problemRes = await client.query('SELECT is_custom, current_difficulty FROM problems WHERE id = $1', [problemId]);
         if (problemRes.rows.length === 0) {
             throw new Error('Problem not found');
         }
-        const problem = problemRes.rows[0];
-        const rewardRating = problem.reward_rating !== null && problem.reward_rating !== undefined
-            ? parseFloat(problem.reward_rating)
-            : problem.is_custom && problem.custom_reward_rating > 0
-                ? parseFloat(problem.custom_reward_rating)
-                : 10000;
-        // 4. 기존 레이팅 계산 로직 실행
+        const { is_custom, current_difficulty } = problemRes.rows[0];
+        const defaultDifficulty = getDefaultDifficulty(is_custom);
+        const rewardRating = current_difficulty != null ? parseFloat(current_difficulty) : defaultDifficulty;
+        // 4. 피버타임 확인 및 적용
+        const feverRes = await client.query('SELECT fever_multiplier, fever_expires_at FROM users WHERE id = $1', [userId]);
+        let feverMultiplier = 1;
+        let feverActive = false;
+        if (feverRes.rows.length > 0) {
+            const fm = feverRes.rows[0].fever_multiplier;
+            const expiresAt = feverRes.rows[0].fever_expires_at;
+            if (expiresAt && new Date(expiresAt) > new Date() && fm && fm > 1) {
+                feverMultiplier = fm;
+                feverActive = true;
+            }
+            else if (expiresAt && new Date(expiresAt) <= new Date()) {
+                // 만료된 피버타임 초기화
+                await client.query('UPDATE users SET fever_multiplier = 1.0, fever_expires_at = NULL WHERE id = $1', [userId]);
+            }
+        }
+        const feverDescription = feverActive ? ` (🔥${feverMultiplier}배 피버타임 적용)` : '';
+        // 5. 레이팅 계산 (정답률 기반 current_difficulty를 보상으로 사용)
         const userRes = await client.query('SELECT rating FROM users WHERE id = $1 FOR UPDATE', [userId]);
         if (userRes.rows.length === 0) {
             throw new Error('User not found');
         }
         const currentRating = parseFloat(userRes.rows[0].rating);
-        const ratingDelta = isCorrect ? rewardRating : -getWrongAnswerPenalty(currentRating);
+        const baseDelta = isCorrect ? rewardRating : -getWrongAnswerPenalty(currentRating);
+        const ratingDelta = isCorrect ? Math.round(baseDelta * feverMultiplier) : baseDelta;
         const finalRating = Math.max(0, currentRating + ratingDelta);
         await client.query('UPDATE users SET rating = $1 WHERE id = $2', [finalRating, userId]);
         const activityType = isCorrect ? 'correct_reward' : 'wrong_penalty';
         const activityDescription = isCorrect
-            ? `정답 제출 보상 +${Math.round(rewardRating).toLocaleString()} RP`
+            ? `정답 제출 보상 +${Math.round(rewardRating).toLocaleString()} RP${feverDescription}`
             : `오답 패널티 -${Math.abs(Math.round(ratingDelta)).toLocaleString()} RP`;
         await client.query(`INSERT INTO rating_activity_logs (
         user_id, problem_id, activity_type, change_amount, before_rating, after_rating, description
@@ -95,27 +117,34 @@ const processSubmission = async (userId, problemId, isCorrect) => {
             finalRating,
             activityDescription,
         ]);
-        // 5. 스트릭 및 토큰 지급 로직 실행
+        // 6. 스트릭 및 토큰 지급 로직 실행
         let streakResult = { newStreak: 0, bonusTokens: 0 };
         let finalTokens = 0;
         if (isCorrect) {
-            // 스트릭 업데이트 및 보너스 토큰
             streakResult = await (0, gameSystemService_1.updateStreak)(userId, client);
-            // 기본 토큰 지급 (+1)
             finalTokens = await (0, gameSystemService_1.updateTokens)(userId, client, isCorrect);
-            // 퀘스트 업데이트 ('solve' 및 최초 일일 스트릭 보상 액션 체크)
             await (0, gameSystemService_1.updateQuests)(userId, client, 'solve');
             await (0, gameSystemService_1.updateQuests)(userId, client, 'streak');
-            // problems_solved 증가 (데이터베이스에 저장되어 문제 초기화 시에도 유지)
             await client.query('UPDATE users SET problems_solved = problems_solved + 1 WHERE id = $1', [userId]);
         }
         else {
-            // 오답인 경우 시도(attempt)만 기록하여 정확도 퀘스트 갱신
             await (0, gameSystemService_1.updateQuests)(userId, client, 'attempt');
         }
-        // 6. 제출 기록 저장
+        // 7. 제출 기록 저장
         await client.query('INSERT INTO submissions (user_id, problem_id, is_correct) VALUES ($1, $2, $3)', [userId, problemId, isCorrect]);
-        // 7. 업데이트 완료된 최신 유저 정보 조회
+        // 8. 문제 정답률 업데이트 및 난이도 재계산
+        await client.query(`UPDATE problems SET 
+        total_attempts = total_attempts + 1,
+        correct_attempts = correct_attempts + $1
+      WHERE id = $2`, [isCorrect ? 1 : 0, problemId]);
+        const counterRes = await client.query('SELECT total_attempts, correct_attempts FROM problems WHERE id = $1', [problemId]);
+        if (counterRes.rows.length > 0) {
+            const { total_attempts, correct_attempts } = counterRes.rows[0];
+            const solveRate = total_attempts > 0 ? correct_attempts / total_attempts : 0.5;
+            const newDifficulty = (0, exports.calculateDifficultyFromSolveRate)(solveRate);
+            await client.query('UPDATE problems SET current_difficulty = $1 WHERE id = $2', [newDifficulty, problemId]);
+        }
+        // 9. 업데이트 완료된 최신 유저 정보 조회
         const finalUserRes = await client.query('SELECT streak, tokens, xp, quests, last_active_date, streak_repaired, longest_streak, problems_solved FROM users WHERE id = $1', [userId]);
         const finalUser = finalUserRes.rows[0];
         await client.query('COMMIT');
@@ -128,7 +157,9 @@ const processSubmission = async (userId, problemId, isCorrect) => {
             quests: finalUser.quests,
             streakRepaired: repairResult.repaired,
             streakRepairedFlag: finalUser.streak_repaired,
-            problems_solved: finalUser.problems_solved
+            problems_solved: finalUser.problems_solved,
+            feverActive,
+            feverMultiplier
         };
     }
     catch (err) {

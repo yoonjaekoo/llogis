@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 
 export const SITE_NAME = 'Logis';
 export const SITE_URL = 'https://llogis.xyz';
-export const DEFAULT_OG_IMAGE = 'https://llogis.xyz/logo.png';
+export const DEFAULT_OG_IMAGE = 'https://llogis.xyz/logo_new.png';
 
 function getOrCreateMeta(property?: string, name?: string): HTMLMetaElement {
   let selector: string;

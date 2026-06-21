@@ -239,7 +239,7 @@ const Navbar: React.FC<{
     <div className="container">
       <h1 style={{ margin: 0 }}>
         <Link to="/" aria-label="Logis 홈으로 이동" style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', color: 'white', textDecoration: 'none' }} onClick={onLogoClick}>
-          <img src="/logo.png" alt="Logis 로고" width="40" height="40" style={{ borderRadius: '8px', objectFit: 'cover' }} />
+          <img src="/logo_new.png" alt="Logis 로고" width="40" height="40" style={{ borderRadius: '8px', objectFit: 'cover' }} />
           <span style={{ letterSpacing: '-1px' }}>Logis</span>
         </Link>
       </h1>
@@ -263,7 +263,7 @@ const Navbar: React.FC<{
                       {user.username[0].toUpperCase()}
                     </div>
                   )}
-                  {user.username} <span style={{ fontSize: '0.8rem', opacity: 0.8 }}>({user.tier})</span> <b style={{ color: 'white' }}>{Math.round(user.rating).toLocaleString()}</b>
+                  {user.username} <span style={{ fontSize: '0.8rem', opacity: 0.8 }}>({user.tier})</span> <b style={{ color: 'white' }}>{Math.round(user.rr ?? user.rating).toLocaleString()} RR</b>
                   {user.fever_expires_at && new Date(user.fever_expires_at) > new Date() && <FeverTimer expiresAt={user.fever_expires_at} />}
                 </Link>
               </li>
@@ -287,22 +287,21 @@ const Navbar: React.FC<{
 );
 
 const About: React.FC<{ user: User | null }> = ({ user }) => {
-  const tiers = [
-    { name: 'Bronze', threshold: '0' },
-    { name: 'Silver', threshold: '100,000' },
-    { name: 'Gold', threshold: '300,000' },
-    { name: 'Platinum', threshold: '800,000' },
-    { name: 'Diamond', threshold: '2,000,000' },
-    { name: 'Ruby', threshold: '5,000,000' },
-    { name: 'Master', threshold: '12,000,000' },
-    { name: 'God', threshold: '30,000,000' },
-    { name: 'Hacker', threshold: '70,000,000' },
-    { name: '치피치피차파차파', threshold: '150,000,000' },
-    { name: 'ChatGPT', threshold: '300,000,000' },
-    { name: '출제자', threshold: '600,000,000' },
-    { name: '주인장', threshold: '1,200,000,000' },
-    { name: '정답', threshold: '2,500,000,000' }
-  ];
+  const [pageContent, setPageContent] = useState('');
+  const [tiers, setTiers] = useState<{ name: string; minRating: number }[]>([]);
+
+  useEffect(() => {
+    fetch('/api/page-content/about')
+      .then(r => r.json())
+      .then(data => setPageContent(data.content || ''))
+      .catch(() => {});
+    fetch('/api/admin/tier-config')
+      .then(r => r.json())
+      .then(data => setTiers(data.tiers || []))
+      .catch(() => {});
+  }, []);
+
+  const formatRating = (v: number) => v.toLocaleString();
 
   return (
     <main className="container" style={{ padding: '4rem 0', maxWidth: '800px' }}>
@@ -328,39 +327,44 @@ const About: React.FC<{ user: User | null }> = ({ user }) => {
         })}</script>
       </Helmet>
       <article className="problem-card" style={{ textAlign: 'center' }}>
-        <img src="/logo.png" alt="Logis 로고" loading="lazy" style={{ width: '80px', height: '80px', borderRadius: '1.5rem', marginBottom: '1.5rem', boxShadow: 'var(--card-shadow)' }} />
+        <img src="/logo_new.png" alt="Logis 로고" loading="lazy" style={{ width: '80px', height: '80px', borderRadius: '1.5rem', marginBottom: '1.5rem', boxShadow: 'var(--card-shadow)' }} />
         <h2 style={{ color: 'var(--color-4)', marginBottom: '1.5rem' }}>About Logis</h2>
-        <p style={{ marginBottom: '2rem' }}>수학 문제를 풀고 레이팅을 올리는 재미있는 수학 학습 플랫폼입니다.</p>
-        
-        <section aria-label="랭크 기준">
-          <h3 style={{ marginBottom: '1rem' }}>랭크 기준</h3>
+
+        {pageContent ? (
+          <div style={{ textAlign: 'left', marginBottom: '2rem', lineHeight: 1.8 }}
+            dangerouslySetInnerHTML={{ __html: pageContent.replace(/\n/g, '<br>').replace(/## (.+)/g, '<h3>$1</h3>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\*(.+?)\*/g, '<em>$1</em>') }} />
+        ) : (
+          <p style={{ marginBottom: '2rem' }}>수학 문제를 풀고 레이팅을 올리는 재미있는 수학 학습 플랫폼입니다.</p>
+        )}
+
+        <section aria-label="Real Rating 등급 기준">
+          <h3 style={{ marginBottom: '1rem' }}>Real Rating 등급 기준</h3>
+          <p style={{ fontSize: '0.85rem', opacity: 0.7, marginBottom: '1rem' }}>실제 레이팅(Real Rating) 점수에 따라 등급이 결정됩니다.</p>
           <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '2rem', textAlign: 'center' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                <th style={{ padding: '0.8rem' }}>랭크</th>
-                <th style={{ padding: '0.8rem' }}>레이팅 기준</th>
+                <th style={{ padding: '0.8rem' }}>등급</th>
+                <th style={{ padding: '0.8rem' }}>필요 레이팅</th>
               </tr>
             </thead>
             <tbody>
-              {tiers.map(t => (
+              {tiers.length > 0 ? [...tiers].sort((a, b) => a.minRating - b.minRating).map((t, i) => (
                 <tr key={t.name} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ padding: '0.8rem', fontWeight: 800 }}>{t.name}</td>
-                  <td style={{ padding: '0.8rem' }}>{t.threshold}+</td>
+                  <td style={{ padding: '0.8rem' }}>{formatRating(t.minRating)}+{i < tiers.length - 1 ? ` ~ ${formatRating([...tiers].sort((a, b) => a.minRating - b.minRating)[i + 1].minRating - 1)}` : ''}</td>
                 </tr>
-              ))}
+              )) : (
+                <tr><td colSpan={2} style={{ padding: '1rem', opacity: 0.5 }}>등급 정보를 불러오는 중...</td></tr>
+              )}
             </tbody>
           </table>
         </section>
 
-        <section aria-label="기여자">
-          <h3 style={{ marginBottom: '0.5rem' }}>Contributors</h3>
-          <p>yoonjaekoo, 13ksh</p>
-        </section>
-
         {user && (
           <section aria-label="내 정보" style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
-            <h3 style={{ marginBottom: '0.5rem' }}>내 랭크 및 레이팅</h3>
-            <p style={{ fontSize: '1.2rem', fontWeight: 800 }}>{user.tier} Rank, {Math.round(user.rating).toLocaleString()}</p>
+            <h3 style={{ marginBottom: '0.5rem' }}>내 등급 및 레이팅</h3>
+            <p style={{ fontSize: '1.2rem', fontWeight: 800 }}>{user.tier} · {Math.round(user.rr ?? user.rating).toLocaleString()} RR</p>
+            <p style={{ fontSize: '0.8rem', opacity: 0.6 }}>(Raw Rating: {Math.round(user.rating).toLocaleString()} RP)</p>
           </section>
         )}
       </article>
@@ -457,7 +461,10 @@ const Landing: React.FC<{ user: User | null }> = ({ user }) => {
                   🏅 {tier}
                 </motion.span>
                 <motion.span className="stats-chip" whileHover={reducedMotion ? undefined : { scale: 1.04, y: -2 }}>
-                  ✨ <CountUp value={Math.round(user.rating)} suffix=" RP" />
+                  ✨ <CountUp value={Math.round(user.rr ?? user.rating)} suffix=" RR" />
+                </motion.span>
+                <motion.span className="stats-chip" style={{ fontSize: '0.75rem', opacity: 0.6 }} whileHover={reducedMotion ? undefined : { scale: 1.04, y: -2 }}>
+                  Raw: <CountUp value={Math.round(user.rating)} suffix=" RP" />
                 </motion.span>
                 <motion.span className="stats-chip" whileHover={reducedMotion ? undefined : { scale: 1.04, y: -2 }}>
                   🔥 {(user as any).streak ?? 0}일 연속
@@ -1427,6 +1434,7 @@ const Ranking: React.FC = () => {
                     <th style={{ padding: '1rem' }}>칭호</th>
                     <th style={{ padding: '1rem' }}>티어</th>
                     <th style={{ padding: '1rem' }}>레이팅</th>
+                    <th style={{ padding: '1rem' }}>RR</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1458,6 +1466,7 @@ const Ranking: React.FC = () => {
                         </span>
                       </td>
                       <td style={{ padding: '1.2rem 1rem', fontWeight: 800 }}>{Math.round(u.rating).toLocaleString()}</td>
+                      <td style={{ padding: '1.2rem 1rem', fontWeight: 800, opacity: 0.7 }}>{Math.round(u.rr ?? u.rating).toLocaleString()}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1530,7 +1539,7 @@ const UserProfile: React.FC = () => {
     <main className="container" style={{ padding: '4rem 0' }}>
       <Helmet>
         <title>{u.username} 프로필 | Logis - 수학 문제 풀이 플랫폼</title>
-        <meta name="description" content={`${u.username}님의 Logis 프로필 - ${u.tier} Rank, ${Math.round(u.rating).toLocaleString()}점, 정답률 ${Math.round(stats.accuracy)}%`} />
+        <meta name="description" content={`${u.username}님의 Logis 프로필 - ${u.tier} Rank, RR ${Math.round(u.rr ?? u.rating).toLocaleString()}, 정답률 ${Math.round(stats.accuracy)}%`} />
         <meta property="og:title" content={`${u.username} | Logis`} />
         <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
       </Helmet>
@@ -1580,8 +1589,9 @@ const UserProfile: React.FC = () => {
 
           <section aria-label="통계" className="profile-stats-grid">
             <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>레이팅</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{Math.round(u.rating).toLocaleString()}</div>
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>RR (Real Rating)</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{Math.round(u.rr ?? u.rating).toLocaleString()}</div>
+              <div style={{ fontSize: '0.75rem', opacity: 0.5, marginTop: '0.3rem' }}>Raw: {Math.round(u.rating).toLocaleString()} RP</div>
             </div>
             <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
               <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>해결 문제</div>
@@ -1795,12 +1805,18 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [activeTab, setActiveTab] = useState<'users' | 'notifications' | 'templates' | 'bugreports'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'notifications' | 'templates' | 'bugreports' | 'tier-config' | 'page-content'>('users');
   const [editingTemplate, setEditingTemplate] = useState<any>(null);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
   const [newTemplate, setNewTemplate] = useState<any>({ id: '', unit: '', title: '', difficulty: 10000, variables: {}, constraints: [], problem_template: '', answer_formula: { type: 'expression', value: '' }, concepts: [] });
   const [bugReports, setBugReports] = useState<any[]>([]);
   const [showTemplateJson, setShowTemplateJson] = useState(false);
+  const [tierConfigTiers, setTierConfigTiers] = useState<{ name: string; minRating: number }[]>([]);
+  const [tierConfigDraft, setTierConfigDraft] = useState<{ name: string; minRating: number }[]>([]);
+  const [savingTierConfig, setSavingTierConfig] = useState(false);
+  const [pageContent, setPageContent] = useState('');
+  const [pageContentDraft, setPageContentDraft] = useState('');
+  const [savingPageContent, setSavingPageContent] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -1869,6 +1885,26 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
     .catch(() => {});
   }, []);
 
+  const fetchTierConfig = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/tier-config');
+      const data = await res.json();
+      if (data.tiers) {
+        setTierConfigTiers(data.tiers);
+        setTierConfigDraft(JSON.parse(JSON.stringify(data.tiers)));
+      }
+    } catch {}
+  }, []);
+
+  const fetchPageContent = useCallback(async () => {
+    try {
+      const res = await fetch('/api/page-content/about');
+      const data = await res.json();
+      setPageContent(data.content || '');
+      setPageContentDraft(data.content || '');
+    } catch {}
+  }, []);
+
   const handleMarkRead = async (id: number) => {
     const token = localStorage.getItem('token');
     await fetch(`/api/admin/notifications/${id}/read`, {
@@ -1886,7 +1922,9 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
     fetchUsers();
     fetchTemplates();
     fetchNotifications();
-  }, [user, navigate, fetchUsers, fetchTemplates, fetchNotifications]);
+    fetchTierConfig();
+    fetchPageContent();
+  }, [user, navigate, fetchUsers, fetchTemplates, fetchNotifications, fetchTierConfig, fetchPageContent]);
 
   const handleSeed = async () => {
     const token = localStorage.getItem('token');
@@ -2299,6 +2337,12 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
           <button onClick={async () => { setActiveTab('bugreports'); const token = localStorage.getItem('token'); try { const res = await fetch('/api/admin/bug-reports', { headers: { 'Authorization': `Bearer ${token}` } }); if (res.ok) setBugReports(await res.json()); } catch {} }} style={{ background: 'none', border: 'none', color: activeTab === 'bugreports' ? 'var(--color-4)' : 'var(--text-muted)', fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer', borderBottom: activeTab === 'bugreports' ? '3px solid var(--color-4)' : 'none', paddingBottom: '0.5rem', marginBottom: '-0.7rem' }}>
             🐛 버그제보
           </button>
+          <button onClick={() => { setActiveTab('tier-config'); fetchTierConfig(); }} style={{ background: 'none', border: 'none', color: activeTab === 'tier-config' ? 'var(--color-4)' : 'var(--text-muted)', fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer', borderBottom: activeTab === 'tier-config' ? '3px solid var(--color-4)' : 'none', paddingBottom: '0.5rem', marginBottom: '-0.7rem' }}>
+            ⚙️ 등급 설정
+          </button>
+          <button onClick={() => { setActiveTab('page-content'); fetchPageContent(); }} style={{ background: 'none', border: 'none', color: activeTab === 'page-content' ? 'var(--color-4)' : 'var(--text-muted)', fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer', borderBottom: activeTab === 'page-content' ? '3px solid var(--color-4)' : 'none', paddingBottom: '0.5rem', marginBottom: '-0.7rem' }}>
+            📝 소개 페이지 편집
+          </button>
         </div>
 
         {/* Users Tab */}
@@ -2456,6 +2500,106 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
             </div>
           )}
         </div>
+        )}
+        {activeTab === 'tier-config' && (
+          <div className="problem-card" style={{ padding: '1.2rem', margin: 0 }}>
+            <h3 style={{ marginBottom: '1rem' }}>⚙️ 등급(티어) 설정</h3>
+            <p style={{ fontSize: '0.85rem', opacity: 0.7, marginBottom: '1rem' }}>Real Rating 점수에 따라 등급이 결정됩니다. 등급 이름과 최소 레이팅을 수정할 수 있습니다.</p>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                    <th style={{ padding: '0.4rem 0.6rem', textAlign: 'left' }}>등급명</th>
+                    <th style={{ padding: '0.4rem 0.6rem', textAlign: 'left' }}>최소 레이팅</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...tierConfigDraft].sort((a, b) => a.minRating - b.minRating).map((tier, i) => {
+                    const realIdx = tierConfigDraft.findIndex(t => t.name === tier.name && t.minRating === tier.minRating);
+                    return (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '0.4rem 0.6rem' }}>
+                          <input value={tierConfigDraft[realIdx]?.name || ''} onChange={e => {
+                            const next = [...tierConfigDraft];
+                            next[realIdx] = { ...next[realIdx], name: e.target.value };
+                            setTierConfigDraft(next);
+                          }} style={{ width: 120, padding: '0.3rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)' }} />
+                        </td>
+                        <td style={{ padding: '0.4rem 0.6rem' }}>
+                          <input type="number" value={tierConfigDraft[realIdx]?.minRating || 0} onChange={e => {
+                            const next = [...tierConfigDraft];
+                            next[realIdx] = { ...next[realIdx], minRating: parseInt(e.target.value) || 0 };
+                            setTierConfigDraft(next);
+                          }} style={{ width: 140, padding: '0.3rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)' }} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display: 'flex', gap: '0.6rem', marginTop: '1rem' }}>
+              <button onClick={async () => {
+                setSavingTierConfig(true);
+                try {
+                  const token = localStorage.getItem('token');
+                  const res = await fetch('/api/admin/tier-config', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ tiers: tierConfigDraft }),
+                  });
+                  if (!res.ok) throw new Error('Failed');
+                  setMessage('✅ 등급 설정이 저장되었습니다.');
+                  fetchTierConfig();
+                } catch { setMessage('❌ 저장 실패'); }
+                finally { setSavingTierConfig(false); }
+              }} disabled={savingTierConfig}
+                className="btn" style={{ background: 'var(--color-4)', color: '#fff', border: 'none' }}>
+                {savingTierConfig ? '저장 중...' : '등급 설정 저장'}
+              </button>
+              <button onClick={() => setTierConfigDraft(JSON.parse(JSON.stringify(tierConfigTiers)))}
+                className="btn" style={{ background: 'var(--color-1)', color: '#fff', border: 'none' }}>
+                초기화
+              </button>
+            </div>
+          </div>
+        )}
+        {activeTab === 'page-content' && (
+          <div className="problem-card" style={{ padding: '1.2rem', margin: 0 }}>
+            <h3 style={{ marginBottom: '1rem' }}>📝 소개 페이지 편집</h3>
+            <p style={{ fontSize: '0.85rem', opacity: 0.7, marginBottom: '0.5rem' }}>마크다운 형식으로 소개 페이지 내용을 편집할 수 있습니다.</p>
+            <p style={{ fontSize: '0.8rem', opacity: 0.5, marginBottom: '1rem' }}>
+              <code>## 제목</code> = 제목, <code>**굵게**</code> = 굵게, <code>*기울임*</code> = 기울임, 줄바꿈은 그대로 표시됩니다.
+            </p>
+            <textarea value={pageContentDraft} onChange={e => setPageContentDraft(e.target.value)}
+              style={{ width: '100%', minHeight: '300px', padding: '0.8rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontFamily: 'monospace', fontSize: '0.9rem', resize: 'vertical', boxSizing: 'border-box' }}
+              placeholder="소개 페이지 내용을 마크다운 형식으로 입력하세요..." />
+            <div style={{ display: 'flex', gap: '0.6rem', marginTop: '1rem', alignItems: 'center' }}>
+              <button onClick={async () => {
+                setSavingPageContent(true);
+                try {
+                  const token = localStorage.getItem('token');
+                  const res = await fetch('/api/admin/page-content/about', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ content: pageContentDraft }),
+                  });
+                  if (!res.ok) throw new Error('Failed');
+                  setPageContent(pageContentDraft);
+                  setMessage('✅ 소개 페이지가 저장되었습니다.');
+                } catch { setMessage('❌ 저장 실패'); }
+                finally { setSavingPageContent(false); }
+              }} disabled={savingPageContent}
+                className="btn" style={{ background: 'var(--color-4)', color: '#fff', border: 'none' }}>
+                {savingPageContent ? '저장 중...' : '소개 페이지 저장'}
+              </button>
+              <button onClick={() => setPageContentDraft(pageContent)}
+                className="btn" style={{ background: 'var(--color-1)', color: '#fff', border: 'none' }}>
+                초기화
+              </button>
+              <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>변경사항은 소개 페이지(<Link to="/about" target="_blank" style={{ color: 'var(--color-4)' }}>/about</Link>)에서 확인 가능합니다.</span>
+            </div>
+          </div>
         )}
 
         {/* Problem Management */}
@@ -2879,7 +3023,9 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
         setEditedBio(data.user.bio || '');
       }
       if (data.user) {
-        setUser({ ...user!, ...data.user });
+        const mergedUser = { ...user!, ...data.user };
+        setUser(mergedUser);
+        localStorage.setItem('user', JSON.stringify(mergedUser));
       }
     })
     .catch(() => {});
@@ -3726,8 +3872,12 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
       },
       body: JSON.stringify({ problemId, userAnswer })
     })
-    .then(res => res.json())
-    .then(data => {
+    .then(res => res.json().then(data => ({ ok: res.ok, data })))
+    .then(({ ok, data }) => {
+      if (!ok) {
+        alert(data.error || '제출 처리 중 오류가 발생했습니다.');
+        return;
+      }
       if (data.isCorrect) {
         setShowFirework(true);
         fetchProblems();
@@ -3738,6 +3888,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
       const updatedUser: any = { 
         ...user, 
         rating: data.newUserRating,
+        rr: data.rr,
         tier: data.tier,
         problems_solved: data.problems_solved
       };
@@ -3747,7 +3898,8 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setUser(updatedUser);
       setAnswers(prev => ({ ...prev, [problemId]: '' }));
-    });
+    })
+    .catch(() => alert('네트워크 오류가 발생했습니다.'));
   };
 
   const handleGenerate = () => {
@@ -3911,11 +4063,9 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
                 }}
               >
                 <div style={{ fontSize: '0.9rem' }}>{p.title}</div>
-                {!!p.custom_reward_rating && p.custom_reward_rating > 0 && (
-                  <div style={{ fontSize: '0.7rem', color: '#e6a800', marginTop: '0.2rem' }}>
-                    +{(p.custom_reward_rating as number).toLocaleString()} RP
-                  </div>
-                )}
+                <div style={{ fontSize: '0.7rem', color: '#e6a800', marginTop: '0.2rem' }}>
+                  +{(p.current_difficulty as number).toLocaleString()} RP
+                </div>
               </div>
             ))
           )}
@@ -3940,11 +4090,9 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
         {selectedProblem ? (
           <div className="problem-card" style={{ margin: 0 }}>
             <h3 style={{ marginBottom: '1.5rem', color: 'var(--color-4)' }}>{selectedProblem.title}</h3>
-            {!!selectedProblem.custom_reward_rating && selectedProblem.custom_reward_rating > 0 && (
-              <div style={{ marginBottom: '1rem', fontSize: '0.9rem', fontWeight: 700, color: '#e6a800' }}>
-                🏆 획득 레이팅: +{(selectedProblem.custom_reward_rating as number).toLocaleString()} RP
-              </div>
-            )}
+            <div style={{ marginBottom: '1rem', fontSize: '0.9rem', fontWeight: 700, color: '#e6a800' }}>
+              🏆 획득 레이팅: +{(selectedProblem.current_difficulty as number).toLocaleString()} RP
+            </div>
             <div className="math-content" style={{ fontSize: '1.8rem' }}>{renderMath(selectedProblem.content)}</div>
             <div style={{ marginTop: '2rem' }}>
               <input type="text" placeholder="정답" className="answer-input" value={answers[selectedProblem.id] || ''} onChange={(e) => handleInputChange(selectedProblem.id, e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSubmit(selectedProblem.id)} />
@@ -4243,7 +4391,7 @@ const Login: React.FC<{ onLogin: (token: string, user: User) => void }> = ({ onL
       </Helmet>
       <section aria-label="로그인" className="auth-form">
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <img src="/logo.png" alt="Logis 로고" loading="lazy" style={{ width: '80px', height: '80px', borderRadius: '1.5rem', boxShadow: 'var(--card-shadow)' }} />
+          <img src="/logo_new.png" alt="Logis 로고" loading="lazy" style={{ width: '80px', height: '80px', borderRadius: '1.5rem', boxShadow: 'var(--card-shadow)' }} />
         </div>
         <h2 style={{ color: 'var(--color-4)' }}>로그인</h2>
         <form onSubmit={handleSubmit}>
@@ -4289,7 +4437,7 @@ const Signup: React.FC = () => {
       </Helmet>
       <section aria-label="회원가입" className="auth-form">
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <img src="/logo.png" alt="Logis 로고" loading="lazy" style={{ width: '80px', height: '80px', borderRadius: '1.5rem', boxShadow: 'var(--card-shadow)' }} />
+          <img src="/logo_new.png" alt="Logis 로고" loading="lazy" style={{ width: '80px', height: '80px', borderRadius: '1.5rem', boxShadow: 'var(--card-shadow)' }} />
         </div>
         <h2 style={{ color: 'var(--color-4)' }}>가입하기</h2>
         <form onSubmit={handleSubmit}>

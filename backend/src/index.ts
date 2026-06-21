@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import { Pool } from 'pg';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { processSubmission, getTier } from './rating/ratingService';
+import { processSubmission, getTier, getTierConfig, updateTierConfig, getUserRRData, calculateRR } from './rating/ratingService';
 import { checkAndRepairStreak, handleDailyReset } from './rating/gameSystemService';
 import { evaluateExpression } from './generation/mathParser.js';
 import { generateProblem } from './problemGenerator';
@@ -122,6 +122,26 @@ const ensureSchema = async () => {
       AND reward_rating IS NULL
       AND custom_reward_rating IS NOT NULL
   `);
+  await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS total_attempts INTEGER DEFAULT 0');
+  await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS correct_attempts INTEGER DEFAULT 0');
+  await pool.query(`
+    UPDATE problems p SET
+      total_attempts = COALESCE((SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id), 0),
+      correct_attempts = COALESCE((SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id AND s.is_correct = true), 0)
+  `);
+  await pool.query(`
+    UPDATE problems SET current_difficulty = 
+      GREATEST(5000, LEAST(150000, ROUND(150000 - (150000 - 5000) * correct_attempts::float / NULLIF(total_attempts, 0))))
+    WHERE total_attempts > 0
+  `);
+  await pool.query(`
+    UPDATE problems SET current_difficulty = 10000
+    WHERE (total_attempts IS NULL OR total_attempts = 0) AND (is_custom IS NULL OR is_custom = FALSE)
+  `);
+  await pool.query(`
+    UPDATE problems SET current_difficulty = 60000
+    WHERE (total_attempts IS NULL OR total_attempts = 0) AND is_custom = TRUE
+  `);
   await pool.query("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS is_streak_repair BOOLEAN DEFAULT FALSE");
   // Drop the CASCADE constraint and recreate with SET NULL (submissions survive problem deletion)
   await pool.query('ALTER TABLE submissions DROP CONSTRAINT IF EXISTS submissions_problem_id_fkey');
@@ -132,6 +152,8 @@ const ensureSchema = async () => {
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS problems_solved INTEGER DEFAULT 0");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS fever_multiplier FLOAT DEFAULT 1.0");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS fever_expires_at TIMESTAMP");
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS rr FLOAT");
+  await pool.query("UPDATE users SET rr = rating WHERE rr IS NULL");
   await pool.query(`
     CREATE TABLE IF NOT EXISTS rating_activity_logs (
       id SERIAL PRIMARY KEY,
@@ -262,6 +284,45 @@ const ensureSchema = async () => {
       PRIMARY KEY (competition_id, user_id)
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tier_config (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      config JSONB NOT NULL,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await pool.query(`
+    INSERT INTO tier_config (id, config) VALUES (1, $1::jsonb)
+    ON CONFLICT (id) DO NOTHING
+  `, [JSON.stringify({
+    tiers: [
+      { name: 'Bronze', minRating: 0 },
+      { name: 'Silver', minRating: 100000 },
+      { name: 'Gold', minRating: 300000 },
+      { name: 'Platinum', minRating: 800000 },
+      { name: 'Diamond', minRating: 2000000 },
+      { name: 'Ruby', minRating: 5000000 },
+      { name: 'Master', minRating: 12000000 },
+      { name: 'God', minRating: 30000000 },
+      { name: 'Hacker', minRating: 70000000 },
+      { name: '치피치피차파차파', minRating: 150000000 },
+      { name: 'ChatGPT', minRating: 300000000 },
+      { name: '출제자', minRating: 600000000 },
+      { name: '주인장', minRating: 1200000000 },
+      { name: '정답', minRating: 2500000000 },
+    ],
+  })]);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS page_content (
+      page_key VARCHAR(100) PRIMARY KEY,
+      content TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await pool.query(`
+    INSERT INTO page_content (page_key, content) VALUES ('about', '')
+    ON CONFLICT (page_key) DO NOTHING
+  `);
 };
 
 const authenticateToken = (req: any, res: any, next: NextFunction) => {
@@ -293,7 +354,7 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
     const user = result.rows[0];
     res.status(201).json({ 
       message: 'User created successfully', 
-      user: { ...user, tier: getTier(user.rating) } 
+      user: { ...user, tier: getTier(user.rr ?? user.rating) } 
     });
   } catch (err: any) {
     if (err.code === '23505') return res.status(400).json({ error: 'Username already exists' });
@@ -339,7 +400,8 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         rating: updatedUser.rating,
         profile_image_url: updatedUser.profile_image_url,
         bio: updatedUser.bio,
-        tier: getTier(updatedUser.rating),
+        tier: getTier(updatedUser.rr ?? updatedUser.rating),
+        rr: updatedUser.rr,
         streak: updatedUser.streak,
         tokens: updatedUser.tokens,
         xp: updatedUser.xp,
@@ -377,7 +439,7 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
     await client.query('COMMIT');
 
     const userResult = await client.query(
-      'SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, equipped_title, created_at, has_firework_effect, has_developer_chango, last_active_date, longest_streak, custom_title, problems_solved, fever_multiplier, fever_expires_at FROM users WHERE id = $1',
+      'SELECT id, username, email, rating, rr, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, equipped_title, created_at, has_firework_effect, has_developer_chango, last_active_date, longest_streak, custom_title, problems_solved, fever_multiplier, fever_expires_at FROM users WHERE id = $1',
       [userId]
     );
 
@@ -417,7 +479,8 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
       user: {
         ...user,
         equipped_title: equippedTitleName,
-        tier: getTier(parseFloat(user.rating)),
+        tier: getTier(user.rr ?? parseFloat(user.rating)),
+        rr: user.rr,
         streakRepaired: repairResult.repaired,
         streakRepairedFlag: user.streak_repaired
       },
@@ -508,7 +571,7 @@ app.get('/api/users/search', async (req: Request, res: Response) => {
 
   try {
     const result = await pool.query(
-      'SELECT id, username, rating, profile_image_url, bio, equipped_title, custom_title FROM users WHERE username ILIKE $1 ORDER BY rating DESC LIMIT 10',
+      'SELECT id, username, rating, rr, profile_image_url, bio, equipped_title, custom_title FROM users WHERE username ILIKE $1 ORDER BY rating DESC LIMIT 10',
       [`%${q}%`]
     );
     // Resolve equipped title display names
@@ -524,7 +587,7 @@ app.get('/api/users/search', async (req: Request, res: Response) => {
       ...u,
       equipped_title: u.equipped_title ? (titleMap[u.equipped_title] || u.equipped_title) : '',
       custom_title: u.custom_title || '',
-      tier: getTier(u.rating)
+      tier: getTier(u.rr ?? u.rating)
     }));
     res.json(users);
   } catch (err) {
@@ -758,7 +821,7 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const userResult = await pool.query(
-      'SELECT id, username, rating, profile_image_url, bio, streak, tokens, xp, quests, equipped_title, has_firework_effect, has_developer_chango, last_active_date, longest_streak, custom_title, problems_solved, created_at, fever_multiplier, fever_expires_at FROM users WHERE id = $1',
+      'SELECT id, username, rating, rr, profile_image_url, bio, streak, tokens, xp, quests, equipped_title, has_firework_effect, has_developer_chango, last_active_date, longest_streak, custom_title, problems_solved, created_at, fever_multiplier, fever_expires_at FROM users WHERE id = $1',
       [id]
     );
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
@@ -786,7 +849,8 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
       user: {
         ...user,
         equipped_title: equippedTitleName || user.equipped_title,
-        tier: getTier(parseFloat(user.rating))
+        tier: getTier(user.rr ?? parseFloat(user.rating)),
+        rr: user.rr
       },
       titles: titlesRes.rows,
       stats: {
@@ -1089,7 +1153,7 @@ app.get('/api/groups/:id', async (req: Request, res: Response) => {
     if (groupResult.rows.length === 0) return res.status(404).json({ error: 'Group not found' });
 
     const membersResult = await pool.query(`
-      SELECT u.id, u.username, u.rating, u.profile_image_url
+      SELECT u.id, u.username, u.rating, u.rr, u.profile_image_url
       FROM group_members gm
       JOIN users u ON gm.user_id = u.id
       WHERE gm.group_id = $1
@@ -1097,7 +1161,7 @@ app.get('/api/groups/:id', async (req: Request, res: Response) => {
 
     res.json({
       ...groupResult.rows[0],
-      members: membersResult.rows.map(m => ({ ...m, tier: getTier(m.rating) }))
+      members: membersResult.rows.map(m => ({ ...m, tier: getTier(m.rr ?? m.rating) }))
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch group details' });
@@ -1271,6 +1335,7 @@ app.get('/api/groups/:id/competitions/:compId', authenticateToken, async (req: a
         u.profile_image_url,
         gcp.initial_rating,
         u.rating as current_rating,
+        u.rr as current_rr,
         (u.rating - gcp.initial_rating) as rating_gain
       FROM group_competition_participants gcp
       JOIN users u ON gcp.user_id = u.id
@@ -1280,7 +1345,7 @@ app.get('/api/groups/:id/competitions/:compId', authenticateToken, async (req: a
 
     const leaderboard = leaderboardRes.rows.map((row: any) => ({
       ...row,
-      tier: getTier(parseFloat(row.current_rating))
+      tier: getTier(parseFloat(row.current_rr ?? row.current_rating))
     }));
 
     const now = new Date();
@@ -1315,14 +1380,14 @@ app.get('/api/groups/:id/requests', authenticateToken, async (req: any, res: Res
     if (groupRes.rows[0].creator_id !== userId) return res.status(403).json({ error: 'Only group creator can view requests' });
 
     const requestsRes = await pool.query(`
-      SELECT r.id, r.user_id, r.created_at, u.username, u.rating, u.profile_image_url
+      SELECT r.id, r.user_id, r.created_at, u.username, u.rating, u.rr, u.profile_image_url
       FROM group_join_requests r
       JOIN users u ON r.user_id = u.id
       WHERE r.group_id = $1 AND r.status = 'pending'
       ORDER BY r.created_at ASC
     `, [groupId]);
 
-    res.json(requestsRes.rows.map(r => ({ ...r, tier: getTier(r.rating) })));
+    res.json(requestsRes.rows.map(r => ({ ...r, tier: getTier(r.rr ?? r.rating) })));
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch requests' });
   }
@@ -1430,7 +1495,7 @@ app.post('/api/users/change-password', authenticateToken, async (req: any, res: 
 app.get('/api/users/ranking', async (req: Request, res: Response) => {
   try {
     const result = await pool.query(
-      "SELECT id, username, rating, profile_image_url, equipped_title, custom_title FROM users WHERE username != 'admin' ORDER BY rating DESC LIMIT 50"
+      "SELECT id, username, rating, rr, profile_image_url, equipped_title, custom_title FROM users WHERE username != 'admin' ORDER BY rating DESC LIMIT 50"
     );
     // Resolve equipped title display names
     const titleIds = [...new Set(result.rows.filter((r: any) => r.equipped_title).map((r: any) => r.equipped_title))];
@@ -1442,7 +1507,7 @@ app.get('/api/users/ranking', async (req: Request, res: Response) => {
     const users = result.rows.map(u => ({
       ...u,
       equipped_title: u.equipped_title ? (titleMap[u.equipped_title] || u.equipped_title) : '',
-      tier: getTier(u.rating)
+      tier: getTier(u.rr ?? u.rating)
     }));
     res.json(users);
   } catch (err) {
@@ -1566,8 +1631,8 @@ app.post('/api/problems/custom', authenticateToken, async (req: any, res: Respon
 
   try {
     const result = await pool.query(
-      'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type, is_custom, custom_reward_rating, reward_rating) VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8) RETURNING id',
-      [title, content, answer, ratingReward, 'Calculation', true, parseFloat(ratingReward), parseFloat(ratingReward)]
+      'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type, is_custom, custom_reward_rating, reward_rating) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
+      [title, content, answer, ratingReward, 60000, 'Calculation', true, parseFloat(ratingReward), parseFloat(ratingReward)]
     );
     const problemId = result.rows[0].id;
     for (const tagName of tags) {
@@ -1755,7 +1820,7 @@ app.post('/api/problems/generate', authenticateToken, async (req: any, res: Resp
       const p = generateProblem(tags);
       const result = await pool.query(
         'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-        [p.title, p.content, p.answer, p.difficulty, p.difficulty, 'Calculation']
+        [p.title, p.content, p.answer, p.difficulty, 10000, 'Calculation']
       );
       const problemId = result.rows[0].id;
       
@@ -1845,10 +1910,10 @@ app.post('/api/problems/templates/generate', authenticateToken, async (req: any,
     for (const p of problems) {
       const result = await pool.query(
         'INSERT INTO problems (title, content, answer, initial_difficulty, current_difficulty, type, reward_rating) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
-        [p.title, p.problem, String(p.answer), p.difficulty, p.difficulty, 'Calculation', p.rewardRating],
+        [p.title, p.problem, String(p.answer), p.difficulty, 10000, 'Calculation', p.rewardRating],
       );
       const problemId = result.rows[0].id;
-      newProblems.push({ id: problemId, title: p.title, content: p.problem, difficulty: p.difficulty, rewardRating: p.rewardRating, answer: p.answer, tags: [], current_difficulty: p.difficulty });
+      newProblems.push({ id: problemId, title: p.title, content: p.problem, difficulty: p.difficulty, rewardRating: p.rewardRating, answer: p.answer, tags: [], current_difficulty: 10000 });
     }
 
     res.json({ message: `${problems.length}개의 문제가 생성되었습니다!`, problems: newProblems });
@@ -2022,6 +2087,61 @@ app.post('/api/submissions', authenticateToken, async (req: any, res: any) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to process submission' });
+  }
+});
+
+app.get('/api/admin/tier-config', async (_req: Request, res: Response) => {
+  try {
+    const tiers = await getTierConfig();
+    res.json({ tiers });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch tier config' });
+  }
+});
+
+app.put('/api/admin/tier-config', authenticateToken, async (req: any, res: Response) => {
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  try {
+    const { tiers } = req.body;
+    if (!Array.isArray(tiers) || tiers.length < 2) {
+      return res.status(400).json({ error: 'At least 2 tiers required' });
+    }
+    const updated = await updateTierConfig(tiers);
+    res.json({ tiers: updated });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update tier config' });
+  }
+});
+
+app.get('/api/page-content/:key', async (req: Request, res: Response) => {
+  try {
+    const { key } = req.params;
+    const result = await pool.query('SELECT content, updated_at FROM page_content WHERE page_key = $1', [key]);
+    if (result.rows.length === 0) {
+      return res.json({ content: '', page_key: key });
+    }
+    res.json({ page_key: key, content: result.rows[0].content, updated_at: result.rows[0].updated_at });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch page content' });
+  }
+});
+
+app.put('/api/admin/page-content/:key', authenticateToken, async (req: any, res: Response) => {
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  try {
+    const { key } = req.params;
+    const { content } = req.body;
+    if (typeof content !== 'string') {
+      return res.status(400).json({ error: 'Content must be a string' });
+    }
+    await pool.query(
+      `INSERT INTO page_content (page_key, content, updated_at) VALUES ($1, $2, NOW())
+       ON CONFLICT (page_key) DO UPDATE SET content = $2, updated_at = NOW()`,
+      [key, content]
+    );
+    res.json({ page_key: key, content, success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update page content' });
   }
 });
 
@@ -2243,7 +2363,7 @@ app.get('/api/admin/users', authenticateToken, async (req: any, res: Response) =
   
   try {
     const result = await pool.query(`
-      SELECT u.id, u.username, u.email, u.rating, u.tokens, u.created_at, u.can_generate_problems, u.custom_title,
+      SELECT u.id, u.username, u.email, u.rating, u.rr, u.tokens, u.created_at, u.can_generate_problems, u.custom_title,
              COUNT(s.id) as total_submissions,
              SUM(CASE WHEN s.is_correct THEN 1 ELSE 0 END) as correct_submissions
       FROM users u
@@ -2253,7 +2373,7 @@ app.get('/api/admin/users', authenticateToken, async (req: any, res: Response) =
     `);
     const users = result.rows.map(u => ({
       ...u,
-      tier: getTier(parseFloat(u.rating)),
+      tier: getTier(parseFloat(u.rr ?? u.rating)),
       total_submissions: parseInt(u.total_submissions),
       correct_submissions: parseInt(u.correct_submissions || 0),
       can_generate_problems: u.can_generate_problems === true

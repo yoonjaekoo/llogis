@@ -28,6 +28,8 @@ CREATE TABLE problems (
     current_difficulty FLOAT NOT NULL,
     type problem_type DEFAULT 'Calculation' NOT NULL,
     estimated_time INTEGER,
+    total_attempts INTEGER DEFAULT 0,
+    correct_attempts INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

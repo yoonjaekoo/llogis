@@ -1,5 +1,4 @@
 import { Pool } from 'pg';
-import { Glicko2Engine } from './glicko2';
 import { 
   checkAndRepairStreak, 
   handleDailyReset, 
@@ -16,23 +15,78 @@ const pool = new Pool({
   port: parseInt(process.env.DB_PORT || '5432'),
 });
 
-const engine = new Glicko2Engine();
+const MIN_REWARD = 5000;
+const MAX_REWARD = 150000;
+
+const getDefaultDifficulty = (isCustom: boolean): number => isCustom ? 60000 : 10000;
+
+export interface TierEntry {
+  name: string;
+  minRating: number;
+}
+
+const DEFAULT_TIERS: TierEntry[] = [
+  { name: 'Bronze', minRating: 0 },
+  { name: 'Silver', minRating: 100000 },
+  { name: 'Gold', minRating: 300000 },
+  { name: 'Platinum', minRating: 800000 },
+  { name: 'Diamond', minRating: 2000000 },
+  { name: 'Ruby', minRating: 5000000 },
+  { name: 'Master', minRating: 12000000 },
+  { name: 'God', minRating: 30000000 },
+  { name: 'Hacker', minRating: 70000000 },
+  { name: '치피치피차파차파', minRating: 150000000 },
+  { name: 'ChatGPT', minRating: 300000000 },
+  { name: '출제자', minRating: 600000000 },
+  { name: '주인장', minRating: 1200000000 },
+  { name: '정답', minRating: 2500000000 },
+];
+
+let cachedTiers: TierEntry[] | null = null;
+let lastFetch = 0;
+const CACHE_TTL = 60000;
+
+export const getTierConfig = async (): Promise<TierEntry[]> => {
+  const now = Date.now();
+  if (cachedTiers && now - lastFetch < CACHE_TTL) return cachedTiers;
+  try {
+    const res = await pool.query('SELECT config FROM tier_config WHERE id = 1');
+    if (res.rows.length > 0 && res.rows[0].config?.tiers) {
+      cachedTiers = res.rows[0].config.tiers as TierEntry[];
+      lastFetch = now;
+      return cachedTiers!;
+    }
+  } catch { }
+  return DEFAULT_TIERS;
+};
+
+export const updateTierConfig = async (tiers: TierEntry[]): Promise<TierEntry[]> => {
+  await pool.query(
+    `INSERT INTO tier_config (id, config) VALUES (1, $1::jsonb)
+     ON CONFLICT (id) DO UPDATE SET config = $1::jsonb, updated_at = NOW()`,
+    [JSON.stringify({ tiers })]
+  );
+  cachedTiers = tiers;
+  lastFetch = Date.now();
+  return tiers;
+};
+
+const allTiers = async (): Promise<TierEntry[]> => {
+  const tiers = await getTierConfig();
+  return [...tiers].sort((a, b) => b.minRating - a.minRating);
+};
+
+export const getTierName = (rating: number, tiers: TierEntry[]): string => {
+  const sorted = [...tiers].sort((a, b) => b.minRating - a.minRating);
+  for (const t of sorted) {
+    if (rating >= t.minRating) return t.name;
+  }
+  return sorted[sorted.length - 1]?.name || 'Bronze';
+};
 
 export const getTier = (rating: number): string => {
-  if (rating < 100000) return 'Bronze';
-  if (rating < 300000) return 'Silver';
-  if (rating < 800000) return 'Gold';
-  if (rating < 2000000) return 'Platinum';
-  if (rating < 5000000) return 'Diamond';
-  if (rating < 12000000) return 'Ruby';
-  if (rating < 30000000) return 'Master';
-  if (rating < 70000000) return 'God';
-  if (rating < 150000000) return 'Hacker';
-  if (rating < 300000000) return '치피치피차파차파';
-  if (rating < 600000000) return 'ChatGPT';
-  if (rating < 1200000000) return '출제자';
-  if (rating < 2500000000) return '주인장';
-  return '정답';
+  const tiers = cachedTiers || DEFAULT_TIERS;
+  return getTierName(rating, tiers);
 };
 
 const getWrongAnswerPenalty = (rating: number): number => {
@@ -43,35 +97,68 @@ const getWrongAnswerPenalty = (rating: number): number => {
   return 3000;
 };
 
+export const calculateDifficultyFromSolveRate = (solveRate: number): number => {
+  if (solveRate < 0 || solveRate > 1 || isNaN(solveRate)) return 10000;
+  return Math.round(MAX_REWARD - (MAX_REWARD - MIN_REWARD) * solveRate);
+};
+
+// RR = R + 100 × (√N / (√N + 20)) + 100 × tanh((H30 - R)/400) × tanh(M/50)
+// R = rating, N = problems_solved, H30 = avg difficulty of last 30d correct solves, M = count of last 30d solves
+export const calculateRR = (R: number, N: number, H30: number, M: number): number => {
+  const term1 = 100 * (Math.sqrt(N) / (Math.sqrt(N) + 20));
+  const term2 = 100 * Math.tanh((H30 - R) / 400) * Math.tanh(M / 50);
+  return Math.round(R + term1 + term2);
+};
+
+export const getUserRRData = async (userId: number, client?: any): Promise<{ rr: number; tier: string; h30: number; m: number }> => {
+  const c = client || pool;
+  const userRes = await c.query(
+    'SELECT rating, problems_solved FROM users WHERE id = $1',
+    [userId]
+  );
+  if (userRes.rows.length === 0) throw new Error('User not found');
+  const { rating, problems_solved } = userRes.rows[0];
+  const R = parseFloat(rating);
+  const N = problems_solved || 0;
+
+  const statsRes = await c.query(
+    `SELECT 
+      COALESCE(AVG(p.current_difficulty), 0) as avg_diff,
+      COUNT(*) as solve_count
+    FROM submissions s
+    JOIN problems p ON s.problem_id = p.id
+    WHERE s.user_id = $1 AND s.is_correct = true
+      AND s.created_at > NOW() - INTERVAL '30 days'`,
+    [userId]
+  );
+  const H30 = parseFloat(statsRes.rows[0].avg_diff) || 0;
+  const M = parseInt(statsRes.rows[0].solve_count) || 0;
+
+  const rr = calculateRR(R, N, H30, M);
+  return { rr, tier: getTier(rr), h30: H30, m: M };
+};
+
 export const processSubmission = async (userId: number, problemId: number, isCorrect: boolean) => {
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
 
-    // 1. 일일 초기화 및 새 퀘스트 배정 검사
     await handleDailyReset(userId, client);
 
-    // 2. 스트릭 만료 검사 및 자동 스트릭 복구 시도
     const repairResult = await checkAndRepairStreak(userId, client);
 
-    // 3. 문제 정보 조회 (커스텀 보상 레이팅 확인)
     const problemRes = await client.query(
-      'SELECT is_custom, custom_reward_rating, reward_rating FROM problems WHERE id = $1',
+      'SELECT is_custom, current_difficulty FROM problems WHERE id = $1',
       [problemId]
     );
     if (problemRes.rows.length === 0) {
       throw new Error('Problem not found');
     }
-    const problem = problemRes.rows[0];
-    let rewardRating =
-      problem.reward_rating !== null && problem.reward_rating !== undefined
-        ? parseFloat(problem.reward_rating)
-        : problem.is_custom && problem.custom_reward_rating > 0
-          ? parseFloat(problem.custom_reward_rating)
-          : 10000;
+    const { is_custom, current_difficulty } = problemRes.rows[0];
+    const defaultDifficulty = getDefaultDifficulty(is_custom);
+    const rewardRating = current_difficulty != null ? parseFloat(current_difficulty) : defaultDifficulty;
 
-    // 4. 피버타임 확인 및 적용
     const feverRes = await client.query(
       'SELECT fever_multiplier, fever_expires_at FROM users WHERE id = $1',
       [userId]
@@ -85,7 +172,6 @@ export const processSubmission = async (userId: number, problemId: number, isCor
         feverMultiplier = fm;
         feverActive = true;
       } else if (expiresAt && new Date(expiresAt) <= new Date()) {
-        // 만료된 피버타임 초기화
         await client.query(
           'UPDATE users SET fever_multiplier = 1.0, fever_expires_at = NULL WHERE id = $1',
           [userId]
@@ -94,7 +180,6 @@ export const processSubmission = async (userId: number, problemId: number, isCor
     }
     const feverDescription = feverActive ? ` (🔥${feverMultiplier}배 피버타임 적용)` : '';
 
-    // 5. 기존 레이팅 계산 로직 실행 (피버타임 반영)
     const userRes = await client.query(
       'SELECT rating FROM users WHERE id = $1 FOR UPDATE',
       [userId]
@@ -105,7 +190,7 @@ export const processSubmission = async (userId: number, problemId: number, isCor
     }
 
     const currentRating = parseFloat(userRes.rows[0].rating);
-    const baseDelta = isCorrect ? rewardRating : (problem.is_custom ? -40000 : -getWrongAnswerPenalty(currentRating));
+    const baseDelta = isCorrect ? rewardRating : -getWrongAnswerPenalty(currentRating);
     const ratingDelta = isCorrect ? Math.round(baseDelta * feverMultiplier) : baseDelta;
     const finalRating = Math.max(0, currentRating + ratingDelta);
 
@@ -133,32 +218,45 @@ export const processSubmission = async (userId: number, problemId: number, isCor
       ]
     );
 
-    // 5. 스트릭 및 토큰 지급 로직 실행
     let streakResult = { newStreak: 0, bonusTokens: 0 };
     let finalTokens = 0;
 
     if (isCorrect) {
-      // 스트릭 업데이트 및 보너스 토큰
       streakResult = await updateStreak(userId, client);
-      // 기본 토큰 지급 (+1)
       finalTokens = await updateTokens(userId, client, isCorrect);
-      // 퀘스트 업데이트 ('solve' 및 최초 일일 스트릭 보상 액션 체크)
       await updateQuests(userId, client, 'solve');
       await updateQuests(userId, client, 'streak');
-      // problems_solved 증가 (데이터베이스에 저장되어 문제 초기화 시에도 유지)
       await client.query('UPDATE users SET problems_solved = problems_solved + 1 WHERE id = $1', [userId]);
     } else {
-      // 오답인 경우 시도(attempt)만 기록하여 정확도 퀘스트 갱신
       await updateQuests(userId, client, 'attempt');
     }
 
-    // 6. 제출 기록 저장
     await client.query(
       'INSERT INTO submissions (user_id, problem_id, is_correct) VALUES ($1, $2, $3)',
       [userId, problemId, isCorrect]
     );
 
-    // 7. 업데이트 완료된 최신 유저 정보 조회
+    await client.query(
+      `UPDATE problems SET 
+        total_attempts = total_attempts + 1,
+        correct_attempts = correct_attempts + $1
+      WHERE id = $2`,
+      [isCorrect ? 1 : 0, problemId]
+    );
+    const counterRes = await client.query(
+      'SELECT total_attempts, correct_attempts FROM problems WHERE id = $1',
+      [problemId]
+    );
+    if (counterRes.rows.length > 0) {
+      const { total_attempts, correct_attempts } = counterRes.rows[0];
+      const solveRate = total_attempts > 0 ? correct_attempts / total_attempts : 0.5;
+      const newDifficulty = calculateDifficultyFromSolveRate(solveRate);
+      await client.query(
+        'UPDATE problems SET current_difficulty = $1 WHERE id = $2',
+        [newDifficulty, problemId]
+      );
+    }
+
     const finalUserRes = await client.query(
       'SELECT streak, tokens, xp, quests, last_active_date, streak_repaired, longest_streak, problems_solved FROM users WHERE id = $1',
       [userId]
@@ -167,9 +265,22 @@ export const processSubmission = async (userId: number, problemId: number, isCor
 
     await client.query('COMMIT');
 
+    // RR 계산은 COMMIT 후에 실행 (실패해도 제출에는 영향 없음)
+    let rr = finalRating;
+    let tier = getTier(finalRating);
+    try {
+      const rrData = await getUserRRData(userId);
+      rr = rrData.rr;
+      tier = rrData.tier;
+      await pool.query('UPDATE users SET rr = $1 WHERE id = $2', [rr, userId]);
+    } catch {
+      // RR 계산 실패 시 raw rating 기반 tier 사용
+    }
+
     return { 
       newUserRating: finalRating,
-      tier: getTier(finalRating),
+      rr,
+      tier,
       streak: finalUser.streak,
       tokens: finalUser.tokens,
       xp: finalUser.xp,
