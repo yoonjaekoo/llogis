@@ -9,12 +9,8 @@ CREATE TABLE users (
     username VARCHAR(50) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
-    rating FLOAT DEFAULT 0.0 NOT NULL,
-    rating_deviation FLOAT DEFAULT 350.0 NOT NULL,
-    volatility FLOAT DEFAULT 0.06 NOT NULL,
     profile_image_url TEXT,
     can_generate_problems BOOLEAN DEFAULT FALSE NOT NULL,
-    problems_solved INTEGER DEFAULT 0 NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -56,19 +52,6 @@ CREATE TABLE submissions (
     submitted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS rating_activity_logs (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    problem_id INTEGER REFERENCES problems(id) ON DELETE SET NULL,
-    activity_type VARCHAR(50) NOT NULL,
-    change_amount INTEGER NOT NULL,
-    before_rating FLOAT NOT NULL,
-    after_rating FLOAT NOT NULL,
-    description TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_rating_activity_logs_user_created ON rating_activity_logs(user_id, created_at DESC);
 
 -- Groups Table
 CREATE TABLE IF NOT EXISTS groups (
@@ -98,10 +81,10 @@ CREATE TABLE IF NOT EXISTS group_join_requests (
 );
 
 -- 초기 사용자
-INSERT INTO users (username, email, password_hash, rating, rating_deviation, volatility, can_generate_problems) 
+INSERT INTO users (username, email, password_hash, can_generate_problems) 
 VALUES 
-('math_pro', 'pro@logis.com', '$2b$10$w/y055HsTmmkZHrvDINxSe5xxS8E59E1/vk6AOcjlzhFmuXZMKkAu', 150000, 350, 0.06, FALSE),
-('admin', 'admin@logis.com', '$2b$10$ocxbuGqhp0/2NJ9uPZ.SsOFRXXFWAaPjrn0mmKO0UiLmQJ7LYvH3G', 200000, 350, 0.06, TRUE);
+('math_pro', 'pro@logis.com', '$2b$10$w/y055HsTmmkZHrvDINxSe5xxS8E59E1/vk6AOcjlzhFmuXZMKkAu', FALSE),
+('admin', 'admin@logis.com', '$2b$10$ocxbuGqhp0/2NJ9uPZ.SsOFRXXFWAaPjrn0mmKO0UiLmQJ7LYvH3G', TRUE);
 
 -- 태그 등록
 INSERT INTO tags (name) VALUES ('일차방정식'), ('이차방정식'), ('연립방정식'), ('부등식'), ('일차함수'), ('식의계산'), ('도형');
@@ -265,7 +248,6 @@ CREATE TABLE IF NOT EXISTS group_competitions (
 CREATE TABLE IF NOT EXISTS group_competition_participants (
     competition_id INTEGER REFERENCES group_competitions(id) ON DELETE CASCADE,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    initial_rating FLOAT NOT NULL,
     PRIMARY KEY (competition_id, user_id)
 );
 

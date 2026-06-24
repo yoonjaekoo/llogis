@@ -23,14 +23,8 @@ interface User {
   id: number;
   username: string;
   rating: number;
-  rr?: number;
-  tier: string;
   profile_image_url?: string;
   bio?: string;
-  streak?: number;
-  tokens?: number;
-  xp?: number;
-  quests?: any[];
   streak_repaired?: boolean;
   can_generate_problems?: boolean;
   equipped_title?: string;
@@ -39,8 +33,6 @@ interface User {
   has_developer_chango?: boolean;
   custom_title?: string;
   problems_solved?: number;
-  fever_multiplier?: number;
-  fever_expires_at?: string;
 }
 
 // LaTeX Helper
@@ -211,24 +203,6 @@ const RadarChart: React.FC<{ data: { tag: string; count: number }[]; maxValue: n
   );
 };
 
-const FeverTimer: React.FC<{ expiresAt: string }> = ({ expiresAt }) => {
-  const [remaining, setRemaining] = useState('');
-  useEffect(() => {
-    const update = () => {
-      const diff = new Date(expiresAt).getTime() - Date.now();
-      if (diff <= 0) { setRemaining(''); return; }
-      const m = Math.floor(diff / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setRemaining(`${m}:${s.toString().padStart(2, '0')}`);
-    };
-    update();
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
-  }, [expiresAt]);
-  if (!remaining) return null;
-  return <span style={{ color: '#ff6b6b', fontWeight: 800, fontSize: '0.8rem', marginLeft: '0.3rem' }}>🔥 {remaining}</span>;
-};
-
 const Navbar: React.FC<{ 
   user: User | null; 
   onLogout: () => void; 
@@ -264,8 +238,7 @@ const Navbar: React.FC<{
                       {user.username[0].toUpperCase()}
                     </div>
                   )}
-                  {user.username} <span style={{ fontSize: '0.8rem', opacity: 0.8 }}>({user.tier})</span> <b style={{ color: 'white' }}>{Math.round(user.rr ?? user.rating).toLocaleString()} RR</b>
-                  {user.fever_expires_at && new Date(user.fever_expires_at) > new Date() && <FeverTimer expiresAt={user.fever_expires_at} />}
+                  {user.username}
                 </Link>
               </li>
               <li><button onClick={onLogout} aria-label="로그아웃" style={{ background: 'none', border: 'none', color: '#ff7675', cursor: 'pointer', fontWeight: 800 }}>로그아웃</button></li>
@@ -289,20 +262,13 @@ const Navbar: React.FC<{
 
 const About: React.FC<{ user: User | null }> = ({ user }) => {
   const [pageContent, setPageContent] = useState('');
-  const [tiers, setTiers] = useState<{ name: string; minRating: number }[]>([]);
 
   useEffect(() => {
     fetch('/api/page-content/about')
       .then(r => r.json())
       .then(data => setPageContent(data.content || ''))
       .catch(() => {});
-    fetch('/api/admin/tier-config')
-      .then(r => r.json())
-      .then(data => setTiers(data.tiers || []))
-      .catch(() => {});
   }, []);
-
-  const formatRating = (v: number) => v.toLocaleString();
 
   return (
     <main className="container" style={{ padding: '4rem 0', maxWidth: '800px' }}>
@@ -337,37 +303,6 @@ const About: React.FC<{ user: User | null }> = ({ user }) => {
         ) : (
           <p style={{ marginBottom: '2rem' }}>수학 문제를 풀고 레이팅을 올리는 재미있는 수학 학습 플랫폼입니다.</p>
         )}
-
-        <section aria-label="Real Rating 등급 기준">
-          <h3 style={{ marginBottom: '1rem' }}>Real Rating 등급 기준</h3>
-          <p style={{ fontSize: '0.85rem', opacity: 0.7, marginBottom: '1rem' }}>실제 레이팅(Real Rating) 점수에 따라 등급이 결정됩니다.</p>
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '2rem', textAlign: 'center' }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                <th style={{ padding: '0.8rem' }}>등급</th>
-                <th style={{ padding: '0.8rem' }}>필요 레이팅</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tiers.length > 0 ? [...tiers].sort((a, b) => a.minRating - b.minRating).map((t, i) => (
-                <tr key={t.name} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: '0.8rem', fontWeight: 800 }}>{t.name}</td>
-                  <td style={{ padding: '0.8rem' }}>{formatRating(t.minRating)}+{i < tiers.length - 1 ? ` ~ ${formatRating([...tiers].sort((a, b) => a.minRating - b.minRating)[i + 1].minRating - 1)}` : ''}</td>
-                </tr>
-              )) : (
-                <tr><td colSpan={2} style={{ padding: '1rem', opacity: 0.5 }}>등급 정보를 불러오는 중...</td></tr>
-              )}
-            </tbody>
-          </table>
-        </section>
-
-        {user && (
-          <section aria-label="내 정보" style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
-            <h3 style={{ marginBottom: '0.5rem' }}>내 등급 및 레이팅</h3>
-            <p style={{ fontSize: '1.2rem', fontWeight: 800 }}>{user.tier} · {Math.round(user.rr ?? user.rating).toLocaleString()} RR</p>
-            <p style={{ fontSize: '0.8rem', opacity: 0.6 }}>(Raw Rating: {Math.round(user.rating).toLocaleString()} RP)</p>
-          </section>
-        )}
       </article>
     </main>
   );
@@ -383,18 +318,9 @@ const Landing: React.FC<{ user: User | null }> = ({ user }) => {
   const heroGlowY = useTransform(scrollYProgress, [0, 1], [0, reducedMotion ? 0 : 120]);
   const heroOrbY = useTransform(scrollYProgress, [0, 1], [0, reducedMotion ? 0 : -80]);
   const heroOrbX = useTransform(scrollYProgress, [0, 1], [0, reducedMotion ? 0 : 50]);
-  const tierColors: { [key: string]: string } = {
-    'Bronze': '#cd7f32', 'Silver': '#c0c0c0', 'Gold': '#ffd700',
-    'Platinum': '#e5e4e2', 'Diamond': '#b9f2ff', 'Ruby': '#e0115f',
-    'Master': '#800080', 'God': '#ff4500', 'Hacker': '#00ff00',
-    '치피치피차파차파': '#ff1493', 'ChatGPT': '#10a37f',
-    '출제자': '#ffb300', '주인장': '#6a0dad', '정답': '#00e5ff'
-  };
-  const tier = user ? (user as any).tier || 'Bronze' : null;
   const [overviewStats, setOverviewStats] = useState({
     totalUsers: 0,
     totalProblems: 0,
-    topRating: 0,
     totalSubmissions: 0,
   });
 
@@ -407,7 +333,6 @@ const Landing: React.FC<{ user: User | null }> = ({ user }) => {
           setOverviewStats({
             totalUsers: Number(data.totalUsers) || 0,
             totalProblems: Number(data.totalProblems) || 0,
-            topRating: Number(data.topRating) || 0,
             totalSubmissions: Number(data.totalSubmissions) || 0,
           });
         }
@@ -417,7 +342,7 @@ const Landing: React.FC<{ user: User | null }> = ({ user }) => {
   }, []);
 
   const featureItems = [
-    { icon: '📈', title: 'Glicko-2 레이팅', desc: '체스 세계에서 검증된 Glicko-2 알고리즘으로 나의 수학 실력을 정밀하게 측정합니다.' },
+    { icon: '📈', title: '실시간 레이팅', desc: '문제를 풀 때마다 레이팅이 실시간으로 변동됩니다. 나의 수학 실력을 확인하세요.' },
     { icon: '🔥', title: '연속 스트릭', desc: '매일 1문제 이상 풀면 스트릭이 쌓입니다. 토큰으로 긴급 수리도 가능해요!' },
     { icon: '🪙', title: '토큰 경제', desc: '정답을 맞힐 때마다 토큰을 획득하세요. 스트릭 수리, 혜택 등에 활용할 수 있습니다.' },
     { icon: '📅', title: '일일 퀘스트', desc: '매일 새로운 퀘스트가 갱신됩니다. 완료하면 XP와 토큰을 대량으로 획득할 수 있어요.' },
@@ -451,37 +376,6 @@ const Landing: React.FC<{ user: User | null }> = ({ user }) => {
         />
 
         <SectionReveal style={{ position: 'relative', zIndex: 1, maxWidth: '720px' }}>
-          {user ? (
-            <motion.div style={{ marginBottom: '1.5rem' }} initial={false} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
-              <div className="stats-chip-row">
-                <motion.span
-                  className="stats-chip"
-                  whileHover={reducedMotion ? undefined : { scale: 1.04, y: -2 }}
-                  style={{ borderColor: tierColors[tier] || 'var(--border)', color: tierColors[tier] || 'var(--text-main)' }}
-                >
-                  🏅 {tier}
-                </motion.span>
-                <motion.span className="stats-chip" whileHover={reducedMotion ? undefined : { scale: 1.04, y: -2 }}>
-                  ✨ <CountUp value={Math.round(user.rr ?? user.rating)} suffix=" RR" />
-                </motion.span>
-                <motion.span className="stats-chip" style={{ fontSize: '0.75rem', opacity: 0.6 }} whileHover={reducedMotion ? undefined : { scale: 1.04, y: -2 }}>
-                  Raw: <CountUp value={Math.round(user.rating)} suffix=" RP" />
-                </motion.span>
-                <motion.span className="stats-chip" whileHover={reducedMotion ? undefined : { scale: 1.04, y: -2 }}>
-                  🔥 {(user as any).streak ?? 0}일 연속
-                </motion.span>
-                <motion.span className="stats-chip" whileHover={reducedMotion ? undefined : { scale: 1.04, y: -2 }}>
-                  🪙 {(user as any).tokens ?? 0} 토큰
-                </motion.span>
-                {(user as any).fever_expires_at && new Date((user as any).fever_expires_at) > new Date() && (
-                  <motion.span className="stats-chip" whileHover={reducedMotion ? undefined : { scale: 1.04, y: -2 }} style={{ borderColor: '#ff6b6b', color: '#ff6b6b' }}>
-                    🔥 {(user as any).fever_multiplier ?? 1}배 피버 <FeverTimer expiresAt={(user as any).fever_expires_at} />
-                  </motion.span>
-                )}
-              </div>
-            </motion.div>
-          ) : null}
-
           {user ? (
             <>
               <motion.div
@@ -521,7 +415,7 @@ const Landing: React.FC<{ user: User | null }> = ({ user }) => {
           >
             {user
               ? '오늘의 퀘스트를 완료하고 스트릭을 이어가세요. 매일 문제를 풀면 레이팅이 오릅니다.'
-              : 'Glicko-2 레이팅으로 나의 수준을 객관적으로 파악하고, 매일 문제를 풀어 성장하세요.'}
+              : '다양한 수학 문제를 풀고 실력을 키우세요. 매일 문제를 풀어 성장하세요.'}
           </motion.p>
 
           <div className="landing-cta-group">
@@ -560,12 +454,6 @@ const Landing: React.FC<{ user: User | null }> = ({ user }) => {
       {/* ── Stats strip ── */}
       <SectionReveal className="landing-stats-strip">
         <div className="landing-stats-grid">
-          <motion.div className="landing-stat-item" whileHover={reducedMotion ? undefined : { scale: 1.03, y: -4 }}>
-            <div className="landing-stat-number">
-              <CountUp value={overviewStats.topRating} suffix=" RP" />
-            </div>
-            <div className="landing-stat-label">최고 레이팅</div>
-          </motion.div>
           <motion.div className="landing-stat-item" whileHover={reducedMotion ? undefined : { scale: 1.03, y: -4 }}>
             <div className="landing-stat-number">
               <CountUp value={overviewStats.totalUsers} />
@@ -720,8 +608,6 @@ const Groups: React.FC<{ user: User | null }> = ({ user }) => {
 
   if (loading) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>로딩 중...</div>;
 
-  const isSilverPlus = user && user.rating >= 100000;
-
   return (
     <main className="container" style={{ padding: '4rem 0' }}>
       <Helmet>
@@ -736,19 +622,13 @@ const Groups: React.FC<{ user: User | null }> = ({ user }) => {
             <h2 style={{ color: 'var(--color-4)', fontSize: '2.5rem', marginBottom: '0.5rem' }}>유저 그룹</h2>
             <p style={{ opacity: 0.7 }}>다른 유저들과 함께 학습하고 경쟁해보세요.</p>
           </div>
-          {isSilverPlus ? (
-            <button 
-              onClick={() => setShowCreate(!showCreate)} 
-              className="btn" 
-              style={{ background: 'var(--color-3)', color: 'white', width: 'auto' }}
-            >
-              {showCreate ? '취소' : '그룹 만들기'}
-            </button>
-          ) : (
-            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', textAlign: 'right' }}>
-              그룹 생성은 <b>Silver</b> 티어 이상부터 가능합니다.
-            </div>
-          )}
+          <button 
+            onClick={() => setShowCreate(!showCreate)} 
+            className="btn" 
+            style={{ background: 'var(--color-3)', color: 'white', width: 'auto' }}
+          >
+            {showCreate ? '취소' : '그룹 만들기'}
+          </button>
         </section>
         {showCreate && (
             <div className="problem-card" style={{ marginBottom: '2rem' }}>
@@ -1050,7 +930,6 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
                     </div>
                     <div>
                       <div style={{ fontWeight: 800 }}>{r.username}</div>
-                      <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>{r.tier} | {Math.round(r.rating).toLocaleString()}</div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -1107,7 +986,6 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
                   </div>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.username}</div>
-                    <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>{m.tier} | {Math.round(m.rating).toLocaleString()}</div>
                   </div>
                 </div>
               ))}
@@ -1263,8 +1141,6 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
                   const rank = idx + 1;
                   const isTop3 = rank <= 3;
                   const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}`;
-                  const isGainPositive = player.rating_gain > 0;
-                  const isGainNegative = player.rating_gain < 0;
 
                   return (
                     <div 
@@ -1289,20 +1165,6 @@ const GroupDetail: React.FC<{ user: User | null }> = ({ user }) => {
                           <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {player.username}
                           </div>
-                          <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>
-                            {player.tier} | 현재 {Math.round(player.current_rating).toLocaleString()}점
-                          </div>
-                        </div>
-                      </div>
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ 
-                          fontWeight: 900, fontSize: '1.1rem',
-                          color: isGainPositive ? '#2ecc71' : isGainNegative ? '#e74c3c' : 'var(--text-main)'
-                        }}>
-                          {isGainPositive ? `+${Math.round(player.rating_gain).toLocaleString()}` : Math.round(player.rating_gain).toLocaleString()} UP
-                        </div>
-                        <div style={{ fontSize: '0.75rem', opacity: 0.6 }}>
-                          시작: {Math.round(player.initial_rating).toLocaleString()}점
                         </div>
                       </div>
                     </div>
@@ -1354,23 +1216,6 @@ const Ranking: React.FC = () => {
     setSearchResults(data);
   };
 
-  const tierColors: { [key: string]: string } = {
-    'Bronze': '#cd7f32',
-    'Silver': '#c0c0c0',
-    'Gold': '#ffd700',
-    'Platinum': '#e5e4e2',
-    'Diamond': '#b9f2ff',
-    'Ruby': '#e0115f',
-    'Master': '#800080',
-    'God': '#ff4500',
-    'Hacker': '#00ff00',
-    '치피치피차파차파': '#ff1493',
-    'ChatGPT': '#10a37f',
-    '출제자': '#ffb300',
-    '주인장': '#6a0dad',
-    '정답': '#00e5ff'
-  };
-
   if (loading) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>로딩 중...</div>;
 
   return (
@@ -1411,7 +1256,6 @@ const Ranking: React.FC = () => {
                     </div>
                     <div style={{ overflow: 'hidden' }}>
                       <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.username}</div>
-                      <div style={{ fontSize: '0.8rem', color: tierColors[u.tier] }}>{u.tier}</div>
                       {u.equipped_title && <div style={{ fontSize: '0.7rem', color: 'var(--color-4)', fontWeight: 700 }}>[{u.equipped_title}]</div>}
                       {u.custom_title && <div style={{ fontSize: '0.7rem', color: '#ff6b9d', fontStyle: 'italic' }}>✨ {u.custom_title}</div>}
                     </div>
@@ -1433,9 +1277,6 @@ const Ranking: React.FC = () => {
                     <th style={{ padding: '1rem' }}>순위</th>
                     <th style={{ padding: '1rem' }}>사용자</th>
                     <th style={{ padding: '1rem' }}>칭호</th>
-                    <th style={{ padding: '1rem' }}>티어</th>
-                    <th style={{ padding: '1rem' }}>레이팅</th>
-                    <th style={{ padding: '1rem' }}>RR</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1456,18 +1297,7 @@ const Ranking: React.FC = () => {
                         {u.custom_title && <div style={{ fontSize: '0.75rem', color: '#ff6b9d', fontStyle: 'italic' }}>✨ {u.custom_title}</div>}
                         {!u.equipped_title && !u.custom_title && <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>-</span>}
                       </td>
-                      <td style={{ padding: '1.2rem 1rem' }}>
-                        <span style={{ 
-                          color: tierColors[u.tier], 
-                          fontWeight: 800, 
-                          fontSize: '0.9rem',
-                          textTransform: 'uppercase' 
-                        }}>
-                          {u.tier}
-                        </span>
-                      </td>
-                      <td style={{ padding: '1.2rem 1rem', fontWeight: 800 }}>{Math.round(u.rating).toLocaleString()}</td>
-                      <td style={{ padding: '1.2rem 1rem', fontWeight: 800, opacity: 0.7 }}>{Math.round(u.rr ?? u.rating).toLocaleString()}</td>
+
                     </tr>
                   ))}
                 </tbody>
@@ -1519,28 +1349,11 @@ const UserProfile: React.FC = () => {
 
   const { user: u, stats } = profileData;
 
-  const tierColors: { [key: string]: string } = {
-    'Bronze': '#cd7f32',
-    'Silver': '#c0c0c0',
-    'Gold': '#ffd700',
-    'Platinum': '#e5e4e2',
-    'Diamond': '#b9f2ff',
-    'Ruby': '#e0115f',
-    'Master': '#800080',
-    'God': '#ff4500',
-    'Hacker': '#00ff00',
-    '치피치피차파차파': '#ff1493',
-    'ChatGPT': '#10a37f',
-    '출제자': '#ffb300',
-    '주인장': '#6a0dad',
-    '정답': '#00e5ff'
-  };
-
   return (
     <main className="container" style={{ padding: '4rem 0' }}>
       <Helmet>
         <title>{u.username} 프로필 | Logis - 수학 문제 풀이 플랫폼</title>
-        <meta name="description" content={`${u.username}님의 Logis 프로필 - ${u.tier} Rank, RR ${Math.round(u.rr ?? u.rating).toLocaleString()}, 정답률 ${Math.round(stats.accuracy)}%`} />
+        <meta name="description" content={`${u.username}님의 Logis 프로필 - 정답률 ${Math.round(stats.accuracy)}%`} />
         <meta property="og:title" content={`${u.username} | Logis`} />
         <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
       </Helmet>
@@ -1554,7 +1367,7 @@ const UserProfile: React.FC = () => {
             ) : (
               <div role="img" aria-label={`${u.username} 프로필 이미지`} style={{ 
                 width: '120px', height: '120px', borderRadius: '50%', 
-                background: tierColors[u.tier] || 'var(--color-3)', 
+                background: 'var(--color-3)', 
                 display: 'flex', alignItems: 'center', justifyContent: 'center', 
                 fontSize: '3rem', boxShadow: '0 0 20px rgba(0,0,0,0.2)', color: 'white', fontWeight: 800
               }}>
@@ -1574,11 +1387,6 @@ const UserProfile: React.FC = () => {
               ✨ {u.custom_title}
             </div>
           )}
-          <div style={{ 
-            fontSize: '1.5rem', fontWeight: 800, color: tierColors[u.tier], textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '1.5rem'
-          }}>
-            {u.tier} Rank
-          </div>
 
           <div style={{ 
             maxWidth: '500px', margin: '0 auto 2.5rem', padding: '1.5rem', 
@@ -1590,11 +1398,6 @@ const UserProfile: React.FC = () => {
 
           <section aria-label="통계" className="profile-stats-grid">
             <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>RR (Real Rating)</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{Math.round(u.rr ?? u.rating).toLocaleString()}</div>
-              <div style={{ fontSize: '0.75rem', opacity: 0.5, marginTop: '0.3rem' }}>Raw: {Math.round(u.rating).toLocaleString()} RP</div>
-            </div>
-            <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
               <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>해결 문제</div>
               <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{u.problems_solved || stats.correctSubmissions}</div>
             </div>
@@ -1602,26 +1405,7 @@ const UserProfile: React.FC = () => {
               <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>정답률</div>
               <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{Math.round(stats.accuracy)}%</div>
             </div>
-            <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>🔥 연속 스트릭</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{u.streak || 0}일</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>최장 {u.longest_streak || 0}일</div>
-            </div>
-            <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>🪙 보유 토큰</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#e6a800' }}>{u.tokens || 0}</div>
-            </div>
-            <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>⚡ 총 XP</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#00b360' }}>{(u.xp || 0).toLocaleString()}</div>
-            </div>
           </section>
-
-          {(u.fever_expires_at && new Date(u.fever_expires_at) > new Date()) && (
-            <div style={{ marginTop: '1rem', padding: '0.6rem', background: 'linear-gradient(90deg, #ff6b6b22, #ff6b6b44, #ff6b6b22)', border: '1px solid #ff6b6b', borderRadius: '0.5rem', fontWeight: 800, color: '#ff6b6b', fontSize: '1rem' }}>
-              🔥 {u.fever_multiplier}배 피버타임 활성중!
-            </div>
-          )}
 
           {/* 프로필 아이콘 뱃지 */}
           <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
@@ -1806,15 +1590,12 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [activeTab, setActiveTab] = useState<'users' | 'notifications' | 'templates' | 'bugreports' | 'tier-config' | 'page-content'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'notifications' | 'templates' | 'bugreports' | 'page-content'>('users');
   const [editingTemplate, setEditingTemplate] = useState<any>(null);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
   const [newTemplate, setNewTemplate] = useState<any>({ id: '', unit: '', title: '', difficulty: 10000, variables: {}, constraints: [], problem_template: '', answer_formula: { type: 'expression', value: '' }, concepts: [] });
   const [bugReports, setBugReports] = useState<any[]>([]);
   const [showTemplateJson, setShowTemplateJson] = useState(false);
-  const [tierConfigTiers, setTierConfigTiers] = useState<{ name: string; minRating: number }[]>([]);
-  const [tierConfigDraft, setTierConfigDraft] = useState<{ name: string; minRating: number }[]>([]);
-  const [savingTierConfig, setSavingTierConfig] = useState(false);
   const [pageContent, setPageContent] = useState('');
   const [pageContentDraft, setPageContentDraft] = useState('');
   const [savingPageContent, setSavingPageContent] = useState(false);
@@ -1884,17 +1665,6 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
       }
     })
     .catch(() => {});
-  }, []);
-
-  const fetchTierConfig = useCallback(async () => {
-    try {
-      const res = await fetch('/api/admin/tier-config');
-      const data = await res.json();
-      if (data.tiers) {
-        setTierConfigTiers(data.tiers);
-        setTierConfigDraft(JSON.parse(JSON.stringify(data.tiers)));
-      }
-    } catch {}
   }, []);
 
   const fetchPageContent = useCallback(async () => {
@@ -2047,53 +1817,6 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
       setMessage('삭제에 실패했습니다.');
     }
     setCleaning(false);
-  };
-
-  const handleUpdateRating = async (userId: number, currentRating: number) => {
-    const newRatingStr = window.prompt('새로운 레이팅을 입력하세요:', currentRating.toString());
-    if (newRatingStr === null) return;
-    const newRating = parseFloat(newRatingStr);
-    if (isNaN(newRating)) return alert('올바른 숫자를 입력해주세요.');
-    const token = localStorage.getItem('token');
-    const res = await fetch(`/api/admin/users/${userId}/rating`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ rating: newRating })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      alert(data.message);
-      fetchUsers();
-    } else {
-      alert(data.error);
-    }
-  };
-
-  const handleUpdateTemplateReward = async (templateId: string) => {
-    const rewardRating = parseFloat(templateRewardDrafts[templateId]);
-    if (isNaN(rewardRating) || rewardRating < 0) {
-      return alert('올바른 레이팅 값을 입력해주세요.');
-    }
-
-    const token = localStorage.getItem('token');
-    const res = await fetch(`/api/admin/templates/${templateId}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ rewardRating })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      alert(data.message);
-      fetchTemplates();
-    } else {
-      alert(data.error);
-    }
   };
 
   const handleUpdateTokens = async (userId: number, currentTokens: number) => {
@@ -3889,7 +3612,6 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
       const updatedUser: any = { 
         ...user, 
         rating: data.newUserRating,
-        rr: data.rr,
         tier: data.tier,
         problems_solved: data.problems_solved
       };

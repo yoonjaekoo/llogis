@@ -9,13 +9,11 @@ const dotenv_1 = __importDefault(require("dotenv"));
 const pg_1 = require("pg");
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
-const ratingService_1 = require("./rating/ratingService");
-const ratingConfigService_1 = require("./rating/ratingConfigService");
-const gameSystemService_1 = require("./rating/gameSystemService");
 const mathParser_js_1 = require("./generation/mathParser.js");
 const problemGenerator_1 = require("./problemGenerator");
 const nimGenerator_1 = require("./nimGenerator");
 const templateProblemGenerator_1 = require("./templateProblemGenerator");
+const ratingService_1 = require("./rating/ratingService");
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const multer_1 = __importDefault(require("multer"));
@@ -71,29 +69,13 @@ const ensureSchema = async () => {
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_url TEXT');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS nim_api_key TEXT');
-    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak INTEGER DEFAULT 0');
-    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS tokens INTEGER DEFAULT 0');
-    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS xp INTEGER DEFAULT 0');
-    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_date VARCHAR(10) DEFAULT ''");
-    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_repaired BOOLEAN DEFAULT FALSE');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS can_generate_problems BOOLEAN DEFAULT FALSE');
-    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS quests JSONB DEFAULT '[]'");
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS equipped_title VARCHAR(50) DEFAULT ''");
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_firework_effect BOOLEAN DEFAULT FALSE");
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_developer_chango BOOLEAN DEFAULT FALSE");
-    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS longest_streak INTEGER DEFAULT 0");
     await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS is_custom BOOLEAN DEFAULT FALSE');
     await pool.query("UPDATE problems SET is_custom = FALSE WHERE is_custom IS NULL");
     await pool.query("ALTER TABLE problems ALTER COLUMN is_custom SET DEFAULT FALSE");
-    await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS custom_reward_rating FLOAT DEFAULT 0.0');
-    await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS reward_rating FLOAT');
-    await pool.query(`
-    UPDATE problems
-    SET reward_rating = custom_reward_rating
-    WHERE is_custom = TRUE
-      AND reward_rating IS NULL
-      AND custom_reward_rating IS NOT NULL
-  `);
     await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS total_attempts INTEGER DEFAULT 0');
     await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS correct_attempts INTEGER DEFAULT 0');
     await pool.query(`
@@ -114,7 +96,6 @@ const ensureSchema = async () => {
     UPDATE problems SET current_difficulty = 60000
     WHERE (total_attempts IS NULL OR total_attempts = 0) AND is_custom = TRUE
   `);
-    await pool.query("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS is_streak_repair BOOLEAN DEFAULT FALSE");
     // Drop the CASCADE constraint and recreate with SET NULL (submissions survive problem deletion)
     await pool.query('ALTER TABLE submissions DROP CONSTRAINT IF EXISTS submissions_problem_id_fkey');
     await pool.query('ALTER TABLE submissions ADD CONSTRAINT submissions_problem_id_fkey FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE SET NULL');
@@ -122,22 +103,6 @@ const ensureSchema = async () => {
     await pool.query("INSERT INTO tags (name) VALUES ('이차방정식') ON CONFLICT (name) DO NOTHING");
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_title VARCHAR(100) DEFAULT ''");
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS problems_solved INTEGER DEFAULT 0");
-    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS fever_multiplier FLOAT DEFAULT 1.0");
-    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS fever_expires_at TIMESTAMP");
-    await pool.query(`
-    CREATE TABLE IF NOT EXISTS rating_activity_logs (
-      id SERIAL PRIMARY KEY,
-      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-      problem_id INTEGER REFERENCES problems(id) ON DELETE SET NULL,
-      activity_type VARCHAR(50) NOT NULL,
-      change_amount INTEGER NOT NULL,
-      before_rating FLOAT NOT NULL,
-      after_rating FLOAT NOT NULL,
-      description TEXT NOT NULL,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-    await pool.query('CREATE INDEX IF NOT EXISTS idx_rating_activity_logs_user_created ON rating_activity_logs(user_id, created_at DESC)');
     // Initialize problems_solved from existing correct submissions
     await pool.query(`
     UPDATE users u SET problems_solved = (
@@ -197,14 +162,7 @@ const ensureSchema = async () => {
       ('solve_50', '문제 해결사', '문제 50개를 해결하세요', 'solve_count', 50),
       ('solve_100', '수학 마스터', '문제 100개를 해결하세요', 'solve_count', 100),
       ('solve_500', '문제 정복자', '문제 500개를 해결하세요', 'solve_count', 500),
-      ('solve_1000', '지식의 전당', '문제 1000개를 해결하세요', 'solve_count', 1000),
-      ('streak_7', '꾸준함의 시작', '7일 연속 스트릭을 달성하세요', 'streak', 7),
-      ('streak_30', '불굴의 의지', '30일 연속 스트릭을 달성하세요', 'streak', 30),
-      ('streak_100', '열정의 소유자', '100일 연속 스트릭을 달성하세요', 'streak', 100),
-      ('streak_365', '전설의 꾸준함', '365일 연속 스트릭을 달성하세요', 'streak', 365),
-      ('rank_1', '최강자', '랭킹 1위를 달성하세요', 'ranking', 1),
-      ('rank_2', '강호', '랭킹 2위를 달성하세요', 'ranking', 2),
-      ('rank_3', '도전자', '랭킹 3위를 달성하세요', 'ranking', 3)
+      ('solve_1000', '지식의 전당', '문제 1000개를 해결하세요', 'solve_count', 1000)
     ON CONFLICT (title_id) DO UPDATE SET condition_value = EXCLUDED.condition_value, description = EXCLUDED.description
   `);
     await pool.query(`
@@ -250,34 +208,21 @@ const ensureSchema = async () => {
     CREATE TABLE IF NOT EXISTS group_competition_participants (
       competition_id INTEGER REFERENCES group_competitions(id) ON DELETE CASCADE,
       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-      initial_rating FLOAT NOT NULL,
+      initial_rating FLOAT NOT NULL DEFAULT 0,
       PRIMARY KEY (competition_id, user_id)
     )
   `);
     await pool.query(`
-    CREATE TABLE IF NOT EXISTS rating_config (
-      id INTEGER PRIMARY KEY DEFAULT 1,
-      config JSONB NOT NULL,
+    CREATE TABLE IF NOT EXISTS page_content (
+      page_key VARCHAR(100) PRIMARY KEY,
+      content TEXT NOT NULL DEFAULT '',
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )
   `);
     await pool.query(`
-    INSERT INTO rating_config (id, config) VALUES (1, $1::jsonb)
-    ON CONFLICT (id) DO NOTHING
-  `, [JSON.stringify({
-            param_a: 5000,
-            param_b: 20000,
-            param_k: 30000,
-            function_type: 'log',
-            tiers: [
-                { name: 'C', minRR: 0, color: '#636e72' },
-                { name: 'B', minRR: 5000, color: '#e17055' },
-                { name: 'A', minRR: 20000, color: '#00b894' },
-                { name: 'A+', minRR: 40000, color: '#0984e3' },
-                { name: 'S', minRR: 80000, color: '#6c5ce7' },
-                { name: 'S+', minRR: 150000, color: '#fdcb6e' },
-            ],
-        })]);
+    INSERT INTO page_content (page_key, content) VALUES ('about', '')
+    ON CONFLICT (page_key) DO NOTHING
+  `);
 };
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
@@ -302,11 +247,11 @@ app.post('/api/auth/signup', async (req, res) => {
         return res.status(400).json({ error: 'All fields are required' });
     try {
         const hashedPassword = await bcrypt_1.default.hash(password, 10);
-        const result = await pool.query('INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id, username, rating', [username, email, hashedPassword]);
+        const result = await pool.query('INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id, username', [username, email, hashedPassword]);
         const user = result.rows[0];
         res.status(201).json({
             message: 'User created successfully',
-            user: { ...user, tier: (0, ratingService_1.getTier)(user.rating) }
+            user
         });
     }
     catch (err) {
@@ -319,57 +264,37 @@ app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
     const client = await pool.connect();
     try {
-        // Try to find user by email or username
         const userResult = await client.query('SELECT * FROM users WHERE email = $1 OR username = $1', [email]);
         const user = userResult.rows[0];
         if (!user || !(await bcrypt_1.default.compare(password, user.password_hash))) {
             client.release();
             return res.status(401).json({ error: 'Invalid credentials' });
         }
-        // 트랜잭션 내에서 리셋 및 복구 수행
-        await client.query('BEGIN');
-        await (0, gameSystemService_1.handleDailyReset)(user.id, client);
-        const repairResult = await (0, gameSystemService_1.checkAndRepairStreak)(user.id, client);
-        await client.query('COMMIT');
-        // 최신 정보로 유저 재조회
-        const updatedUserResult = await client.query('SELECT * FROM users WHERE id = $1', [user.id]);
-        const updatedUser = updatedUserResult.rows[0];
         // Look up equipped title display name
         let equippedTitleName = '';
-        if (updatedUser.equipped_title) {
-            const titleRes = await client.query('SELECT name FROM titles WHERE title_id = $1', [updatedUser.equipped_title]);
+        if (user.equipped_title) {
+            const titleRes = await client.query('SELECT name FROM titles WHERE title_id = $1', [user.equipped_title]);
             if (titleRes.rows.length > 0)
                 equippedTitleName = titleRes.rows[0].name;
         }
-        const token = jsonwebtoken_1.default.sign({ id: updatedUser.id, username: updatedUser.username }, JWT_SECRET, { expiresIn: '24h' });
+        const token = jsonwebtoken_1.default.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
         res.json({
             token,
             user: {
-                id: updatedUser.id,
-                username: updatedUser.username,
-                rating: updatedUser.rating,
-                profile_image_url: updatedUser.profile_image_url,
-                bio: updatedUser.bio,
-                tier: (0, ratingService_1.getTier)(updatedUser.rating),
-                streak: updatedUser.streak,
-                tokens: updatedUser.tokens,
-                xp: updatedUser.xp,
-                quests: updatedUser.quests,
-                can_generate_problems: updatedUser.can_generate_problems,
-                problems_solved: parseInt(updatedUser.problems_solved) || 0,
-                equipped_title: equippedTitleName || updatedUser.equipped_title,
-                streakRepaired: repairResult.repaired,
-                streakRepairedFlag: updatedUser.streak_repaired,
-                has_firework_effect: updatedUser.has_firework_effect,
-                has_developer_chango: updatedUser.has_developer_chango,
-                custom_title: updatedUser.custom_title || '',
-                fever_multiplier: updatedUser.fever_multiplier || 1.0,
-                fever_expires_at: updatedUser.fever_expires_at || null
+                id: user.id,
+                username: user.username,
+                profile_image_url: user.profile_image_url,
+                bio: user.bio,
+                can_generate_problems: user.can_generate_problems,
+                problems_solved: parseInt(user.problems_solved) || 0,
+                equipped_title: equippedTitleName || user.equipped_title,
+                has_firework_effect: user.has_firework_effect,
+                has_developer_chango: user.has_developer_chango,
+                custom_title: user.custom_title || ''
             }
         });
     }
     catch (err) {
-        await client.query('ROLLBACK').catch(() => { });
         console.error('Login error:', err);
         res.status(500).json({ error: 'Login failed' });
     }
@@ -378,61 +303,39 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 app.get('/api/users/profile', authenticateToken, async (req, res) => {
-    const client = await pool.connect();
     try {
         const userId = req.user.id;
-        // 데일리 리셋 및 스트릭 자동 복구 수행
-        await client.query('BEGIN');
-        await (0, gameSystemService_1.handleDailyReset)(userId, client);
-        const repairResult = await (0, gameSystemService_1.checkAndRepairStreak)(userId, client);
-        await client.query('COMMIT');
-        const userResult = await client.query('SELECT id, username, email, rating, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, equipped_title, created_at, has_firework_effect, has_developer_chango, last_active_date, longest_streak, custom_title, problems_solved, fever_multiplier, fever_expires_at FROM users WHERE id = $1', [userId]);
+        const userResult = await pool.query("SELECT id, username, email, profile_image_url, bio, can_generate_problems, equipped_title, created_at, has_firework_effect, has_developer_chango, custom_title, problems_solved FROM users WHERE id = $1", [userId]);
         if (userResult.rows.length === 0) {
-            client.release();
             return res.status(404).json({ error: 'User not found' });
         }
         const user = userResult.rows[0];
         // Look up equipped title display name
         let equippedTitleName = '';
         if (user.equipped_title) {
-            const titleRes = await client.query('SELECT name FROM titles WHERE title_id = $1', [user.equipped_title]);
+            const titleRes = await pool.query('SELECT name FROM titles WHERE title_id = $1', [user.equipped_title]);
             if (titleRes.rows.length > 0)
                 equippedTitleName = titleRes.rows[0].name;
         }
-        // Get submission statistics (total submissions for accuracy calculation)
-        const statsResult = await client.query('SELECT COUNT(*) as total FROM submissions WHERE user_id = $1', [userId]);
-        const activityResult = await client.query(`SELECT id, activity_type, change_amount, before_rating, after_rating, description,
-              created_at, problem_id
-       FROM rating_activity_logs
-       WHERE user_id = $1
-       ORDER BY created_at DESC
-       LIMIT 12`, [userId]);
+        const statsResult = await pool.query('SELECT COUNT(*) as total FROM submissions WHERE user_id = $1', [userId]);
         const stats = statsResult.rows[0];
         const totalSubmissions = parseInt(stats.total);
         const correctSubmissions = parseInt(user.problems_solved) || 0;
         res.json({
             user: {
                 ...user,
-                equipped_title: equippedTitleName,
-                tier: (0, ratingService_1.getTier)(parseFloat(user.rating)),
-                streakRepaired: repairResult.repaired,
-                streakRepairedFlag: user.streak_repaired
+                equipped_title: equippedTitleName
             },
             stats: {
                 totalSubmissions,
                 correctSubmissions,
                 accuracy: totalSubmissions > 0 ? (correctSubmissions / totalSubmissions) * 100 : 0
-            },
-            recentActivities: activityResult.rows
+            }
         });
     }
     catch (err) {
-        await client.query('ROLLBACK').catch(() => { });
         console.error('Failed to fetch profile:', err);
         res.status(500).json({ error: 'Failed to fetch profile' });
-    }
-    finally {
-        client.release();
     }
 });
 app.post('/api/users/profile-image', authenticateToken, (req, res) => {
@@ -493,8 +396,7 @@ app.get('/api/users/search', async (req, res) => {
     if (!q)
         return res.json([]);
     try {
-        const result = await pool.query('SELECT id, username, rating, profile_image_url, bio, equipped_title, custom_title FROM users WHERE username ILIKE $1 ORDER BY rating DESC LIMIT 10', [`%${q}%`]);
-        // Resolve equipped title display names
+        const result = await pool.query("SELECT id, username, profile_image_url, bio, equipped_title, custom_title FROM users WHERE username ILIKE $1 ORDER BY id DESC LIMIT 10", [`%${q}%`]);
         const titleIds = [...new Set(result.rows.filter((r) => r.equipped_title).map((r) => r.equipped_title))];
         const titleMap = {};
         if (titleIds.length > 0) {
@@ -506,8 +408,7 @@ app.get('/api/users/search', async (req, res) => {
         const users = result.rows.map((u) => ({
             ...u,
             equipped_title: u.equipped_title ? (titleMap[u.equipped_title] || u.equipped_title) : '',
-            custom_title: u.custom_title || '',
-            tier: (0, ratingService_1.getTier)(u.rating)
+            custom_title: u.custom_title || ''
         }));
         res.json(users);
     }
@@ -521,12 +422,6 @@ app.get('/api/users/search', async (req, res) => {
 app.get('/api/store/items', authenticateToken, async (req, res) => {
     const items = [
         {
-            id: 'streak_repair',
-            name: '스트릭 리페어',
-            cost: 30,
-            description: '스트릭을 복구하고 연속 일수를 초기화합니다.'
-        },
-        {
             id: 'firework_effect',
             name: '폭죽 이펙트',
             cost: 100,
@@ -537,50 +432,9 @@ app.get('/api/store/items', authenticateToken, async (req, res) => {
             name: '🎫 개발자의 칭호',
             cost: 500,
             description: '구매 후 프로필에서 원하는 맞춤형 칭호 문구를 관리자에게 전송하세요!'
-        },
-        {
-            id: 'fever_3x',
-            name: '🔥 3배 피버타임 (3분)',
-            cost: 100,
-            description: '3분 동안 레이팅 획득량이 3배가 됩니다! (피버타임 중첩 불가)'
-        },
-        {
-            id: 'fever_5x',
-            name: '⚡ 5배 피버타임 (10분)',
-            cost: 500,
-            description: '10분 동안 레이팅 획득량이 5배가 됩니다! (피버타임 중첩 불가)'
         }
     ];
     res.json({ items });
-});
-// Purchase streak repair item
-app.post('/api/store/buy-streak-repair', authenticateToken, async (req, res) => {
-    const userId = req.user.id;
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        const userRes = await client.query('SELECT tokens, streak FROM users WHERE id = $1 FOR UPDATE', [userId]);
-        if (userRes.rows.length === 0) {
-            client.release();
-            return res.status(404).json({ error: 'User not found' });
-        }
-        const user = userRes.rows[0];
-        if (user.tokens < 30) {
-            client.release();
-            return res.status(400).json({ error: '토큰이 부족합니다. (필요: 30 토큰)' });
-        }
-        // Deduct tokens and set streak_repaired flag (streak 유지, 초기화하지 않음)
-        await client.query('UPDATE users SET tokens = tokens - 30, streak_repaired = TRUE WHERE id = $1', [userId]);
-        await client.query('COMMIT');
-        res.json({ message: '스트릭 복구 아이템을 구매했습니다.' });
-    }
-    catch (err) {
-        await client.query('ROLLBACK').catch(() => { });
-        res.status(500).json({ error: '상점 구매 중 오류가 발생했습니다.' });
-    }
-    finally {
-        client.release();
-    }
 });
 // Purchase firework effect item
 app.post('/api/store/buy-firework-effect', authenticateToken, async (req, res) => {
@@ -720,24 +574,20 @@ app.post('/api/store/submit-custom-title', authenticateToken, async (req, res) =
         res.status(500).json({ error: '칭호 전송 중 오류가 발생했습니다.' });
     }
 });
-// Public user profile (others can view all info: streak, tokens, xp, quests, titles, fever)
 app.get('/api/users/:id/profile', async (req, res) => {
     const { id } = req.params;
     try {
-        const userResult = await pool.query('SELECT id, username, rating, profile_image_url, bio, streak, tokens, xp, quests, equipped_title, has_firework_effect, has_developer_chango, last_active_date, longest_streak, custom_title, problems_solved, created_at, fever_multiplier, fever_expires_at FROM users WHERE id = $1', [id]);
+        const userResult = await pool.query("SELECT id, username, profile_image_url, bio, equipped_title, has_firework_effect, has_developer_chango, custom_title, problems_solved, created_at FROM users WHERE id = $1", [id]);
         if (userResult.rows.length === 0)
             return res.status(404).json({ error: 'User not found' });
         const user = userResult.rows[0];
-        // Resolve equipped title name
         let equippedTitleName = '';
         if (user.equipped_title) {
             const titleRes = await pool.query('SELECT name FROM titles WHERE title_id = $1', [user.equipped_title]);
             if (titleRes.rows.length > 0)
                 equippedTitleName = titleRes.rows[0].name;
         }
-        // Fetch earned titles
         const titlesRes = await pool.query('SELECT t.title_id, t.name, t.description FROM user_titles ut JOIN titles t ON t.title_id = ut.title_id WHERE ut.user_id = $1 ORDER BY ut.unlocked_at', [id]);
-        // Get submission statistics
         const statsResult = await pool.query('SELECT COUNT(*) as total FROM submissions WHERE user_id = $1', [id]);
         const stats = statsResult.rows[0];
         const totalSubmissions = parseInt(stats.total);
@@ -745,8 +595,7 @@ app.get('/api/users/:id/profile', async (req, res) => {
         res.json({
             user: {
                 ...user,
-                equipped_title: equippedTitleName || user.equipped_title,
-                tier: (0, ratingService_1.getTier)(parseFloat(user.rating))
+                equipped_title: equippedTitleName || user.equipped_title
             },
             titles: titlesRes.rows,
             stats: {
@@ -1785,7 +1634,7 @@ app.patch('/api/admin/templates/:id', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: '올바른 레이팅 값을 입력해주세요.' });
     }
     try {
-        const template = (0, templateProblemGenerator_1.updateTemplateRewardRating)(id, parsedRewardRating);
+        const template = updateTemplateRewardRating(id, parsedRewardRating);
         res.json({
             message: '템플릿 해결 시 레이팅이 저장되었습니다.',
             template: {
@@ -1855,46 +1704,58 @@ app.post('/api/submissions', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Failed to process submission' });
     }
 });
-app.get('/api/rating/config', async (_req, res) => {
+app.get('/api/admin/tier-config', async (_req, res) => {
     try {
-        const config = await (0, ratingConfigService_1.getConfig)();
-        res.json(config);
+        const tiers = await (0, ratingService_1.getTierConfig)();
+        res.json({ tiers });
     }
     catch (err) {
-        res.status(500).json({ error: 'Failed to fetch rating config' });
+        res.status(500).json({ error: 'Failed to fetch tier config' });
     }
 });
-app.put('/api/rating/config', authenticateToken, async (req, res) => {
+app.put('/api/admin/tier-config', authenticateToken, async (req, res) => {
     if (req.user.username !== 'admin')
         return res.status(403).json({ error: 'Admin only' });
     try {
-        const config = await (0, ratingConfigService_1.updateConfig)(req.body);
-        res.json(config);
+        const { tiers } = req.body;
+        if (!Array.isArray(tiers) || tiers.length < 2) {
+            return res.status(400).json({ error: 'At least 2 tiers required' });
+        }
+        const updated = await (0, ratingService_1.updateTierConfig)(tiers);
+        res.json({ tiers: updated });
     }
     catch (err) {
-        res.status(500).json({ error: 'Failed to update rating config' });
+        res.status(500).json({ error: 'Failed to update tier config' });
     }
 });
-app.get('/api/rating/calculate', async (req, res) => {
+app.get('/api/page-content/:key', async (req, res) => {
     try {
-        const rating = parseFloat(req.query.rating) || 0;
-        const config = await (0, ratingConfigService_1.getConfig)();
-        const rr = (0, ratingConfigService_1.calculateRR)(rating, config);
-        const tier = (0, ratingConfigService_1.getTierFromRR)(rr, config);
-        res.json({ rating, rr, tier: tier.name, tierColor: tier.color });
+        const { key } = req.params;
+        const result = await pool.query('SELECT content, updated_at FROM page_content WHERE page_key = $1', [key]);
+        if (result.rows.length === 0) {
+            return res.json({ content: '', page_key: key });
+        }
+        res.json({ page_key: key, content: result.rows[0].content, updated_at: result.rows[0].updated_at });
     }
     catch (err) {
-        res.status(500).json({ error: 'Failed to calculate RR' });
+        res.status(500).json({ error: 'Failed to fetch page content' });
     }
 });
-app.get('/api/rating/distribution', async (_req, res) => {
+app.put('/api/admin/page-content/:key', authenticateToken, async (req, res) => {
+    if (req.user.username !== 'admin')
+        return res.status(403).json({ error: 'Admin only' });
     try {
-        const config = await (0, ratingConfigService_1.getConfig)();
-        const dist = await (0, ratingConfigService_1.getDistribution)(config);
-        res.json(dist);
+        const { key } = req.params;
+        const { content } = req.body;
+        if (typeof content !== 'string') {
+            return res.status(400).json({ error: 'Content must be a string' });
+        }
+        await pool.query(`INSERT INTO page_content (page_key, content, updated_at) VALUES ($1, $2, NOW())
+       ON CONFLICT (page_key) DO UPDATE SET content = $2, updated_at = NOW()`, [key, content]);
+        res.json({ page_key: key, content, success: true });
     }
     catch (err) {
-        res.status(500).json({ error: 'Failed to fetch distribution' });
+        res.status(500).json({ error: 'Failed to update page content' });
     }
 });
 app.post('/api/admin/cleanup-tags', authenticateToken, async (req, res) => {

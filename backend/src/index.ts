@@ -4,8 +4,6 @@ import dotenv from 'dotenv';
 import { Pool } from 'pg';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { processSubmission, getTier, getTierConfig, updateTierConfig, getUserRRData, calculateRR } from './rating/ratingService';
-import { checkAndRepairStreak, handleDailyReset } from './rating/gameSystemService';
 import { evaluateExpression } from './generation/mathParser.js';
 import { generateProblem } from './problemGenerator';
 import { generateNimProblems } from './nimGenerator';
@@ -15,15 +13,13 @@ import {
   getUnits,
   getConcepts,
   generateProblems as generateTemplateProblems,
-  generateProblemById,
-  generateRandomProblem,
   batchGenerate,
   reloadTemplates,
-  updateTemplateRewardRating,
   updateTemplate as updateTemplateData,
   addTemplate,
   deleteTemplate,
 } from './templateProblemGenerator';
+import { getTier, processSubmission, getTierConfig, updateTierConfig } from './rating/ratingService';
 import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
@@ -99,29 +95,13 @@ const ensureSchema = async () => {
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_url TEXT');
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT');
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS nim_api_key TEXT');
-  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak INTEGER DEFAULT 0');
-  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS tokens INTEGER DEFAULT 0');
-  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS xp INTEGER DEFAULT 0');
-  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_date VARCHAR(10) DEFAULT ''");
-  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_repaired BOOLEAN DEFAULT FALSE');
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS can_generate_problems BOOLEAN DEFAULT FALSE');
-  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS quests JSONB DEFAULT '[]'");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS equipped_title VARCHAR(50) DEFAULT ''");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_firework_effect BOOLEAN DEFAULT FALSE");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_developer_chango BOOLEAN DEFAULT FALSE");
-  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS longest_streak INTEGER DEFAULT 0");
   await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS is_custom BOOLEAN DEFAULT FALSE');
   await pool.query("UPDATE problems SET is_custom = FALSE WHERE is_custom IS NULL");
   await pool.query("ALTER TABLE problems ALTER COLUMN is_custom SET DEFAULT FALSE");
-  await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS custom_reward_rating FLOAT DEFAULT 0.0');
-  await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS reward_rating FLOAT');
-  await pool.query(`
-    UPDATE problems
-    SET reward_rating = custom_reward_rating
-    WHERE is_custom = TRUE
-      AND reward_rating IS NULL
-      AND custom_reward_rating IS NOT NULL
-  `);
   await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS total_attempts INTEGER DEFAULT 0');
   await pool.query('ALTER TABLE problems ADD COLUMN IF NOT EXISTS correct_attempts INTEGER DEFAULT 0');
   await pool.query(`
@@ -142,7 +122,6 @@ const ensureSchema = async () => {
     UPDATE problems SET current_difficulty = 60000
     WHERE (total_attempts IS NULL OR total_attempts = 0) AND is_custom = TRUE
   `);
-  await pool.query("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS is_streak_repair BOOLEAN DEFAULT FALSE");
   // Drop the CASCADE constraint and recreate with SET NULL (submissions survive problem deletion)
   await pool.query('ALTER TABLE submissions DROP CONSTRAINT IF EXISTS submissions_problem_id_fkey');
   await pool.query('ALTER TABLE submissions ADD CONSTRAINT submissions_problem_id_fkey FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE SET NULL');
@@ -150,39 +129,6 @@ const ensureSchema = async () => {
   await pool.query("INSERT INTO tags (name) VALUES ('이차방정식') ON CONFLICT (name) DO NOTHING");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_title VARCHAR(100) DEFAULT ''");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS problems_solved INTEGER DEFAULT 0");
-  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS fever_multiplier FLOAT DEFAULT 1.0");
-  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS fever_expires_at TIMESTAMP");
-  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS rr FLOAT");
-  await pool.query("UPDATE users SET rr = rating WHERE rr IS NULL");
-  // RR 공식 v2 마이그레이션 (problems_solved > 0인 사용자의 rr 재계산)
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      migration_id VARCHAR(100) PRIMARY KEY,
-      applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  const rrMigrationDone = await pool.query(
-    "SELECT 1 FROM schema_migrations WHERE migration_id = 'rr_formula_v2'"
-  );
-  if (rrMigrationDone.rows.length === 0) {
-    await pool.query("UPDATE users SET rr = NULL WHERE problems_solved > 0");
-    await pool.query("UPDATE users SET rr = rating WHERE rr IS NULL");
-    await pool.query("INSERT INTO schema_migrations (migration_id) VALUES ('rr_formula_v2')");
-  }
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS rating_activity_logs (
-      id SERIAL PRIMARY KEY,
-      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-      problem_id INTEGER REFERENCES problems(id) ON DELETE SET NULL,
-      activity_type VARCHAR(50) NOT NULL,
-      change_amount INTEGER NOT NULL,
-      before_rating FLOAT NOT NULL,
-      after_rating FLOAT NOT NULL,
-      description TEXT NOT NULL,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  await pool.query('CREATE INDEX IF NOT EXISTS idx_rating_activity_logs_user_created ON rating_activity_logs(user_id, created_at DESC)');
   // Initialize problems_solved from existing correct submissions
   await pool.query(`
     UPDATE users u SET problems_solved = (
@@ -242,14 +188,7 @@ const ensureSchema = async () => {
       ('solve_50', '문제 해결사', '문제 50개를 해결하세요', 'solve_count', 50),
       ('solve_100', '수학 마스터', '문제 100개를 해결하세요', 'solve_count', 100),
       ('solve_500', '문제 정복자', '문제 500개를 해결하세요', 'solve_count', 500),
-      ('solve_1000', '지식의 전당', '문제 1000개를 해결하세요', 'solve_count', 1000),
-      ('streak_7', '꾸준함의 시작', '7일 연속 스트릭을 달성하세요', 'streak', 7),
-      ('streak_30', '불굴의 의지', '30일 연속 스트릭을 달성하세요', 'streak', 30),
-      ('streak_100', '열정의 소유자', '100일 연속 스트릭을 달성하세요', 'streak', 100),
-      ('streak_365', '전설의 꾸준함', '365일 연속 스트릭을 달성하세요', 'streak', 365),
-      ('rank_1', '최강자', '랭킹 1위를 달성하세요', 'ranking', 1),
-      ('rank_2', '강호', '랭킹 2위를 달성하세요', 'ranking', 2),
-      ('rank_3', '도전자', '랭킹 3위를 달성하세요', 'ranking', 3)
+      ('solve_1000', '지식의 전당', '문제 1000개를 해결하세요', 'solve_count', 1000)
     ON CONFLICT (title_id) DO UPDATE SET condition_value = EXCLUDED.condition_value, description = EXCLUDED.description
   `);
   await pool.query(`
@@ -295,38 +234,10 @@ const ensureSchema = async () => {
     CREATE TABLE IF NOT EXISTS group_competition_participants (
       competition_id INTEGER REFERENCES group_competitions(id) ON DELETE CASCADE,
       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-      initial_rating FLOAT NOT NULL,
+      initial_rating FLOAT NOT NULL DEFAULT 0,
       PRIMARY KEY (competition_id, user_id)
     )
   `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS tier_config (
-      id INTEGER PRIMARY KEY DEFAULT 1,
-      config JSONB NOT NULL,
-      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  await pool.query(`
-    INSERT INTO tier_config (id, config) VALUES (1, $1::jsonb)
-    ON CONFLICT (id) DO NOTHING
-  `, [JSON.stringify({
-    tiers: [
-      { name: 'Bronze', minRating: 0 },
-      { name: 'Silver', minRating: 100000 },
-      { name: 'Gold', minRating: 300000 },
-      { name: 'Platinum', minRating: 800000 },
-      { name: 'Diamond', minRating: 2000000 },
-      { name: 'Ruby', minRating: 5000000 },
-      { name: 'Master', minRating: 12000000 },
-      { name: 'God', minRating: 30000000 },
-      { name: 'Hacker', minRating: 70000000 },
-      { name: '치피치피차파차파', minRating: 150000000 },
-      { name: 'ChatGPT', minRating: 300000000 },
-      { name: '출제자', minRating: 600000000 },
-      { name: '주인장', minRating: 1200000000 },
-      { name: '정답', minRating: 2500000000 },
-    ],
-  })]);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS page_content (
       page_key VARCHAR(100) PRIMARY KEY,
@@ -363,13 +274,13 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
     const result = await pool.query(
-      'INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id, username, rating',
+      'INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id, username',
       [username, email, hashedPassword]
     );
     const user = result.rows[0];
     res.status(201).json({ 
       message: 'User created successfully', 
-      user: { ...user, tier: getTier(user.rr ?? user.rating) } 
+      user 
     });
   } catch (err: any) {
     if (err.code === '23505') return res.status(400).json({ error: 'Username already exists' });
@@ -381,89 +292,12 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
   const { email, password } = req.body;
   const client = await pool.connect();
   try {
-    // Try to find user by email or username
     const userResult = await client.query('SELECT * FROM users WHERE email = $1 OR username = $1', [email]);
     const user = userResult.rows[0];
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
       client.release();
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-
-    // 트랜잭션 내에서 리셋 및 복구 수행
-    await client.query('BEGIN');
-    await handleDailyReset(user.id, client);
-    const repairResult = await checkAndRepairStreak(user.id, client);
-    await client.query('COMMIT');
-
-    // 최신 정보로 유저 재조회
-    const updatedUserResult = await client.query('SELECT * FROM users WHERE id = $1', [user.id]);
-    const updatedUser = updatedUserResult.rows[0];
-
-    // Look up equipped title display name
-    let equippedTitleName = '';
-    if (updatedUser.equipped_title) {
-      const titleRes = await client.query('SELECT name FROM titles WHERE title_id = $1', [updatedUser.equipped_title]);
-      if (titleRes.rows.length > 0) equippedTitleName = titleRes.rows[0].name;
-    }
-
-    const token = jwt.sign({ id: updatedUser.id, username: updatedUser.username }, JWT_SECRET, { expiresIn: '24h' });
-    res.json({ 
-      token, 
-      user: { 
-        id: updatedUser.id, 
-        username: updatedUser.username, 
-        rating: updatedUser.rating,
-        profile_image_url: updatedUser.profile_image_url,
-        bio: updatedUser.bio,
-        tier: getTier(updatedUser.rr ?? updatedUser.rating),
-        rr: updatedUser.rr,
-        streak: updatedUser.streak,
-        tokens: updatedUser.tokens,
-        xp: updatedUser.xp,
-        quests: updatedUser.quests,
-        can_generate_problems: updatedUser.can_generate_problems,
-        problems_solved: parseInt(updatedUser.problems_solved) || 0,
-        equipped_title: equippedTitleName || updatedUser.equipped_title,
-        streakRepaired: repairResult.repaired,
-        streakRepairedFlag: updatedUser.streak_repaired,
-        has_firework_effect: updatedUser.has_firework_effect,
-        has_developer_chango: updatedUser.has_developer_chango,
-        custom_title: updatedUser.custom_title || '',
-        fever_multiplier: updatedUser.fever_multiplier || 1.0,
-        fever_expires_at: updatedUser.fever_expires_at || null
-      } 
-    });
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    console.error('Login error:', err);
-    res.status(500).json({ error: 'Login failed' });
-  } finally {
-    client.release();
-  }
-});
-
-app.get('/api/users/profile', authenticateToken, async (req: any, res: Response) => {
-  const client = await pool.connect();
-  try {
-    const userId = req.user.id;
-
-    // 데일리 리셋 및 스트릭 자동 복구 수행
-    await client.query('BEGIN');
-    await handleDailyReset(userId, client);
-    const repairResult = await checkAndRepairStreak(userId, client);
-    await client.query('COMMIT');
-
-    const userResult = await client.query(
-      'SELECT id, username, email, rating, rr, profile_image_url, bio, streak, tokens, xp, quests, streak_repaired, can_generate_problems, equipped_title, created_at, has_firework_effect, has_developer_chango, last_active_date, longest_streak, custom_title, problems_solved, fever_multiplier, fever_expires_at FROM users WHERE id = $1',
-      [userId]
-    );
-
-    if (userResult.rows.length === 0) {
-      client.release();
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const user = userResult.rows[0];
 
     // Look up equipped title display name
     let equippedTitleName = '';
@@ -472,18 +306,54 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
       if (titleRes.rows.length > 0) equippedTitleName = titleRes.rows[0].name;
     }
 
-    // Get submission statistics (total submissions for accuracy calculation)
-    const statsResult = await client.query(
-      'SELECT COUNT(*) as total FROM submissions WHERE user_id = $1',
+    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
+    res.json({ 
+      token, 
+      user: { 
+        id: user.id, 
+        username: user.username, 
+        profile_image_url: user.profile_image_url,
+        bio: user.bio,
+        can_generate_problems: user.can_generate_problems,
+        problems_solved: parseInt(user.problems_solved) || 0,
+        equipped_title: equippedTitleName || user.equipped_title,
+        has_firework_effect: user.has_firework_effect,
+        has_developer_chango: user.has_developer_chango,
+        custom_title: user.custom_title || ''
+      } 
+    });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ error: 'Login failed' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/users/profile', authenticateToken, async (req: any, res: Response) => {
+  try {
+    const userId = req.user.id;
+
+    const userResult = await pool.query(
+      "SELECT id, username, email, profile_image_url, bio, can_generate_problems, equipped_title, created_at, has_firework_effect, has_developer_chango, custom_title, problems_solved FROM users WHERE id = $1",
       [userId]
     );
-    const activityResult = await client.query(
-      `SELECT id, activity_type, change_amount, before_rating, after_rating, description,
-              created_at, problem_id
-       FROM rating_activity_logs
-       WHERE user_id = $1
-       ORDER BY created_at DESC
-       LIMIT 12`,
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const user = userResult.rows[0];
+
+    // Look up equipped title display name
+    let equippedTitleName = '';
+    if (user.equipped_title) {
+      const titleRes = await pool.query('SELECT name FROM titles WHERE title_id = $1', [user.equipped_title]);
+      if (titleRes.rows.length > 0) equippedTitleName = titleRes.rows[0].name;
+    }
+
+    const statsResult = await pool.query(
+      'SELECT COUNT(*) as total FROM submissions WHERE user_id = $1',
       [userId]
     );
     const stats = statsResult.rows[0];
@@ -493,25 +363,17 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
     res.json({
       user: {
         ...user,
-        equipped_title: equippedTitleName,
-        tier: getTier(user.rr ?? parseFloat(user.rating)),
-        rr: user.rr,
-        streakRepaired: repairResult.repaired,
-        streakRepairedFlag: user.streak_repaired
+        equipped_title: equippedTitleName
       },
       stats: {
         totalSubmissions,
         correctSubmissions,
         accuracy: totalSubmissions > 0 ? (correctSubmissions / totalSubmissions) * 100 : 0
-      },
-      recentActivities: activityResult.rows
+      }
     });
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
     console.error('Failed to fetch profile:', err);
     res.status(500).json({ error: 'Failed to fetch profile' });
-  } finally {
-    client.release();
   }
 });
 
@@ -586,10 +448,9 @@ app.get('/api/users/search', async (req: Request, res: Response) => {
 
   try {
     const result = await pool.query(
-      'SELECT id, username, rating, rr, profile_image_url, bio, equipped_title, custom_title FROM users WHERE username ILIKE $1 ORDER BY rating DESC LIMIT 10',
+      "SELECT id, username, profile_image_url, bio, equipped_title, custom_title FROM users WHERE username ILIKE $1 ORDER BY id DESC LIMIT 10",
       [`%${q}%`]
     );
-    // Resolve equipped title display names
     const titleIds = [...new Set(result.rows.filter((r: any) => r.equipped_title).map((r: any) => r.equipped_title))];
     const titleMap: Record<string, string> = {};
     if (titleIds.length > 0) {
@@ -601,8 +462,7 @@ app.get('/api/users/search', async (req: Request, res: Response) => {
     const users = result.rows.map((u: any) => ({
       ...u,
       equipped_title: u.equipped_title ? (titleMap[u.equipped_title] || u.equipped_title) : '',
-      custom_title: u.custom_title || '',
-      tier: getTier(u.rr ?? u.rating)
+      custom_title: u.custom_title || ''
     }));
     res.json(users);
   } catch (err) {
@@ -616,12 +476,6 @@ app.get('/api/users/search', async (req: Request, res: Response) => {
 app.get('/api/store/items', authenticateToken, async (req: any, res: Response) => {
   const items = [
     {
-      id: 'streak_repair',
-      name: '스트릭 리페어',
-      cost: 30,
-      description: '스트릭을 복구하고 연속 일수를 초기화합니다.'
-    },
-    {
       id: 'firework_effect',
       name: '폭죽 이펙트',
       cost: 100,
@@ -632,53 +486,12 @@ app.get('/api/store/items', authenticateToken, async (req: any, res: Response) =
       name: '🎫 개발자의 칭호',
       cost: 500,
       description: '구매 후 프로필에서 원하는 맞춤형 칭호 문구를 관리자에게 전송하세요!'
-    },
-    {
-      id: 'fever_3x',
-      name: '🔥 3배 피버타임 (3분)',
-      cost: 100,
-      description: '3분 동안 레이팅 획득량이 3배가 됩니다! (피버타임 중첩 불가)'
-    },
-    {
-      id: 'fever_5x',
-      name: '⚡ 5배 피버타임 (10분)',
-      cost: 500,
-      description: '10분 동안 레이팅 획득량이 5배가 됩니다! (피버타임 중첩 불가)'
     }
   ];
   res.json({ items });
 });
 
-// Purchase streak repair item
-app.post('/api/store/buy-streak-repair', authenticateToken, async (req: any, res: Response) => {
-  const userId = req.user.id;
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const userRes = await client.query('SELECT tokens, streak FROM users WHERE id = $1 FOR UPDATE', [userId]);
-    if (userRes.rows.length === 0) {
-      client.release();
-      return res.status(404).json({ error: 'User not found' });
-    }
-    const user = userRes.rows[0];
-    if (user.tokens < 30) {
-      client.release();
-      return res.status(400).json({ error: '토큰이 부족합니다. (필요: 30 토큰)' });
-    }
-    // Deduct tokens and set streak_repaired flag (streak 유지, 초기화하지 않음)
-    await client.query(
-      'UPDATE users SET tokens = tokens - 30, streak_repaired = TRUE WHERE id = $1',
-      [userId]
-    );
-    await client.query('COMMIT');
-    res.json({ message: '스트릭 복구 아이템을 구매했습니다.' });
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    res.status(500).json({ error: '상점 구매 중 오류가 발생했습니다.' });
-  } finally {
-    client.release();
-  }
-});
+
 
 // Purchase firework effect item
 app.post('/api/store/buy-firework-effect', authenticateToken, async (req: any, res: Response) => {
@@ -831,28 +644,24 @@ app.post('/api/store/submit-custom-title', authenticateToken, async (req: any, r
   }
 });
 
-// Public user profile (others can view all info: streak, tokens, xp, quests, titles, fever)
 app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const userResult = await pool.query(
-      'SELECT id, username, rating, rr, profile_image_url, bio, streak, tokens, xp, quests, equipped_title, has_firework_effect, has_developer_chango, last_active_date, longest_streak, custom_title, problems_solved, created_at, fever_multiplier, fever_expires_at FROM users WHERE id = $1',
+      "SELECT id, username, profile_image_url, bio, equipped_title, has_firework_effect, has_developer_chango, custom_title, problems_solved, created_at FROM users WHERE id = $1",
       [id]
     );
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const user = userResult.rows[0];
-    // Resolve equipped title name
     let equippedTitleName = '';
     if (user.equipped_title) {
       const titleRes = await pool.query('SELECT name FROM titles WHERE title_id = $1', [user.equipped_title]);
       if (titleRes.rows.length > 0) equippedTitleName = titleRes.rows[0].name;
     }
-    // Fetch earned titles
     const titlesRes = await pool.query(
       'SELECT t.title_id, t.name, t.description FROM user_titles ut JOIN titles t ON t.title_id = ut.title_id WHERE ut.user_id = $1 ORDER BY ut.unlocked_at',
       [id]
     );
-    // Get submission statistics
     const statsResult = await pool.query(
       'SELECT COUNT(*) as total FROM submissions WHERE user_id = $1',
       [id]
@@ -863,9 +672,7 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
     res.json({
       user: {
         ...user,
-        equipped_title: equippedTitleName || user.equipped_title,
-        tier: getTier(user.rr ?? parseFloat(user.rating)),
-        rr: user.rr
+        equipped_title: equippedTitleName || user.equipped_title
       },
       titles: titlesRes.rows,
       stats: {
@@ -1168,7 +975,7 @@ app.get('/api/groups/:id', async (req: Request, res: Response) => {
     if (groupResult.rows.length === 0) return res.status(404).json({ error: 'Group not found' });
 
     const membersResult = await pool.query(`
-      SELECT u.id, u.username, u.rating, u.rr, u.profile_image_url
+      SELECT u.id, u.username, u.rating, u.profile_image_url
       FROM group_members gm
       JOIN users u ON gm.user_id = u.id
       WHERE gm.group_id = $1
@@ -1176,7 +983,7 @@ app.get('/api/groups/:id', async (req: Request, res: Response) => {
 
     res.json({
       ...groupResult.rows[0],
-      members: membersResult.rows.map(m => ({ ...m, tier: getTier(m.rr ?? m.rating) }))
+      members: membersResult.rows.map(m => ({ ...m, tier: getTier(m.rating) }))
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch group details' });
@@ -1350,7 +1157,6 @@ app.get('/api/groups/:id/competitions/:compId', authenticateToken, async (req: a
         u.profile_image_url,
         gcp.initial_rating,
         u.rating as current_rating,
-        u.rr as current_rr,
         (u.rating - gcp.initial_rating) as rating_gain
       FROM group_competition_participants gcp
       JOIN users u ON gcp.user_id = u.id
@@ -1360,7 +1166,7 @@ app.get('/api/groups/:id/competitions/:compId', authenticateToken, async (req: a
 
     const leaderboard = leaderboardRes.rows.map((row: any) => ({
       ...row,
-      tier: getTier(parseFloat(row.current_rr ?? row.current_rating))
+      tier: getTier(parseFloat(row.current_rating))
     }));
 
     const now = new Date();
@@ -1395,14 +1201,14 @@ app.get('/api/groups/:id/requests', authenticateToken, async (req: any, res: Res
     if (groupRes.rows[0].creator_id !== userId) return res.status(403).json({ error: 'Only group creator can view requests' });
 
     const requestsRes = await pool.query(`
-      SELECT r.id, r.user_id, r.created_at, u.username, u.rating, u.rr, u.profile_image_url
+      SELECT r.id, r.user_id, r.created_at, u.username, u.rating, u.profile_image_url
       FROM group_join_requests r
       JOIN users u ON r.user_id = u.id
       WHERE r.group_id = $1 AND r.status = 'pending'
       ORDER BY r.created_at ASC
     `, [groupId]);
 
-    res.json(requestsRes.rows.map(r => ({ ...r, tier: getTier(r.rr ?? r.rating) })));
+    res.json(requestsRes.rows.map(r => ({ ...r, tier: getTier(r.rating) })));
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch requests' });
   }
@@ -1510,7 +1316,7 @@ app.post('/api/users/change-password', authenticateToken, async (req: any, res: 
 app.get('/api/users/ranking', async (req: Request, res: Response) => {
   try {
     const result = await pool.query(
-      "SELECT id, username, rating, rr, profile_image_url, equipped_title, custom_title FROM users WHERE username != 'admin' ORDER BY rating DESC LIMIT 50"
+      "SELECT id, username, rating, profile_image_url, equipped_title, custom_title FROM users WHERE username != 'admin' ORDER BY rating DESC LIMIT 50"
     );
     // Resolve equipped title display names
     const titleIds = [...new Set(result.rows.filter((r: any) => r.equipped_title).map((r: any) => r.equipped_title))];
@@ -1522,7 +1328,7 @@ app.get('/api/users/ranking', async (req: Request, res: Response) => {
     const users = result.rows.map(u => ({
       ...u,
       equipped_title: u.equipped_title ? (titleMap[u.equipped_title] || u.equipped_title) : '',
-      tier: getTier(u.rr ?? u.rating)
+      tier: getTier(u.rating)
     }));
     res.json(users);
   } catch (err) {
@@ -2378,7 +2184,7 @@ app.get('/api/admin/users', authenticateToken, async (req: any, res: Response) =
   
   try {
     const result = await pool.query(`
-      SELECT u.id, u.username, u.email, u.rating, u.rr, u.tokens, u.created_at, u.can_generate_problems, u.custom_title,
+      SELECT u.id, u.username, u.email, u.rating, u.tokens, u.created_at, u.can_generate_problems, u.custom_title,
              COUNT(s.id) as total_submissions,
              SUM(CASE WHEN s.is_correct THEN 1 ELSE 0 END) as correct_submissions
       FROM users u
@@ -2388,7 +2194,7 @@ app.get('/api/admin/users', authenticateToken, async (req: any, res: Response) =
     `);
     const users = result.rows.map(u => ({
       ...u,
-      tier: getTier(parseFloat(u.rr ?? u.rating)),
+      tier: getTier(parseFloat(u.rating)),
       total_submissions: parseInt(u.total_submissions),
       correct_submissions: parseInt(u.correct_submissions || 0),
       can_generate_problems: u.can_generate_problems === true
