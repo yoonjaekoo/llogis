@@ -33,6 +33,10 @@ interface User {
   has_developer_chango?: boolean;
   custom_title?: string;
   problems_solved?: number;
+  tokens?: number;
+  streak?: number;
+  fever_expires_at?: string;
+  fever_multiplier?: number;
 }
 
 // LaTeX Helper
@@ -240,6 +244,9 @@ const Navbar: React.FC<{
                   )}
                   {user.username}
                 </Link>
+              </li>
+              <li style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-4)' }}>
+                ✨ {Math.round(user.rating).toLocaleString()} RP
               </li>
               <li><button onClick={onLogout} aria-label="로그아웃" style={{ background: 'none', border: 'none', color: '#ff7675', cursor: 'pointer', fontWeight: 800 }}>로그아웃</button></li>
             </>
@@ -1590,7 +1597,7 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [activeTab, setActiveTab] = useState<'users' | 'notifications' | 'templates' | 'bugreports' | 'page-content'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'notifications' | 'templates' | 'bugreports' | 'page-content' | 'tier-config'>('users');
   const [editingTemplate, setEditingTemplate] = useState<any>(null);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
   const [newTemplate, setNewTemplate] = useState<any>({ id: '', unit: '', title: '', difficulty: 10000, variables: {}, constraints: [], problem_template: '', answer_formula: { type: 'expression', value: '' }, concepts: [] });
@@ -1599,6 +1606,9 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
   const [pageContent, setPageContent] = useState('');
   const [pageContentDraft, setPageContentDraft] = useState('');
   const [savingPageContent, setSavingPageContent] = useState(false);
+  const [tierConfigDraft, setTierConfigDraft] = useState<any[]>([]);
+  const [savingTierConfig, setSavingTierConfig] = useState(false);
+  const tierConfigTiers = useRef<any[]>([]);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -1684,6 +1694,21 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
     });
     fetchNotifications();
   };
+
+  const fetchTierConfig = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/admin/tier-config', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const tiers = data.tiers || [];
+        setTierConfigDraft(tiers);
+        tierConfigTiers.current = JSON.parse(JSON.stringify(tiers));
+      }
+    } catch {}
+  }, []);
 
   useEffect(() => {
     if (!user || user.username !== 'admin') {
@@ -1837,6 +1862,52 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
     if (res.ok) {
       alert(data.message);
       fetchUsers();
+    } else {
+      alert(data.error);
+    }
+  };
+
+  const handleUpdateRating = async (userId: number, currentRating: number) => {
+    const newRatingStr = window.prompt('새로운 레이팅을 입력하세요:', currentRating.toString());
+    if (newRatingStr === null) return;
+    const newRating = parseInt(newRatingStr);
+    if (isNaN(newRating)) return alert('올바른 숫자를 입력해주세요.');
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/admin/users/${userId}/rating`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ rating: newRating })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(data.message);
+      fetchUsers();
+    } else {
+      alert(data.error);
+    }
+  };
+
+  const handleUpdateTemplateReward = async (templateId: string) => {
+    const rewardStr = templateRewardDrafts[templateId];
+    if (!rewardStr) return;
+    const reward = parseInt(rewardStr);
+    if (isNaN(reward) || reward < 0) return alert('올바른 값을 입력해주세요.');
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/admin/templates/${templateId}/reward-rating`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ reward_rating: reward })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(data.message);
+      fetchTemplates();
     } else {
       alert(data.error);
     }
@@ -2281,7 +2352,7 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
                 className="btn" style={{ background: 'var(--color-4)', color: '#fff', border: 'none' }}>
                 {savingTierConfig ? '저장 중...' : '등급 설정 저장'}
               </button>
-              <button onClick={() => setTierConfigDraft(JSON.parse(JSON.stringify(tierConfigTiers)))}
+              <button onClick={() => setTierConfigDraft(JSON.parse(JSON.stringify(tierConfigTiers.current)))}
                 className="btn" style={{ background: 'var(--color-1)', color: '#fff', border: 'none' }}>
                 초기화
               </button>
@@ -4007,14 +4078,14 @@ const Shop: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ use
     } else if (itemId === 'developer_chango') {
       url = '/api/store/buy-developer-chango';
       cost = 500;
-    } else if (itemId === 'fever_3x' || itemId === 'fever_5x') {
+    } else if (itemId === 'fever_2x' || itemId === 'fever_5x') {
       url = '/api/store/buy-fever';
-      cost = itemId === 'fever_3x' ? 100 : 500;
+      cost = itemId === 'fever_2x' ? 100 : 500;
     }
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      ...(itemId === 'fever_3x' || itemId === 'fever_5x' ? { body: JSON.stringify({ type: itemId }) } : {})
+      ...(itemId === 'fever_2x' || itemId === 'fever_5x' ? { body: JSON.stringify({ type: itemId }) } : {})
     });
     const data = await res.json();
     if (res.ok) {
@@ -4022,7 +4093,7 @@ const Shop: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ use
       if (itemId === 'streak_repair') msg = '스트릭이 복구되었습니다.';
       else if (itemId === 'firework_effect') msg = '폭죽 이펙트가 활성화되었습니다.';
       else if (itemId === 'developer_chango') msg = '🎫 개발자의 칭호를 구매했습니다! 프로필에서 칭호를 입력하세요.';
-      else if (itemId === 'fever_3x' || itemId === 'fever_5x') msg = data.message || '🔥 피버타임이 활성화되었습니다!';
+      else if (itemId === 'fever_2x' || itemId === 'fever_5x') msg = data.message || '🔥 피버타임이 활성화되었습니다!';
       setMessage(`✅ 구매 완료! ${msg}`);
       const updatedUser = { ...user!, tokens: (user!.tokens || 0) - cost };
       if (itemId === 'streak_repair') {
@@ -4030,7 +4101,7 @@ const Shop: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ use
         updatedUser.streak_repaired = true;
       } else if (itemId === 'firework_effect') {
         updatedUser.has_firework_effect = true;
-      } else if (itemId === 'fever_3x' || itemId === 'fever_5x') {
+      } else if (itemId === 'fever_2x' || itemId === 'fever_5x') {
         updatedUser.fever_multiplier = data.fever_multiplier;
         updatedUser.fever_expires_at = data.fever_expires_at;
       }
@@ -4280,6 +4351,23 @@ const AppContent: React.FC = () => {
       </footer>
     </>
   );
+};
+
+const FeverTimer: React.FC<{ expiresAt: string }> = ({ expiresAt }) => {
+  const [remaining, setRemaining] = useState('');
+  useEffect(() => {
+    const update = () => {
+      const diff = new Date(expiresAt).getTime() - Date.now();
+      if (diff <= 0) { setRemaining('종료'); return; }
+      const m = Math.floor(diff / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setRemaining(`${m}분 ${s}초`);
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+  return <span>{remaining}</span>;
 };
 
 const App: React.FC = () => (

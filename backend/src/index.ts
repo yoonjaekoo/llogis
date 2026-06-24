@@ -16,6 +16,7 @@ import {
   batchGenerate,
   reloadTemplates,
   updateTemplate as updateTemplateData,
+  updateTemplateRewardRating,
   addTemplate,
   deleteTemplate,
 } from './templateProblemGenerator';
@@ -486,6 +487,18 @@ app.get('/api/store/items', authenticateToken, async (req: any, res: Response) =
       name: '🎫 개발자의 칭호',
       cost: 500,
       description: '구매 후 프로필에서 원하는 맞춤형 칭호 문구를 관리자에게 전송하세요!'
+    },
+    {
+      id: 'fever_2x',
+      name: '🔥 2배 피버타임 (2분)',
+      cost: 100,
+      description: '2분 동안 획득 레이팅이 2배로 증가합니다!'
+    },
+    {
+      id: 'fever_5x',
+      name: '🔥 5배 피버타임 (5분)',
+      cost: 500,
+      description: '5분 동안 획득 레이팅이 5배로 증가합니다!'
     }
   ];
   res.json({ items });
@@ -577,8 +590,8 @@ app.post('/api/store/buy-fever', authenticateToken, async (req: any, res: Respon
 
     // Define fever types
     const feverTypes: Record<string, { cost: number; multiplier: number; durationMs: number }> = {
-      fever_3x: { cost: 100, multiplier: 3, durationMs: 3 * 60 * 1000 },
-      fever_5x: { cost: 500, multiplier: 5, durationMs: 10 * 60 * 1000 },
+      fever_2x: { cost: 100, multiplier: 2, durationMs: 2 * 60 * 1000 },
+      fever_5x: { cost: 500, multiplier: 5, durationMs: 5 * 60 * 1000 },
     };
 
     const fever = feverTypes[type];
