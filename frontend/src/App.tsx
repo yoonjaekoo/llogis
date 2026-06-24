@@ -1252,22 +1252,26 @@ const Ranking: React.FC = () => {
             <h3 style={{ marginBottom: '1.5rem' }}>검색 결과 ({searchResults.length})</h3>
             {searchResults.length > 0 ? (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
-                {searchResults.map(u => (
-                  <div 
-                    key={u.id} 
-                    onClick={() => navigate(`/users/${u.id}`)}
-                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', background: 'rgba(0,0,0,0.05)', borderRadius: '1rem', border: '1px solid var(--border)' }}
-                  >
-                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--color-3)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
-                      {u.profile_image_url ? <img src={u.profile_image_url} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} /> : u.username[0].toUpperCase()}
+                  {searchResults.map(u => (
+                    <div 
+                      key={u.id} 
+                      onClick={() => navigate(`/users/${u.id}`)}
+                      style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', background: 'rgba(0,0,0,0.05)', borderRadius: '1rem', border: '1px solid var(--border)' }}
+                    >
+                      <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--color-3)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, flexShrink: 0 }}>
+                        {u.profile_image_url ? <img src={u.profile_image_url} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} /> : u.username[0].toUpperCase()}
+                      </div>
+                      <div style={{ overflow: 'hidden', flexGrow: 1 }}>
+                        <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.username}</div>
+                        {u.equipped_title && <div style={{ fontSize: '0.7rem', color: 'var(--color-4)', fontWeight: 700 }}>[{u.equipped_title}]</div>}
+                        {u.custom_title && <div style={{ fontSize: '0.7rem', color: '#ff6b9d', fontStyle: 'italic' }}>✨ {u.custom_title}</div>}
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--color-4)' }}>{Math.round(u.rating).toLocaleString()} RP</div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#888' }}>{u.tier}</div>
+                      </div>
                     </div>
-                    <div style={{ overflow: 'hidden' }}>
-                      <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.username}</div>
-                      {u.equipped_title && <div style={{ fontSize: '0.7rem', color: 'var(--color-4)', fontWeight: 700 }}>[{u.equipped_title}]</div>}
-                      {u.custom_title && <div style={{ fontSize: '0.7rem', color: '#ff6b9d', fontStyle: 'italic' }}>✨ {u.custom_title}</div>}
-                    </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             ) : <p style={{ opacity: 0.5, textAlign: 'center' }}>검색 결과가 없습니다.</p>}
             <button onClick={() => { setSearchResults(null); setSearchQuery(''); }} style={{ background: 'none', border: 'none', color: 'var(--color-4)', cursor: 'pointer', marginTop: '1.5rem', fontWeight: 800 }}>← 전체 랭킹 보기</button>
@@ -1283,6 +1287,7 @@ const Ranking: React.FC = () => {
                   <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-muted)' }}>
                     <th style={{ padding: '1rem' }}>순위</th>
                     <th style={{ padding: '1rem' }}>사용자</th>
+                    <th style={{ padding: '1rem' }}>레이팅</th>
                     <th style={{ padding: '1rem' }}>칭호</th>
                   </tr>
                 </thead>
@@ -1299,12 +1304,15 @@ const Ranking: React.FC = () => {
                         {i + 1 === 1 ? '🥇' : i + 1 === 2 ? '🥈' : i + 1 === 3 ? '🥉' : i + 1}
                       </td>
                       <td style={{ padding: '1.2rem 1rem', fontWeight: 600 }}>{u.username}</td>
+                      <td style={{ padding: '1.2rem 1rem' }}>
+                        <div style={{ fontWeight: 800, color: 'var(--color-4)' }}>{Math.round(u.rating).toLocaleString()} RP</div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#888' }}>{u.tier}</div>
+                      </td>
                       <td style={{ padding: '1.2rem 1rem', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {u.equipped_title && <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-4)' }}>[{u.equipped_title}]</div>}
                         {u.custom_title && <div style={{ fontSize: '0.75rem', color: '#ff6b9d', fontStyle: 'italic' }}>✨ {u.custom_title}</div>}
                         {!u.equipped_title && !u.custom_title && <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>-</span>}
                       </td>
-
                     </tr>
                   ))}
                 </tbody>
@@ -1356,11 +1364,19 @@ const UserProfile: React.FC = () => {
 
   const { user: u, stats } = profileData;
 
+  const tierColors: { [key: string]: string } = {
+    'Bronze': '#cd7f32', 'Silver': '#c0c0c0', 'Gold': '#ffd700',
+    'Platinum': '#e5e4e2', 'Diamond': '#b9f2ff', 'Ruby': '#e0115f',
+    'Master': '#800080', 'God': '#ff4500', 'Hacker': '#00ff00',
+    '치피치피차파차파': '#ff1493', 'ChatGPT': '#10a37f',
+    '출제자': '#ffb300', '주인장': '#6a0dad', '정답': '#00e5ff'
+  };
+
   return (
     <main className="container" style={{ padding: '4rem 0' }}>
       <Helmet>
         <title>{u.username} 프로필 | Logis - 수학 문제 풀이 플랫폼</title>
-        <meta name="description" content={`${u.username}님의 Logis 프로필 - 정답률 ${Math.round(stats.accuracy)}%`} />
+        <meta name="description" content={`${u.username}님의 Logis 프로필 - 레이팅 ${Math.round(u.rating).toLocaleString()} - 정답률 ${Math.round(stats.accuracy)}%`} />
         <meta property="og:title" content={`${u.username} | Logis`} />
         <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
       </Helmet>
@@ -1394,6 +1410,21 @@ const UserProfile: React.FC = () => {
               ✨ {u.custom_title}
             </div>
           )}
+
+          <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.8rem', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 800, fontSize: '1.3rem', color: 'var(--color-4)' }}>
+              ✨ {Math.round(u.rating).toLocaleString()} RP
+            </span>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: '0.3rem', padding: '0.2rem 0.8rem',
+              borderRadius: '99px', background: `${tierColors[u.tier] || '#888'}22`,
+              border: `1.5px solid ${tierColors[u.tier] || '#888'}`,
+              color: tierColors[u.tier] || '#888', fontWeight: 800, fontSize: '0.85rem',
+              textTransform: 'uppercase', letterSpacing: '0.05em'
+            }}>
+              🏅 {u.tier}
+            </span>
+          </div>
 
           <div style={{ 
             maxWidth: '500px', margin: '0 auto 2.5rem', padding: '1.5rem', 

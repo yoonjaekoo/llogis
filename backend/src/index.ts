@@ -449,7 +449,7 @@ app.get('/api/users/search', async (req: Request, res: Response) => {
 
   try {
     const result = await pool.query(
-      "SELECT id, username, profile_image_url, bio, equipped_title, custom_title FROM users WHERE username ILIKE $1 ORDER BY id DESC LIMIT 10",
+      "SELECT id, username, profile_image_url, bio, equipped_title, custom_title, rating FROM users WHERE username ILIKE $1 ORDER BY id DESC LIMIT 10",
       [`%${q}%`]
     );
     const titleIds = [...new Set(result.rows.filter((r: any) => r.equipped_title).map((r: any) => r.equipped_title))];
@@ -462,6 +462,8 @@ app.get('/api/users/search', async (req: Request, res: Response) => {
     }
     const users = result.rows.map((u: any) => ({
       ...u,
+      rating: parseFloat(u.rating) || 0,
+      tier: getTier(parseFloat(u.rating) || 0),
       equipped_title: u.equipped_title ? (titleMap[u.equipped_title] || u.equipped_title) : '',
       custom_title: u.custom_title || ''
     }));
@@ -661,7 +663,7 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const userResult = await pool.query(
-      "SELECT id, username, profile_image_url, bio, equipped_title, has_firework_effect, has_developer_chango, custom_title, problems_solved, created_at FROM users WHERE id = $1",
+      "SELECT id, username, profile_image_url, bio, equipped_title, has_firework_effect, has_developer_chango, custom_title, problems_solved, rating, created_at FROM users WHERE id = $1",
       [id]
     );
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
@@ -685,6 +687,8 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
     res.json({
       user: {
         ...user,
+        rating: parseFloat(user.rating) || 0,
+        tier: getTier(parseFloat(user.rating) || 0),
         equipped_title: equippedTitleName || user.equipped_title
       },
       titles: titlesRes.rows,

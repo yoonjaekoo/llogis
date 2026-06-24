@@ -396,7 +396,7 @@ app.get('/api/users/search', async (req, res) => {
     if (!q)
         return res.json([]);
     try {
-        const result = await pool.query("SELECT id, username, profile_image_url, bio, equipped_title, custom_title FROM users WHERE username ILIKE $1 ORDER BY id DESC LIMIT 10", [`%${q}%`]);
+        const result = await pool.query("SELECT id, username, profile_image_url, bio, equipped_title, custom_title, rating FROM users WHERE username ILIKE $1 ORDER BY id DESC LIMIT 10", [`%${q}%`]);
         const titleIds = [...new Set(result.rows.filter((r) => r.equipped_title).map((r) => r.equipped_title))];
         const titleMap = {};
         if (titleIds.length > 0) {
@@ -407,6 +407,8 @@ app.get('/api/users/search', async (req, res) => {
         }
         const users = result.rows.map((u) => ({
             ...u,
+            rating: parseFloat(u.rating) || 0,
+            tier: (0, ratingService_1.getTier)(parseFloat(u.rating) || 0),
             equipped_title: u.equipped_title ? (titleMap[u.equipped_title] || u.equipped_title) : '',
             custom_title: u.custom_title || ''
         }));
@@ -589,7 +591,7 @@ app.post('/api/store/submit-custom-title', authenticateToken, async (req, res) =
 app.get('/api/users/:id/profile', async (req, res) => {
     const { id } = req.params;
     try {
-        const userResult = await pool.query("SELECT id, username, profile_image_url, bio, equipped_title, has_firework_effect, has_developer_chango, custom_title, problems_solved, created_at FROM users WHERE id = $1", [id]);
+        const userResult = await pool.query("SELECT id, username, profile_image_url, bio, equipped_title, has_firework_effect, has_developer_chango, custom_title, problems_solved, rating, created_at FROM users WHERE id = $1", [id]);
         if (userResult.rows.length === 0)
             return res.status(404).json({ error: 'User not found' });
         const user = userResult.rows[0];
@@ -607,6 +609,8 @@ app.get('/api/users/:id/profile', async (req, res) => {
         res.json({
             user: {
                 ...user,
+                rating: parseFloat(user.rating) || 0,
+                tier: (0, ratingService_1.getTier)(parseFloat(user.rating) || 0),
                 equipped_title: equippedTitleName || user.equipped_title
             },
             titles: titlesRes.rows,
