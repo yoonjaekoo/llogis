@@ -1957,9 +1957,7 @@ app.post('/api/submissions', authenticateToken, async (req: any, res: any) => {
 
     const updateResult = await processSubmission(userId, problemId, isCorrect);
     res.json({ 
-      message: isCorrect ? 'Correct answer!' : 'Wrong answer.',
       isCorrect,
-      correctAnswer: isCorrect ? undefined : correctAnswer,
       ...updateResult 
     });
   } catch (err) {

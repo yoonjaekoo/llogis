@@ -3289,6 +3289,46 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
         </div>
       </div>
 
+      {/* ─── 티어 진행도 바 ─── */}
+      <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
+        <h3 style={{ margin: '0 0 0.75rem', color: 'var(--color-4)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          🏅 티어 진행도
+        </h3>
+        {(() => {
+          const tierThresholds = [
+            { name: '정답', min: 2500000000 }, { name: '주인장', min: 1200000000 },
+            { name: '출제자', min: 600000000 }, { name: 'ChatGPT', min: 300000000 },
+            { name: '치피치피차파차파', min: 150000000 }, { name: 'Hacker', min: 70000000 },
+            { name: 'God', min: 30000000 }, { name: 'Master', min: 12000000 },
+            { name: 'Ruby', min: 5000000 }, { name: 'Diamond', min: 2000000 },
+            { name: 'Platinum', min: 800000 }, { name: 'Gold', min: 300000 },
+            { name: 'Silver', min: 100000 },
+          ];
+          const rating = u.rating || 0;
+          const currentTierIdx = tierThresholds.findIndex(t => rating >= t.min);
+          const currentTier = currentTierIdx >= 0 ? tierThresholds[currentTierIdx] : tierThresholds[tierThresholds.length - 1];
+          const nextTier = currentTierIdx > 0 ? tierThresholds[currentTierIdx - 1] : null;
+          const progress = nextTier ? Math.min(100, ((rating - currentTier.min) / (nextTier.min - currentTier.min)) * 100) : 100;
+          return (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <span style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.95rem' }}>{u.tier}</span>
+                <span style={{ fontWeight: 800, color: 'var(--color-4)', fontSize: '0.9rem' }}>{Math.round(rating).toLocaleString()} RP</span>
+              </div>
+              <div style={{ width: '100%', height: '12px', background: 'rgba(0,0,0,0.08)', borderRadius: '99px', overflow: 'hidden', marginBottom: '0.5rem' }}>
+                <div style={{ width: `${Math.min(100, progress)}%`, height: '100%', background: 'var(--color-4)', borderRadius: '99px', transition: 'width 0.5s ease' }} />
+              </div>
+              {nextTier && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  <span>↑ {nextTier.name}</span>
+                  <span style={{ fontWeight: 700, color: '#e6a800' }}>{(nextTier.min - rating).toLocaleString()} RP 남음</span>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+      </div>
+
       <div style={{ textAlign: 'center', opacity: 0.6, fontSize: '0.9rem', marginBottom: '1.5rem' }}>
         {u.last_active_date ? `마지막 활동: ${new Date(u.last_active_date).toLocaleDateString()}` : ''}
       </div>
@@ -3692,7 +3732,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
   const [loadingProblems, setLoadingProblems] = useState(false);
   const [showFirework, setShowFirework] = useState(false);
   const [wrongGlowTrigger, setWrongGlowTrigger] = useState(0);
-  const [lastWrongAnswer, setLastWrongAnswer] = useState<{problemId: number, correctAnswer: string} | null>(null);
+  const [lastWrongAnswer, setLastWrongAnswer] = useState<{problemId: number} | null>(null);
   const [lastCorrectFeedback, setLastCorrectFeedback] = useState<{rpGained: number} | null>(null);
   // Custom problem creation (admin only)
   const [showCustomForm, setShowCustomForm] = useState(false);
@@ -3791,7 +3831,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
         fetchProblems();
       } else {
         setWrongGlowTrigger(prev => prev + 1);
-        setLastWrongAnswer({ problemId, correctAnswer: data.correctAnswer });
+        setLastWrongAnswer({ problemId });
       }
       
       const updatedUser: any = { 
@@ -4036,7 +4076,6 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
             {lastWrongAnswer && lastWrongAnswer.problemId === selectedProblem.id && (
               <div style={{ marginTop: '1rem', padding: '0.8rem 1rem', background: 'rgba(255, 0, 0, 0.05)', borderRadius: '0.5rem', border: '1px solid rgba(255, 0, 0, 0.2)' }}>
                 <div style={{ fontWeight: 700, color: '#d32f2f', marginBottom: '0.3rem' }}>틀렸습니다</div>
-                <div style={{ color: 'var(--text-main)', fontSize: '0.95rem' }}>정답: <strong>{lastWrongAnswer.correctAnswer}</strong></div>
                 <button onClick={() => setLastWrongAnswer(null)} style={{ background: 'none', border: 'none', color: 'var(--color-4)', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem', marginTop: '0.4rem', padding: 0 }}>닫기</button>
               </div>
             )}
