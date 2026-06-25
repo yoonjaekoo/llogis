@@ -220,10 +220,10 @@ const Navbar: React.FC<{
 }> = ({ user, onLogout, theme, toggleTheme, onLogoClick }) => (
   <header role="banner">
     <div className="container">
-      <h1 style={{ margin: 0 }}>
-        <Link to="/" aria-label="Logis 홈으로 이동" style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', color: 'white', textDecoration: 'none' }} onClick={onLogoClick}>
-          <img src="/logo_new.png" alt="Logis 로고" width="40" height="40" style={{ borderRadius: '8px', objectFit: 'cover' }} />
-          <span style={{ letterSpacing: '-1px' }}>Logis</span>
+      <h1>
+        <Link to="/" aria-label="Logis 홈으로 이동" onClick={onLogoClick} style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', color: 'white', textDecoration: 'none' }}>
+          <img src="/logo_new.png" alt="Logis 로고" width="36" height="36" style={{ borderRadius: '8px', objectFit: 'cover' }} />
+          <span style={{ letterSpacing: '-1px', fontWeight: 900, fontSize: '1.5rem' }}>Logis</span>
         </Link>
       </h1>
       <nav aria-label="주 메뉴">
@@ -233,69 +233,29 @@ const Navbar: React.FC<{
           <li><Link to="/groups">그룹</Link></li>
           <li><Link to="/shop">상점</Link></li>
           <li><Link to="/about">소개</Link></li>
-          <li><Link to="/bug-report" style={{ color: '#ff7675' }}>버그제보</Link></li>
           {user ? (
             <>
-              {user.username === 'admin' && <li><Link to="/admin" style={{ color: '#fab1a0', fontWeight: 800 }}>관리</Link></li>}
+              {user.username === 'admin' && <li><Link to="/admin" className="nav-admin-link">관리</Link></li>}
               <li>
-                <Link to="/profile" aria-label={`${user.username} 프로필`} style={{ color: 'var(--color-3)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Link to="/profile" aria-label={`${user.username} 프로필`} className="nav-user-link">
                   {user.profile_image_url ? (
-                    <img src={user.profile_image_url} alt={`${user.username} 프로필`} width="24" height="24" loading="lazy" style={{ borderRadius: '50%', objectFit: 'cover' }} />
+                    <img src={user.profile_image_url} alt={`${user.username} 프로필`} width="26" height="26" loading="lazy" className="nav-user-avatar" />
                   ) : (
-                    <div aria-hidden="true" style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'var(--color-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: 'white' }}>
+                    <div aria-hidden="true" className="nav-user-avatar-fallback">
                       {user.username[0].toUpperCase()}
                     </div>
                   )}
                   {user.username}
                 </Link>
               </li>
-              <li style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-4)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                ✨ {Math.round(user.rating).toLocaleString()} RP
-              </li>
-              {user.level ? (() => {
-                const tierThresholds = [
-                  { name: '정답', min: 2500000000 }, { name: '주인장', min: 1200000000 },
-                  { name: '출제자', min: 600000000 }, { name: 'ChatGPT', min: 300000000 },
-                  { name: '치피치피차파차파', min: 150000000 }, { name: 'Hacker', min: 70000000 },
-                  { name: 'God', min: 30000000 }, { name: 'Master', min: 12000000 },
-                  { name: 'Ruby', min: 5000000 }, { name: 'Diamond', min: 2000000 },
-                  { name: 'Platinum', min: 800000 }, { name: 'Gold', min: 300000 },
-                  { name: 'Silver', min: 100000 },
-                ];
-                const rating = user.rating || 0;
-                const currentTierIdx = tierThresholds.findIndex(t => rating >= t.min);
-                const currentTier = currentTierIdx >= 0 ? tierThresholds[currentTierIdx] : tierThresholds[tierThresholds.length - 1];
-                const nextTier = currentTierIdx > 0 ? tierThresholds[currentTierIdx - 1] : null;
-                const progress = nextTier ? Math.min(100, ((rating - currentTier.min) / (nextTier.min - currentTier.min)) * 100) : 100;
-                const xp = user.xp || 0;
-                const level = user.level || 1;
-                const currentLevelXp = 100 * (level - 1) * (level - 1);
-                const nextLevelXp = 100 * level * level;
-                const xpProgress = Math.min(100, ((xp - currentLevelXp) / (nextLevelXp - currentLevelXp)) * 100);
-                return (<>
-                  <li style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <div style={{ width: '50px', height: '5px', background: 'rgba(255,255,255,0.15)', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ width: `${Math.min(100, progress)}%`, height: '100%', background: 'var(--color-4)', borderRadius: '3px', transition: 'width 0.5s ease' }} />
-                    </div>
-                    {nextTier && <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>↑{nextTier.name}</span>}
-                    {nextTier && <span style={{ fontSize: '0.6rem', color: '#e6a800', whiteSpace: 'nowrap', fontWeight: 600 }}>다음 티어까지 {(nextTier.min - rating).toLocaleString()} RP</span>}
-                  </li>
-                  <li style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <div style={{ width: '40px', height: '5px', background: 'rgba(255,255,255,0.15)', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ width: `${xpProgress}%`, height: '100%', background: 'var(--color-3)', borderRadius: '3px', transition: 'width 0.5s ease' }} />
-                    </div>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--color-3)', fontWeight: 700 }}>Lv.{level}</span>
-                  </li>
-                </>);
-              })() : (
-                <li style={{ fontSize: '0.7rem', color: 'var(--color-3)', fontWeight: 700 }}>Lv.1</li>
-              )}
-              <li><button onClick={onLogout} aria-label="로그아웃" style={{ background: 'none', border: 'none', color: '#ff7675', cursor: 'pointer', fontWeight: 800 }}>로그아웃</button></li>
+              <li><span className="nav-level">Lv.{user.level || 1}</span></li>
+              <li><span className="nav-rp">✨ {Math.round(user.rating).toLocaleString()} RP</span></li>
+              <li><button onClick={onLogout} aria-label="로그아웃" className="nav-logout-btn">로그아웃</button></li>
             </>
           ) : (
             <>
-              <li><Link to="/login">로그인</Link></li>
-              <li><Link to="/signup">가입</Link></li>
+              <li><Link to="/login" className="nav-auth-link">로그인</Link></li>
+              <li><Link to="/signup" className="nav-auth-link">가입</Link></li>
             </>
           )}
           <li>

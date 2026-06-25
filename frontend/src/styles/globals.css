@@ -53,11 +53,17 @@ body {
 header {
   background-color: var(--nav-bg);
   color: white;
-  padding: 0.8rem 0;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  padding: 0.7rem 0;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.08);
   position: sticky;
   top: 0;
   z-index: 100;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+[data-theme='dark'] header {
+  box-shadow: 0 2px 24px rgba(0,0,0,0.3);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
 }
 
 header .container {
@@ -75,28 +81,33 @@ header h1 {
 header h1 a {
   color: white !important;
   font-weight: 900;
-  font-size: 1.6rem;
+  font-size: 1.5rem;
   letter-spacing: -1.5px;
   text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+header h1 a:hover {
+  opacity: 0.85;
 }
 
 nav ul {
   list-style: none;
   display: flex;
-  gap: 2rem;
+  gap: 1.5rem;
   align-items: center;
   margin: 0;
   padding: 0;
 }
 
 nav a {
-  color: var(--color-3);
+  color: rgba(255,255,255,0.75);
   text-decoration: none;
-  font-weight: 700;
-  font-size: 0.95rem;
+  font-weight: 600;
+  font-size: 0.9rem;
   transition: var(--transition);
   white-space: nowrap;
-  padding: 0.4rem 0.2rem;
+  padding: 0.35rem 0.15rem;
   position: relative;
 }
 
@@ -108,6 +119,7 @@ nav a::after {
   right: 0;
   height: 2px;
   background: white;
+  border-radius: 1px;
   transform: scaleX(0);
   transition: transform 0.2s ease-out;
 }
@@ -122,10 +134,144 @@ nav a:hover::after {
 
 nav a.active {
   color: white;
+  font-weight: 700;
 }
 
 nav a.active::after {
   transform: scaleX(1);
+}
+
+/* Nav user section */
+.nav-user-link {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: white !important;
+  font-weight: 600;
+}
+
+.nav-user-link:hover::after {
+  transform: scaleX(0) !important;
+}
+
+.nav-user-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255,255,255,0.2);
+  transition: border-color 0.2s;
+}
+
+.nav-user-avatar-fallback {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: white;
+  font-weight: 700;
+  border: 2px solid rgba(255,255,255,0.2);
+}
+
+.nav-rp {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #ffd700;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.6rem;
+  background: rgba(255,215,0,0.1);
+  border: 1px solid rgba(255,215,0,0.2);
+  border-radius: 99px;
+  white-space: nowrap;
+}
+
+.nav-level {
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.85);
+  font-weight: 800;
+  padding: 0.2rem 0.6rem;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 99px;
+  white-space: nowrap;
+}
+
+.nav-progress-bars {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nav-progress-bar {
+  width: 44px;
+  height: 4px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.nav-progress-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.5s ease;
+}
+
+.nav-tier-label {
+  font-size: 0.6rem;
+  color: rgba(255,255,255,0.45);
+  white-space: nowrap;
+}
+
+.nav-tier-rp {
+  font-size: 0.55rem;
+  color: #ffd700;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.nav-logout-btn {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.75);
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.8rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 6px;
+  transition: var(--transition);
+}
+
+.nav-logout-btn:hover {
+  background: rgba(255,118,117,0.2);
+  border-color: rgba(255,118,117,0.3);
+  color: #ff7675;
+}
+
+.nav-auth-link {
+  font-weight: 700 !important;
+}
+
+.nav-bug-link {
+  color: #ff7675 !important;
+  font-weight: 600 !important;
+}
+
+.nav-admin-link {
+  color: #fab1a0 !important;
+  font-weight: 800 !important;
+}
+
+/* Nav divider */
+.nav-divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(255,255,255,0.12);
 }
 
 /* Problem Cards */
@@ -235,13 +381,25 @@ nav a.active::after {
 }
 
 .theme-toggle {
-  background: rgba(255,255,255,0.15);
-  border: 2px solid var(--color-3);
+  background: rgba(255,255,255,0.08);
+  border: 1.5px solid rgba(255,255,255,0.15);
   color: white;
-  padding: 0.5rem 0.8rem;
-  border-radius: 0.4rem;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
   cursor: pointer;
-  font-size: 1.2rem;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+}
+
+.theme-toggle:hover {
+  background: rgba(255,255,255,0.15);
+  border-color: rgba(255,255,255,0.3);
+  transform: rotate(15deg);
 }
 
 /* Auth Forms */
@@ -320,23 +478,28 @@ nav a.active::after {
 
   /* Header & Navigation */
   header {
-    padding: 0.7rem 0;
+    padding: 0.6rem 0;
   }
   
   header .container {
     flex-direction: column;
-    gap: 0.7rem;
+    gap: 0.6rem;
     text-align: center;
   }
 
   nav ul {
     flex-wrap: wrap;
     justify-content: center;
-    gap: 0.8rem;
+    gap: 0.6rem;
   }
 
   nav a {
-    font-size: 0.85rem;
+    font-size: 0.8rem;
+    padding: 0.3rem 0.1rem;
+  }
+
+  .nav-rp {
+    font-size: 0.75rem;
   }
 
   /* Problem List Page (Vertical split on mobile) */
