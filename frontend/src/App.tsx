@@ -35,6 +35,10 @@ interface User {
   problems_solved?: number;
   tokens?: number;
   streak?: number;
+  xp?: number;
+  level?: number;
+  tier?: string;
+  longest_streak?: number;
   fever_expires_at?: string;
   fever_multiplier?: number;
 }
@@ -245,9 +249,46 @@ const Navbar: React.FC<{
                   {user.username}
                 </Link>
               </li>
-              <li style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-4)' }}>
+              <li style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-4)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                 ✨ {Math.round(user.rating).toLocaleString()} RP
               </li>
+              {user.level ? (() => {
+                const tierThresholds = [
+                  { name: '정답', min: 2500000000 }, { name: '주인장', min: 1200000000 },
+                  { name: '출제자', min: 600000000 }, { name: 'ChatGPT', min: 300000000 },
+                  { name: '치피치피차파차파', min: 150000000 }, { name: 'Hacker', min: 70000000 },
+                  { name: 'God', min: 30000000 }, { name: 'Master', min: 12000000 },
+                  { name: 'Ruby', min: 5000000 }, { name: 'Diamond', min: 2000000 },
+                  { name: 'Platinum', min: 800000 }, { name: 'Gold', min: 300000 },
+                  { name: 'Silver', min: 100000 },
+                ];
+                const rating = user.rating || 0;
+                const currentTierIdx = tierThresholds.findIndex(t => rating >= t.min);
+                const currentTier = currentTierIdx >= 0 ? tierThresholds[currentTierIdx] : tierThresholds[tierThresholds.length - 1];
+                const nextTier = currentTierIdx > 0 ? tierThresholds[currentTierIdx - 1] : null;
+                const progress = nextTier ? Math.min(100, ((rating - currentTier.min) / (nextTier.min - currentTier.min)) * 100) : 100;
+                const xp = user.xp || 0;
+                const level = user.level || 1;
+                const currentLevelXp = 100 * (level - 1) * (level - 1);
+                const nextLevelXp = 100 * level * level;
+                const xpProgress = Math.min(100, ((xp - currentLevelXp) / (nextLevelXp - currentLevelXp)) * 100);
+                return (<>
+                  <li style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <div style={{ width: '50px', height: '5px', background: 'rgba(255,255,255,0.15)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.min(100, progress)}%`, height: '100%', background: 'var(--color-4)', borderRadius: '3px', transition: 'width 0.5s ease' }} />
+                    </div>
+                    {nextTier && <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>↑{nextTier.name}</span>}
+                  </li>
+                  <li style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <div style={{ width: '40px', height: '5px', background: 'rgba(255,255,255,0.15)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ width: `${xpProgress}%`, height: '100%', background: 'var(--color-3)', borderRadius: '3px', transition: 'width 0.5s ease' }} />
+                    </div>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--color-3)', fontWeight: 700 }}>Lv.{level}</span>
+                  </li>
+                </>);
+              })() : (
+                <li style={{ fontSize: '0.7rem', color: 'var(--color-3)', fontWeight: 700 }}>Lv.1</li>
+              )}
               <li><button onClick={onLogout} aria-label="로그아웃" style={{ background: 'none', border: 'none', color: '#ff7675', cursor: 'pointer', fontWeight: 800 }}>로그아웃</button></li>
             </>
           ) : (
@@ -511,6 +552,27 @@ const Landing: React.FC<{ user: User | null }> = ({ user }) => {
           ))}
         </div>
       </section>
+
+      {/* ── Demo Problem Preview ── */}
+      {!user && (
+        <SectionReveal style={{ textAlign: 'center', padding: '3rem 1.5rem', background: 'var(--bg-color)', borderTop: '1px solid var(--border)' }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-4)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            미리보기
+          </span>
+          <h2 style={{ fontSize: 'clamp(1.5rem, 3vw, 2rem)', fontWeight: 900, margin: '0.5rem 0 1.5rem', color: 'var(--text-main)' }}>
+            이런 문제를 풀 수 있어요
+          </h2>
+          <div className="problem-card" style={{ maxWidth: '500px', margin: '0 auto', textAlign: 'left' }}>
+            <h3 style={{ color: 'var(--color-4)', marginBottom: '1rem' }}>일차방정식 풀기</h3>
+            <div className="math-content" style={{ fontSize: '1.5rem', padding: '1rem 0' }}>
+              <BlockMath math="3x + 7 = 22" />
+            </div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '1rem' }}>
+              가입하면 30개 이상의 템플릿에서 자동 생성된 끝없는 문제를 풀 수 있습니다
+            </div>
+          </div>
+        </SectionReveal>
+      )}
 
       {/* ── Bottom CTA ── */}
       {!user && (
@@ -3199,9 +3261,9 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
         <div className="stat-card">
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(90deg, #00e676, #00bcd4)' }} />
           <span className="stat-card-icon">⚡</span>
-          <div className="stat-card-label">총 XP</div>
-          <div className="stat-card-value" style={{ color: '#00b360', fontSize: '1.6rem' }}>{(u.xp || 0).toLocaleString()}</div>
-          <div className="stat-card-sub">퀘스트 완료 시 획득</div>
+          <div className="stat-card-label">레벨</div>
+          <div className="stat-card-value" style={{ color: '#00b360' }}>Lv.{u.level || 1}</div>
+          <div className="stat-card-sub">XP {(u.xp || 0).toLocaleString()}</div>
         </div>
 
         <div className="stat-card">
@@ -3616,6 +3678,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
   const [loadingProblems, setLoadingProblems] = useState(false);
   const [showFirework, setShowFirework] = useState(false);
   const [wrongGlowTrigger, setWrongGlowTrigger] = useState(0);
+  const [lastWrongAnswer, setLastWrongAnswer] = useState<{problemId: number, correctAnswer: string} | null>(null);
   // Custom problem creation (admin only)
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [customTitle, setCustomTitle] = useState('');
@@ -3706,9 +3769,11 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
       }
       if (data.isCorrect) {
         setShowFirework(true);
+        setLastWrongAnswer(null);
         fetchProblems();
       } else {
         setWrongGlowTrigger(prev => prev + 1);
+        setLastWrongAnswer({ problemId, correctAnswer: data.correctAnswer });
       }
       
       const updatedUser: any = { 
@@ -3720,6 +3785,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
       if (data.tokens !== undefined) updatedUser.tokens = data.tokens;
       if (data.streak !== undefined) updatedUser.streak = data.streak;
       if (data.xp !== undefined) updatedUser.xp = data.xp;
+      if (data.level !== undefined) updatedUser.level = data.level;
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setUser(updatedUser);
       setAnswers(prev => ({ ...prev, [problemId]: '' }));
@@ -3841,6 +3907,12 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
           </button>
         </div>
 
+        <button onClick={() => {
+          const sorted = [...problems].sort((a, b) => a.current_difficulty - b.current_difficulty);
+          if (sorted.length > 0) setSelectedProblemId(sorted[0].id);
+        }} className="btn" style={{ width: 'auto', padding: '0.3rem 0.8rem', fontSize: '0.75rem', marginBottom: '0.5rem', background: 'var(--color-3)', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 700 }}>
+          쉬운 문제부터 ▶
+        </button>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <h3 style={{ color: 'var(--color-4)', margin: 0 }}>문제 목록 ({problems.length})</h3>
           {problemType === 'normal' && (user?.username === 'admin' || user?.can_generate_problems) && (
@@ -3888,8 +3960,17 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
                 }}
               >
                 <div style={{ fontSize: '0.9rem' }}>{p.title}</div>
-                <div style={{ fontSize: '0.7rem', color: '#e6a800', marginTop: '0.2rem' }}>
-                  +{(p.current_difficulty as number).toLocaleString()} RP
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.2rem' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#e6a800' }}>
+                    +{(p.current_difficulty as number).toLocaleString()} RP
+                  </span>
+                  {(() => {
+                    const diff = p.current_difficulty as number;
+                    if (diff <= 30000) return <span style={{ fontSize: '0.6rem', color: '#00c853' }}>★ 쉬움</span>;
+                    if (diff <= 70000) return <span style={{ fontSize: '0.6rem', color: '#ffc107' }}>★★ 보통</span>;
+                    if (diff <= 120000) return <span style={{ fontSize: '0.6rem', color: '#ff6d00' }}>★★★ 어려움</span>;
+                    return <span style={{ fontSize: '0.6rem', color: '#d50000' }}>★★★★ 매우어려움</span>;
+                  })()}
                 </div>
               </div>
             ))
@@ -3919,6 +4000,13 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
               🏆 획득 레이팅: +{(selectedProblem.current_difficulty as number).toLocaleString()} RP
             </div>
             <div className="math-content" style={{ fontSize: '1.8rem' }}>{renderMath(selectedProblem.content)}</div>
+            {lastWrongAnswer && lastWrongAnswer.problemId === selectedProblem.id && (
+              <div style={{ marginTop: '1rem', padding: '0.8rem 1rem', background: 'rgba(255, 0, 0, 0.05)', borderRadius: '0.5rem', border: '1px solid rgba(255, 0, 0, 0.2)' }}>
+                <div style={{ fontWeight: 700, color: '#d32f2f', marginBottom: '0.3rem' }}>틀렸습니다</div>
+                <div style={{ color: 'var(--text-main)', fontSize: '0.95rem' }}>정답: <strong>{lastWrongAnswer.correctAnswer}</strong></div>
+                <button onClick={() => setLastWrongAnswer(null)} style={{ background: 'none', border: 'none', color: 'var(--color-4)', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem', marginTop: '0.4rem', padding: 0 }}>닫기</button>
+              </div>
+            )}
             <div style={{ marginTop: '2rem' }}>
               <input type="text" placeholder="정답" className="answer-input" value={answers[selectedProblem.id] || ''} onChange={(e) => handleInputChange(selectedProblem.id, e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSubmit(selectedProblem.id)} />
               <button onClick={() => handleSubmit(selectedProblem.id)} className="btn btn-solve">제출</button>
@@ -4229,7 +4317,7 @@ const Login: React.FC<{ onLogin: (token: string, user: User) => void }> = ({ onL
   );
 };
 
-const Signup: React.FC = () => {
+const Signup: React.FC<{ onLogin: (token: string, user: User) => void }> = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -4244,8 +4332,9 @@ const Signup: React.FC = () => {
       body: JSON.stringify({ username, email, password })
     });
     if (res.ok) {
-      alert('가입 환영!');
-      navigate('/login');
+      const data = await res.json();
+      onLogin(data.token, data.user);
+      navigate('/');
     } else {
       const data = await res.json();
       alert(data.error);
@@ -4368,7 +4457,7 @@ const AppContent: React.FC = () => {
           <Route path="/groups/:id" element={<GroupDetail user={user} />} />
           <Route path="/about" element={<About user={user} />} />
           <Route path="/login" element={<Login onLogin={handleLogin} />} />
-          <Route path="/signup" element={<Signup />} />
+          <Route path="/signup" element={<Signup onLogin={handleLogin} />} />
           <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
           <Route path="/shop" element={<Shop user={user} setUser={setUser} />} />
           <Route path="/admin" element={<Admin user={user} />} />

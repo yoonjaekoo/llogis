@@ -130,6 +130,16 @@ const ensureSchema = async () => {
   await pool.query("INSERT INTO tags (name) VALUES ('이차방정식') ON CONFLICT (name) DO NOTHING");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_title VARCHAR(100) DEFAULT ''");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS problems_solved INTEGER DEFAULT 0");
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS rating FLOAT DEFAULT 0');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS xp INTEGER DEFAULT 0');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS tokens INTEGER DEFAULT 0');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak INTEGER DEFAULT 0');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS longest_streak INTEGER DEFAULT 0');
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_date VARCHAR(10) DEFAULT ''");
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_repaired BOOLEAN DEFAULT FALSE');
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS quests JSONB DEFAULT '[]'::jsonb");
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS fever_multiplier FLOAT DEFAULT 1.0');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS fever_expires_at TIMESTAMP WITH TIME ZONE');
   // Initialize problems_solved from existing correct submissions
   await pool.query(`
     UPDATE users u SET problems_solved = (
@@ -275,13 +285,26 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
     const result = await pool.query(
-      'INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id, username',
+      'INSERT INTO users (username, email, password_hash, streak_repaired) VALUES ($1, $2, $3, TRUE) RETURNING id, username',
       [username, email, hashedPassword]
     );
     const user = result.rows[0];
+    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
     res.status(201).json({ 
-      message: 'User created successfully', 
-      user 
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        rating: 0,
+        tier: 'Bronze',
+        streak: 0,
+        xp: 0,
+        tokens: 0,
+        level: 1,
+        problems_solved: 0,
+        equipped_title: '',
+        custom_title: ''
+      }
     });
   } catch (err: any) {
     if (err.code === '23505') return res.status(400).json({ error: 'Username already exists' });
@@ -308,6 +331,10 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
     }
 
     const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
+
+    const rating = parseFloat(user.rating) || 0;
+    const tier = getTier(rating);
+
     res.json({ 
       token, 
       user: { 
@@ -320,7 +347,14 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         equipped_title: equippedTitleName || user.equipped_title,
         has_firework_effect: user.has_firework_effect,
         has_developer_chango: user.has_developer_chango,
-        custom_title: user.custom_title || ''
+        custom_title: user.custom_title || '',
+        rating,
+        tier,
+        streak: parseInt(user.streak) || 0,
+        longest_streak: parseInt(user.longest_streak) || 0,
+        xp: parseInt(user.xp) || 0,
+        tokens: parseInt(user.tokens) || 0,
+        level: Math.floor(Math.sqrt((parseInt(user.xp) || 0) / 100)) + 1
       } 
     });
   } catch (err) {

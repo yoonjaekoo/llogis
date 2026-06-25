@@ -4,7 +4,8 @@ import {
   handleDailyReset, 
   updateStreak, 
   updateTokens, 
-  updateQuests 
+  updateQuests,
+  getTodayString
 } from './gameSystemService';
 
 const pool = new Pool({
@@ -156,8 +157,20 @@ export const processSubmission = async (userId: number, problemId: number, isCor
     }
 
     const currentRating = parseFloat(userRes.rows[0].rating);
+    let dailyBonusMultiplier = 1;
+    if (isCorrect) {
+      const todayStr = getTodayString();
+      const todayRes = await client.query(
+        "SELECT COUNT(*) as cnt FROM submissions WHERE user_id = $1 AND is_correct = TRUE AND submitted_at::date = $2::date",
+        [userId, todayStr]
+      );
+      const todayCorrectCount = parseInt(todayRes.rows[0]?.cnt || '0');
+      if (todayCorrectCount === 0) {
+        dailyBonusMultiplier = 1.5;
+      }
+    }
     const baseDelta = isCorrect ? rewardRating : -getWrongAnswerPenalty(currentRating);
-    const ratingDelta = isCorrect ? Math.round(baseDelta * feverMultiplier) : baseDelta;
+    const ratingDelta = isCorrect ? Math.round(baseDelta * feverMultiplier * dailyBonusMultiplier) : baseDelta;
     const finalRating = Math.max(0, currentRating + ratingDelta);
 
     await client.query(
@@ -166,8 +179,9 @@ export const processSubmission = async (userId: number, problemId: number, isCor
     );
 
     const activityType = isCorrect ? 'correct_reward' : 'wrong_penalty';
+    const dailyDescription = dailyBonusMultiplier > 1 ? ` (☀️첫 정답 1.5배)` : '';
     const activityDescription = isCorrect
-      ? `정답 제출 보상 +${Math.round(rewardRating).toLocaleString()} RP${feverDescription}`
+      ? `정답 제출 보상 +${Math.round(rewardRating).toLocaleString()} RP${feverDescription}${dailyDescription}`
       : `오답 패널티 -${Math.abs(Math.round(ratingDelta)).toLocaleString()} RP`;
     await client.query(
       `INSERT INTO rating_activity_logs (
@@ -231,12 +245,16 @@ export const processSubmission = async (userId: number, problemId: number, isCor
 
     await client.query('COMMIT');
 
+    const xp = finalUser.xp || 0;
+    const level = Math.floor(Math.sqrt(xp / 100)) + 1;
+
     return { 
       newUserRating: finalRating,
       tier: getTier(finalRating),
+      level,
       streak: finalUser.streak,
       tokens: finalUser.tokens,
-      xp: finalUser.xp,
+      xp,
       quests: finalUser.quests,
       streakRepaired: repairResult.repaired,
       streakRepairedFlag: finalUser.streak_repaired,
