@@ -278,6 +278,7 @@ const Navbar: React.FC<{
                       <div style={{ width: `${Math.min(100, progress)}%`, height: '100%', background: 'var(--color-4)', borderRadius: '3px', transition: 'width 0.5s ease' }} />
                     </div>
                     {nextTier && <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>↑{nextTier.name}</span>}
+                    {nextTier && <span style={{ fontSize: '0.6rem', color: '#e6a800', whiteSpace: 'nowrap', fontWeight: 600 }}>다음 티어까지 {(nextTier.min - rating).toLocaleString()} RP</span>}
                   </li>
                   <li style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                     <div style={{ width: '40px', height: '5px', background: 'rgba(255,255,255,0.15)', borderRadius: '3px', overflow: 'hidden' }}>
@@ -455,7 +456,7 @@ const Landing: React.FC<{ user: User | null }> = ({ user }) => {
               수학 실력을<br />레이팅으로 증명하세요
             </motion.h1>
           )}
-          <motion.p
+           <motion.p
             className="landing-hero-sub"
             initial={false}
             animate={{ opacity: 1 }}
@@ -465,6 +466,19 @@ const Landing: React.FC<{ user: User | null }> = ({ user }) => {
               ? '오늘의 퀘스트를 완료하고 스트릭을 이어가세요. 매일 문제를 풀면 레이팅이 오릅니다.'
               : '다양한 수학 문제를 풀고 실력을 키우세요. 매일 문제를 풀어 성장하세요.'}
           </motion.p>
+
+          {user && !user.problems_solved && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+              style={{ marginTop: '1rem', padding: '0.7rem 1.2rem', borderRadius: '0.8rem', background: 'rgba(255, 215, 0, 0.12)', border: '1px solid rgba(255, 215, 0, 0.3)', display: 'inline-block' }}
+            >
+              <span style={{ fontWeight: 700, color: '#ffd700', fontSize: '0.95rem' }}>
+                💡 문제를 풀어 RP를 얻고 티어를 올려보세요!
+              </span>
+            </motion.div>
+          )}
 
           <div className="landing-cta-group">
             <motion.button
@@ -3679,6 +3693,7 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
   const [showFirework, setShowFirework] = useState(false);
   const [wrongGlowTrigger, setWrongGlowTrigger] = useState(0);
   const [lastWrongAnswer, setLastWrongAnswer] = useState<{problemId: number, correctAnswer: string} | null>(null);
+  const [lastCorrectFeedback, setLastCorrectFeedback] = useState<{rpGained: number} | null>(null);
   // Custom problem creation (admin only)
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [customTitle, setCustomTitle] = useState('');
@@ -3770,6 +3785,9 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
       if (data.isCorrect) {
         setShowFirework(true);
         setLastWrongAnswer(null);
+        const rpGained = Math.round(data.newUserRating - user.rating);
+        setLastCorrectFeedback({ rpGained });
+        setTimeout(() => setLastCorrectFeedback(null), 4000);
         fetchProblems();
       } else {
         setWrongGlowTrigger(prev => prev + 1);
@@ -3966,10 +3984,10 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
                   </span>
                   {(() => {
                     const diff = p.current_difficulty as number;
-                    if (diff <= 30000) return <span style={{ fontSize: '0.6rem', color: '#00c853' }}>★ 쉬움</span>;
-                    if (diff <= 70000) return <span style={{ fontSize: '0.6rem', color: '#ffc107' }}>★★ 보통</span>;
-                    if (diff <= 120000) return <span style={{ fontSize: '0.6rem', color: '#ff6d00' }}>★★★ 어려움</span>;
-                    return <span style={{ fontSize: '0.6rem', color: '#d50000' }}>★★★★ 매우어려움</span>;
+                    if (diff <= 30000) return <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#00c853', padding: '0.1rem 0.4rem', borderRadius: '99px', background: 'rgba(0,200,83,0.12)', border: '1px solid rgba(0,200,83,0.25)' }}>⭐ 쉬움</span>;
+                    if (diff <= 70000) return <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#ffc107', padding: '0.1rem 0.4rem', borderRadius: '99px', background: 'rgba(255,193,7,0.12)', border: '1px solid rgba(255,193,7,0.25)' }}>⭐⭐ 보통</span>;
+                    if (diff <= 120000) return <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#ff6d00', padding: '0.1rem 0.4rem', borderRadius: '99px', background: 'rgba(255,109,0,0.12)', border: '1px solid rgba(255,109,0,0.25)' }}>⭐⭐⭐ 어려움</span>;
+                    return <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#d50000', padding: '0.1rem 0.4rem', borderRadius: '99px', background: 'rgba(213,0,0,0.12)', border: '1px solid rgba(213,0,0,0.25)' }}>⭐⭐⭐⭐ 매우어려움</span>;
                   })()}
                 </div>
               </div>
@@ -3996,10 +4014,25 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
         {selectedProblem ? (
           <div className="problem-card" style={{ margin: 0 }}>
             <h3 style={{ marginBottom: '1.5rem', color: 'var(--color-4)' }}>{selectedProblem.title}</h3>
-            <div style={{ marginBottom: '1rem', fontSize: '0.9rem', fontWeight: 700, color: '#e6a800' }}>
-              🏆 획득 레이팅: +{(selectedProblem.current_difficulty as number).toLocaleString()} RP
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#e6a800' }}>
+                🏆 획득 레이팅: +{(selectedProblem.current_difficulty as number).toLocaleString()} RP
+              </div>
+              {(() => {
+                const diff = selectedProblem.current_difficulty as number;
+                if (diff <= 30000) return <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#00c853', padding: '0.2rem 0.6rem', borderRadius: '99px', background: 'rgba(0,200,83,0.12)', border: '1px solid rgba(0,200,83,0.3)' }}>⭐ 쉬움</span>;
+                if (diff <= 70000) return <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#ffc107', padding: '0.2rem 0.6rem', borderRadius: '99px', background: 'rgba(255,193,7,0.12)', border: '1px solid rgba(255,193,7,0.3)' }}>⭐⭐ 보통</span>;
+                if (diff <= 120000) return <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#ff6d00', padding: '0.2rem 0.6rem', borderRadius: '99px', background: 'rgba(255,109,0,0.12)', border: '1px solid rgba(255,109,0,0.3)' }}>⭐⭐⭐ 어려움</span>;
+                return <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#d50000', padding: '0.2rem 0.6rem', borderRadius: '99px', background: 'rgba(213,0,0,0.12)', border: '1px solid rgba(213,0,0,0.3)' }}>⭐⭐⭐⭐ 매우어려움</span>;
+              })()}
             </div>
             <div className="math-content" style={{ fontSize: '1.8rem' }}>{renderMath(selectedProblem.content)}</div>
+            {lastCorrectFeedback && (
+              <div style={{ marginTop: '1rem', padding: '0.8rem 1rem', background: 'rgba(0, 200, 83, 0.08)', borderRadius: '0.5rem', border: '1px solid rgba(0, 200, 83, 0.25)' }}>
+                <div style={{ fontWeight: 700, color: '#00c853', marginBottom: '0.3rem', fontSize: '1.05rem' }}>✅ 정답!</div>
+                <div style={{ color: '#e6a800', fontWeight: 800, fontSize: '1.1rem' }}>+{lastCorrectFeedback.rpGained.toLocaleString()} RP</div>
+              </div>
+            )}
             {lastWrongAnswer && lastWrongAnswer.problemId === selectedProblem.id && (
               <div style={{ marginTop: '1rem', padding: '0.8rem 1rem', background: 'rgba(255, 0, 0, 0.05)', borderRadius: '0.5rem', border: '1px solid rgba(255, 0, 0, 0.2)' }}>
                 <div style={{ fontWeight: 700, color: '#d32f2f', marginBottom: '0.3rem' }}>틀렸습니다</div>
