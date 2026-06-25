@@ -1938,8 +1938,13 @@ app.post('/api/submissions', authenticateToken, async (req: any, res: any) => {
     // 수학적 동등성 평가 시도 (둘 다 숫자로 평가되면 1e-9 이내 비교)
     if (!isCorrect) {
       try {
-        const cleanedUser = userAnswer.replace(/\$/g, '').trim();
+        let cleanedUser = userAnswer.replace(/\$/g, '').trim();
         const cleanedCorrect = correctAnswer.replace(/\$/g, '').trim();
+        // "4:1" 형태의 비율 입력 처리 → 첫 번째 숫자 추출
+        const ratioMatch = cleanedUser.match(/^(\d+(?:\.\d+)?)\s*:\s*\d+(?:\.\d+)?$/);
+        if (ratioMatch) {
+          cleanedUser = ratioMatch[1];
+        }
         const userVal = evaluateExpression(cleanedUser, {});
         const correctVal = evaluateExpression(cleanedCorrect, {});
         if (typeof userVal === 'number' && typeof correctVal === 'number') {
