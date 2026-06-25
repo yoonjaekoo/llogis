@@ -3048,7 +3048,15 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
     '치피치피차파차파': '#ff1493', 'ChatGPT': '#10a37f',
     '출제자': '#ffb300', '주인장': '#6a0dad', '정답': '#00e5ff'
   };
+  const tierGlows: { [key: string]: string } = {
+    'Bronze': 'rgba(205,127,50,0.3)', 'Silver': 'rgba(192,192,192,0.3)', 'Gold': 'rgba(255,215,0,0.4)',
+    'Platinum': 'rgba(229,228,226,0.3)', 'Diamond': 'rgba(185,242,255,0.3)', 'Ruby': 'rgba(224,17,95,0.3)',
+    'Master': 'rgba(128,0,128,0.3)', 'God': 'rgba(255,69,0,0.3)', 'Hacker': 'rgba(0,255,0,0.3)',
+    '치피치피차파차파': 'rgba(255,20,147,0.3)', 'ChatGPT': 'rgba(16,163,127,0.3)',
+    '출제자': 'rgba(255,179,0,0.3)', '주인장': 'rgba(106,13,173,0.3)', '정답': 'rgba(0,229,255,0.4)'
+  };
   const streak = u.streak || 0;
+  const tierColor = tierColors[u.tier] || 'var(--color-4)';
 
   return (
     <main className="container" style={{ padding: '3rem 0 5rem', maxWidth: '860px', margin: '0 auto' }}>
@@ -3059,31 +3067,28 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
       </Helmet>
 
       {/* ─── 프로필 헤더 카드 ─── */}
-      <div className="problem-card" style={{ textAlign: 'center', marginBottom: '1.5rem', position: 'relative', overflow: 'hidden' }}>
-        {/* 배경 그라데이션 accent */}
-        <div style={{
-          position: 'absolute', top: 0, left: 0, right: 0, height: '6px',
-          background: `linear-gradient(90deg, ${tierColors[u.tier] || 'var(--color-4)'}, var(--color-4))`
-        }} />
-
+      <div
+        className="profile-header-card"
+        style={{ '--tier-color': tierColor } as React.CSSProperties}
+        onMouseMove={e => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          e.currentTarget.style.setProperty('--mouse-x', `${((e.clientX - rect.left) / rect.width) * 100}%`);
+          e.currentTarget.style.setProperty('--mouse-y', `${((e.clientY - rect.top) / rect.height) * 100}%`);
+        }}
+      >
         {/* 아바타 */}
-        <div style={{ position: 'relative', width: '100px', height: '100px', margin: '1rem auto 1.5rem' }}>
+        <div className="profile-avatar-wrap">
+          <div className="profile-avatar-glow" style={{ '--tier-color': tierColor } as React.CSSProperties} />
           {u.profile_image_url ? (
-            <img src={u.profile_image_url} alt="프로필" style={{ width: '100px', height: '100px', borderRadius: '1.5rem', objectFit: 'cover', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }} />
+            <img src={u.profile_image_url} alt="프로필" className="profile-avatar-img" />
           ) : (
-            <div style={{
-              width: '100px', height: '100px', borderRadius: '1.5rem',
-              background: `linear-gradient(135deg, ${tierColors[u.tier] || 'var(--color-3)'}, var(--color-4))`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '2.5rem', color: 'white', fontWeight: 900,
-              boxShadow: '0 6px 20px rgba(0,0,0,0.2)'
-            }}>
+            <div className="profile-avatar-fallback" style={{ background: `linear-gradient(135deg, ${tierColor}, var(--color-4))` }}>
               {u.username[0].toUpperCase()}
             </div>
           )}
           <button
             onClick={() => setIsUpdatingImage(!isUpdatingImage)}
-            style={{ position: 'absolute', bottom: -4, right: -4, background: 'var(--color-4)', border: '2px solid var(--card-bg)', borderRadius: '0.6rem', width: '30px', height: '30px', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }}
+            style={{ position: 'absolute', bottom: -2, right: -2, background: 'var(--color-4)', border: '3px solid var(--card-bg)', borderRadius: '0.7rem', width: '34px', height: '34px', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', zIndex: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.25)', transition: 'transform 0.2s' }}
             title="프로필 사진 변경"
           >
             📷
@@ -3122,135 +3127,77 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
           </form>
         ) : (
           <>
-            <h2 style={{ fontSize: '2rem', fontWeight: 900, marginBottom: '0.3rem', color: 'var(--text-main)' }}>{u.username}</h2>
+            <h2 className="profile-username">{u.username}</h2>
             {u.equipped_title && (
-              <div style={{ marginBottom: '0.3rem', fontWeight: 700, color: 'var(--color-4)', fontSize: '0.95rem' }}>
+              <div style={{ marginBottom: '0.2rem', fontWeight: 700, color: 'var(--color-4)', fontSize: '0.95rem', letterSpacing: '0.03em' }}>
                 [{u.equipped_title}]
               </div>
             )}
             {u.custom_title && (
-              <div style={{ marginBottom: '0.3rem', fontWeight: 700, color: '#ff6b9d', fontSize: '0.9rem', fontStyle: 'italic' }}>
+              <div style={{ marginBottom: '0.2rem', fontWeight: 700, color: '#ff6b9d', fontSize: '0.9rem', fontStyle: 'italic' }}>
                 ✨ {u.custom_title}
               </div>
             )}
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.3rem 0.9rem', borderRadius: '99px', background: `${tierColors[u.tier] || '#888'}22`, border: `1.5px solid ${tierColors[u.tier] || '#888'}`, color: tierColors[u.tier] || '#888', fontWeight: 800, fontSize: '0.9rem', marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            <div
+              className="profile-tier-badge"
+              style={{
+                background: `${tierColor}22`,
+                border: `1.5px solid ${tierColor}`,
+                color: tierColor,
+                '--tier-glow': tierGlows[u.tier] || 'transparent'
+              } as React.CSSProperties}
+            >
               🏅 {u.tier}
             </div>
             {u.can_generate_problems && (
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.35rem 0.75rem', borderRadius: '999px', background: 'rgba(122, 209, 81, 0.16)', border: '1px solid rgba(122, 209, 81, 0.4)', color: '#5fae35', fontWeight: 800, fontSize: '0.82rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.35rem 0.75rem', borderRadius: '999px', background: 'rgba(122, 209, 81, 0.16)', border: '1px solid rgba(122, 209, 81, 0.4)', color: '#5fae35', fontWeight: 800, fontSize: '0.82rem', marginBottom: '0.5rem' }}>
                 문제 생성 권한 보유
               </div>
             )}
-            {u.bio && (
-              <p style={{ maxWidth: '480px', margin: '0 auto 1rem', fontSize: '0.95rem', lineHeight: 1.65, color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{u.bio}</p>
-            )}
-            <div>
-              <button
-                onClick={() => {
-                  setEditedUsername(u.username);
-                  setEditedBio(u.bio || '');
-                  setIsEditingProfile(true);
-                }}
-                className="btn"
-                style={{ width: 'auto', padding: '0.5rem 1.6rem', background: 'transparent', border: '1.5px solid var(--color-4)', color: 'var(--color-4)', fontSize: '0.9rem' }}
-              >
-                ✏️ 프로필 수정
-              </button>
-            </div>
+            {u.bio && <p className="profile-bio">{u.bio}</p>}
+            <button onClick={() => { setEditedUsername(u.username); setEditedBio(u.bio || ''); setIsEditingProfile(true); }} className="profile-edit-btn">
+              ✏️ 프로필 수정
+            </button>
           </>
         )}
       </div>
 
-      <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
-        <h3 style={{ margin: '0 0 0.75rem', color: 'var(--color-4)', fontSize: '1.05rem', fontWeight: 800 }}>활동 기록</h3>
-        {recentActivities.length > 0 ? (
-          <div style={{ display: 'grid', gap: '0.75rem' }}>
-            {recentActivities.map((activity) => (
-              <div
-                key={activity.id}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  gap: '1rem',
-                  alignItems: 'center',
-                  padding: '0.9rem 1rem',
-                  borderRadius: '0.9rem',
-                  background: 'var(--bg-color)',
-                  border: '1px solid var(--border)',
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, marginBottom: '0.25rem' }}>
-                    {activity.description || '활동 기록'}
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    {activity.created_at ? new Date(activity.created_at).toLocaleString('ko-KR') : ''}
-                  </div>
-                </div>
-                <div
-                  style={{
-                    fontWeight: 900,
-                    color: Number(activity.change_amount) >= 0 ? '#5fae35' : '#ff7675',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {Number(activity.change_amount) >= 0 ? '+' : ''}
-                  {Number(activity.change_amount).toLocaleString()} RP
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p style={{ margin: 0, color: 'var(--text-muted)', textAlign: 'center' }}>아직 활동 기록이 없습니다.</p>
-        )}
-      </div>
-
       {/* ─── 스탯 카드 그리드 ─── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-
-        <div className="stat-card">
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(90deg, var(--color-4), #7b5ff5)' }} />
-          <span className="stat-card-icon">✨</span>
-          <div className="stat-card-label">레이팅</div>
-          <div className="stat-card-value" style={{ color: 'var(--color-4)' }}>{Math.round(u.rating).toLocaleString()}</div>
-          <div className="stat-card-sub">{u.tier} 등급</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+        <div className="stat-card-premium" style={{ '--stat-accent': 'linear-gradient(90deg, var(--color-4), #7b5ff5)' } as React.CSSProperties}>
+          <span className="stat-icon">✨</span>
+          <div className="stat-label">레이팅</div>
+          <div className="stat-value" style={{ color: 'var(--color-4)' }}>{Math.round(u.rating).toLocaleString()}</div>
+          <div className="stat-sub">{u.tier} 등급</div>
         </div>
-
-        <div className="stat-card">
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(90deg, #f87575, #ffa9a3)' }} />
-          <span className="stat-card-icon">🔥</span>
-          <div className="stat-card-label">연속 스트릭</div>
-          <div className="stat-card-value" style={{ color: '#f87575' }}>{u.streak || 0}일</div>
-          <div className="stat-card-sub">최장 {u.longest_streak || 0}일 {u.streak_repaired ? '· 🩹 수리됨' : ''}</div>
+        <div className="stat-card-premium" style={{ '--stat-accent': 'linear-gradient(90deg, #f87575, #ffa9a3)' } as React.CSSProperties}>
+          <span className="stat-icon">🔥</span>
+          <div className="stat-label">연속 스트릭</div>
+          <div className="stat-value" style={{ color: '#f87575' }}>{u.streak || 0}일</div>
+          <div className="stat-sub">최장 {u.longest_streak || 0}일{u.streak_repaired ? ' · 🩹 수리됨' : ''}</div>
         </div>
-
-        <div className="stat-card">
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(90deg, #ffd700, #ffb347)' }} />
-          <span className="stat-card-icon">🪙</span>
-          <div className="stat-card-label">보유 토큰</div>
-          <div className="stat-card-value" style={{ color: '#e6a800' }}>{u.tokens || 0}</div>
-          <div className="stat-card-sub">수리 1회에 30토큰</div>
+        <div className="stat-card-premium" style={{ '--stat-accent': 'linear-gradient(90deg, #ffd700, #ffb347)' } as React.CSSProperties}>
+          <span className="stat-icon">🪙</span>
+          <div className="stat-label">보유 토큰</div>
+          <div className="stat-value" style={{ color: '#e6a800' }}>{u.tokens || 0}</div>
+          <div className="stat-sub">수리 1회 30토큰</div>
         </div>
-
-        <div className="stat-card">
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(90deg, #00e676, #00bcd4)' }} />
-          <span className="stat-card-icon">⚡</span>
-          <div className="stat-card-label">레벨</div>
-          <div className="stat-card-value" style={{ color: '#00b360' }}>Lv.{u.level || 1}</div>
-          <div className="stat-card-sub">XP {(u.xp || 0).toLocaleString()}</div>
+        <div className="stat-card-premium" style={{ '--stat-accent': 'linear-gradient(90deg, #00e676, #00bcd4)' } as React.CSSProperties}>
+          <span className="stat-icon">⚡</span>
+          <div className="stat-label">레벨</div>
+          <div className="stat-value" style={{ color: '#00b360' }}>Lv.{u.level || 1}</div>
+          <div className="stat-sub">XP {(u.xp || 0).toLocaleString()}</div>
         </div>
-
-        <div className="stat-card">
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(90deg, var(--color-3), var(--color-4))' }} />
-          <span className="stat-card-icon">✅</span>
-          <div className="stat-card-label">정답 문제</div>
-          <div className="stat-card-value">{u.problems_solved}</div>
-          <div className="stat-card-sub">정답률 {Math.round(stats.accuracy)}%</div>
+        <div className="stat-card-premium" style={{ '--stat-accent': 'linear-gradient(90deg, var(--color-3), var(--color-4))' } as React.CSSProperties}>
+          <span className="stat-icon">✅</span>
+          <div className="stat-label">정답 문제</div>
+          <div className="stat-value">{u.problems_solved}</div>
+          <div className="stat-sub">정답률 {Math.round(stats.accuracy)}%</div>
         </div>
       </div>
 
-      {/* ─── 티어 진행도 바 ─── */}
-      <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
+      {/* ─── 티어 진행도 ─── */}
+      <div className="problem-card tier-progress-card">
         <h3 style={{ margin: '0 0 0.75rem', color: 'var(--color-4)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           🏅 티어 진행도
         </h3>
@@ -3275,8 +3222,8 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
                 <span style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.95rem' }}>{u.tier}</span>
                 <span style={{ fontWeight: 800, color: 'var(--color-4)', fontSize: '0.9rem' }}>{Math.round(rating).toLocaleString()} RP</span>
               </div>
-              <div style={{ width: '100%', height: '12px', background: 'rgba(0,0,0,0.08)', borderRadius: '99px', overflow: 'hidden', marginBottom: '0.5rem' }}>
-                <div style={{ width: `${Math.min(100, progress)}%`, height: '100%', background: 'var(--color-4)', borderRadius: '99px', transition: 'width 0.5s ease' }} />
+              <div className="tier-progress-bar">
+                <div className="tier-progress-fill" style={{ width: `${Math.min(100, progress)}%` }} />
               </div>
               {nextTier && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
@@ -3287,6 +3234,34 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
             </div>
           );
         })()}
+      </div>
+
+      <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
+        <h3 style={{ margin: '0 0 0.75rem', color: 'var(--color-4)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          📋 활동 기록
+        </h3>
+        {recentActivities.length > 0 ? (
+          <div className="activity-timeline">
+            {recentActivities.map((activity) => (
+              <div key={activity.id} className="activity-item">
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, marginBottom: '0.25rem' }}>
+                    {activity.description || '활동 기록'}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    {activity.created_at ? new Date(activity.created_at).toLocaleString('ko-KR') : ''}
+                  </div>
+                </div>
+                <div className="activity-rp-change" style={{ color: Number(activity.change_amount) >= 0 ? '#5fae35' : '#ff7675' }}>
+                  {Number(activity.change_amount) >= 0 ? '+' : ''}
+                  {Number(activity.change_amount).toLocaleString()} RP
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p style={{ margin: 0, color: 'var(--text-muted)', textAlign: 'center' }}>아직 활동 기록이 없습니다.</p>
+        )}
       </div>
 
       <div style={{ textAlign: 'center', opacity: 0.6, fontSize: '0.9rem', marginBottom: '1.5rem' }}>
