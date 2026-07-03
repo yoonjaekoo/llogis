@@ -41,6 +41,7 @@ interface User {
   longest_streak?: number;
   fever_expires_at?: string;
   fever_multiplier?: number;
+  profile_theme?: string;
 }
 
 // LaTeX Helper
@@ -2742,6 +2743,349 @@ const BugReport: React.FC<{ user: User | null }> = ({ user }) => {
   );
 };
 
+const BoxOpenModal: React.FC<{ rewards: any[]; boxName: string; boxIcon: string; onClose: () => void }> = ({ rewards, boxName, boxIcon, onClose }) => {
+  const [showContent, setShowContent] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setShowContent(true), 600);
+    return () => clearTimeout(t);
+  }, []);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 10000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: 'var(--card-bg)', borderRadius: '1.5rem', padding: '2.5rem',
+          maxWidth: '420px', width: '90%', textAlign: 'center',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.5)', animation: 'boxOpenAnim 0.5s ease',
+        }}
+      >
+        {!showContent ? (
+          <div style={{ fontSize: '5rem', animation: 'boxShake 0.5s ease infinite' }}>{boxIcon}</div>
+        ) : (
+          <>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎉</div>
+            <h3 style={{ color: 'var(--color-4)', margin: '0 0 0.5rem', fontSize: '1.3rem' }}>{boxName} 개봉 결과!</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', margin: '1.5rem 0' }}>
+              {rewards.map((r: any, i: number) => (
+                <div key={i} style={{
+                  padding: '0.8rem 1rem', borderRadius: '0.75rem',
+                  background: 'rgba(92,149,255,0.08)', border: '1px solid rgba(92,149,255,0.2)',
+                  fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-main)',
+                  animation: `fadeInUp 0.3s ease ${i * 0.15}s both`,
+                }}>
+                  {r.label}
+                </div>
+              ))}
+            </div>
+            <button onClick={onClose} className="btn" style={{ background: 'var(--color-4)', color: 'white', width: 'auto', padding: '0.7rem 2rem' }}>
+              확인
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const ProfileThemes: React.FC<{ user: User | null; profileData: any; fetchProfile: () => void }> = ({ user, profileData, fetchProfile }) => {
+  const [themes, setThemes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    fetch('/api/profile/themes', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.themes) setThemes(data.themes);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const handleBuy = async (themeId: string) => {
+    const token = localStorage.getItem('token');
+    const res = await fetch('/api/profile/themes/buy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ themeId })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setMessage(`✅ ${data.message}`);
+      fetchProfile();
+      const token2 = localStorage.getItem('token');
+      fetch('/api/profile/themes', { headers: { 'Authorization': `Bearer ${token2}` } })
+        .then(r => r.json()).then(d => { if (d.themes) setThemes(d.themes); });
+    } else {
+      setMessage(`❌ ${data.error}`);
+    }
+    setTimeout(() => setMessage(''), 3000);
+  };
+
+  const handleEquip = async (themeId: string) => {
+    const token = localStorage.getItem('token');
+    const res = await fetch('/api/profile/themes/equip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ themeId })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setMessage(`✅ ${data.message}`);
+      const updatedUser = { ...user!, profile_theme: themeId };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      fetchProfile();
+      const token2 = localStorage.getItem('token');
+      fetch('/api/profile/themes', { headers: { 'Authorization': `Bearer ${token2}` } })
+        .then(r => r.json()).then(d => { if (d.themes) setThemes(d.themes); });
+    } else {
+      setMessage(`❌ ${data.error}`);
+    }
+    setTimeout(() => setMessage(''), 3000);
+  };
+
+  if (loading) return null;
+
+  return (
+    <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
+      <h3 style={{ margin: '0 0 1.2rem', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        🎨 프로필 테마
+      </h3>
+      {message && (
+        <div style={{ padding: '0.6rem 1rem', marginBottom: '1rem', borderRadius: '0.5rem', background: 'rgba(92,149,255,0.1)', border: '1px solid var(--color-4)', fontWeight: 700, fontSize: '0.9rem' }}>{message}</div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '0.75rem' }}>
+        {themes.map((t: any) => {
+          const isEquipped = t.equipped;
+          return (
+            <div key={t.theme_id} style={{
+              padding: '1rem', borderRadius: '0.75rem', textAlign: 'center',
+              background: t.gradient, color: 'white', fontWeight: 800,
+              border: isEquipped ? '3px solid var(--color-4)' : '1px solid rgba(255,255,255,0.2)',
+              opacity: t.owned ? 1 : 0.5, cursor: t.owned ? 'pointer' : 'default',
+              transition: 'all 0.2s', minHeight: '80px', display: 'flex', flexDirection: 'column', justifyContent: 'center',
+            }}
+              onClick={() => {
+                if (t.owned && !isEquipped) handleEquip(t.theme_id);
+                else if (!t.owned && t.cost > 0) handleBuy(t.theme_id);
+              }}
+              title={t.owned ? (isEquipped ? '장착 중' : '클릭하여 장착') : `${t.cost} 토큰에 구매`}
+            >
+              <div style={{ fontSize: '0.9rem', textShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>{t.name}</div>
+              <div style={{ fontSize: '0.65rem', marginTop: '0.25rem', opacity: 0.8, textShadow: '0 1px 4px rgba(0,0,0,0.3)' }}>
+                {isEquipped ? '✨ 장착 중' : (t.owned ? '클릭 장착' : `🪙 ${t.cost}`)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const ProfileBadges: React.FC<{ user: User | null }> = ({ user }) => {
+  const [badges, setBadges] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    fetch('/api/profile/badges', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.badges) setBadges(data.badges);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  if (loading) return null;
+
+  const unlocked = badges.filter(b => b.unlocked);
+  const locked = badges.filter(b => !b.unlocked);
+
+  return (
+    <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
+      <h3 style={{ margin: '0 0 1.2rem', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        🏅 내 뱃지 ({unlocked.length}/{badges.length})
+      </h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '0.6rem' }}>
+        {unlocked.map((b: any) => (
+          <div key={b.badge_id} style={{
+            padding: '0.7rem', borderRadius: '0.75rem', textAlign: 'center',
+            background: 'rgba(92,149,255,0.08)', border: '1px solid rgba(92,149,255,0.2)',
+            fontWeight: 700
+          }} title={b.description}>
+            <div style={{ fontSize: '1.8rem', marginBottom: '0.2rem' }}>{b.icon}</div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{b.name}</div>
+          </div>
+        ))}
+        {locked.map((b: any) => (
+          <div key={b.badge_id} style={{
+            padding: '0.7rem', borderRadius: '0.75rem', textAlign: 'center',
+            border: '1px solid var(--border)', opacity: 0.4, fontWeight: 700
+          }} title={b.description}>
+            <div style={{ fontSize: '1.8rem', marginBottom: '0.2rem', filter: 'grayscale(1)' }}>{b.icon}</div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>🔒 {b.name}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const ProfileBoxes: React.FC<{ user: User | null; profileData: any; fetchProfile: () => void }> = ({ user, profileData, fetchProfile }) => {
+  const [boxes, setBoxes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [opening, setOpening] = useState<string | null>(null);
+  const [openResult, setOpenResult] = useState<any>(null);
+  const token = localStorage.getItem('token');
+
+  useEffect(() => {
+    fetch('/api/boxes', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.boxes) setBoxes(data.boxes);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [token]);
+
+  const handleClaimFree = async () => {
+    const res = await fetch('/api/boxes/claim-free', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (res.ok) {
+      fetchProfile();
+      const token2 = localStorage.getItem('token');
+      fetch('/api/boxes', { headers: { 'Authorization': `Bearer ${token2}` } })
+        .then(r => r.json()).then(d => { if (d.boxes) setBoxes(d.boxes); });
+    } else {
+      alert(data.error);
+    }
+  };
+
+  const handleBuy = async (boxId: string) => {
+    const res = await fetch('/api/boxes/buy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ boxId })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      fetchProfile();
+      const token2 = localStorage.getItem('token');
+      fetch('/api/boxes', { headers: { 'Authorization': `Bearer ${token2}` } })
+        .then(r => r.json()).then(d => { if (d.boxes) setBoxes(d.boxes); });
+    } else {
+      alert(data.error);
+    }
+  };
+
+  const handleOpen = async (boxId: string) => {
+    setOpening(boxId);
+    const res = await fetch('/api/boxes/open', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ boxId })
+    });
+    const data = await res.json();
+    setOpening(null);
+    if (res.ok) {
+      setOpenResult(data);
+      fetchProfile();
+      const token2 = localStorage.getItem('token');
+      fetch('/api/boxes', { headers: { 'Authorization': `Bearer ${token2}` } })
+        .then(r => r.json()).then(d => { if (d.boxes) setBoxes(d.boxes); });
+    } else {
+      alert(data.error);
+    }
+  };
+
+  if (loading) return null;
+
+  return (
+    <>
+      <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
+        <h3 style={{ margin: '0 0 1.2rem', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          🎁 보유 상자
+        </h3>
+        {boxes.length === 0 ? (
+          <p style={{ color: 'var(--text-muted)', textAlign: 'center', fontSize: '0.9rem' }}>
+            보유한 상자가 없습니다. 상점에서 구매하거나 무료 상자를 받아보세요!
+          </p>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '0.75rem' }}>
+            {boxes.filter(b => b.owned > 0 || b.box_id === 'common_box').map((b: any) => {
+              const owned = b.owned || 0;
+              const rarityColors: any = {
+                common: 'var(--text-muted)',
+                rare: '#5c95ff',
+                epic: '#9370db',
+                legendary: '#ffd700',
+              };
+              return (
+                <div key={b.box_id} style={{
+                  padding: '1rem', borderRadius: '0.75rem', textAlign: 'center',
+                  border: `2px solid ${rarityColors[b.rarity] || 'var(--border)'}`,
+                  background: 'var(--card-bg)',
+                }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.3rem' }}>{b.icon}</div>
+                  <div style={{ fontWeight: 800, fontSize: '0.85rem', color: rarityColors[b.rarity] }}>{b.name}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0.25rem 0' }}>
+                    {owned}개 보유
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.3rem', justifyContent: 'center' }}>
+                    <button
+                      onClick={() => handleOpen(b.box_id)}
+                      disabled={owned <= 0 || opening === b.box_id}
+                      style={{
+                        padding: '0.35rem 0.7rem', borderRadius: '0.5rem',
+                        background: rarityColors[b.rarity], color: 'white',
+                        border: 'none', fontWeight: 700, cursor: owned > 0 ? 'pointer' : 'not-allowed',
+                        fontSize: '0.8rem', opacity: owned > 0 ? 1 : 0.4,
+                      }}
+                    >
+                      {opening === b.box_id ? '🎲' : '열기'}
+                    </button>
+
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {openResult && (
+        <BoxOpenModal
+          rewards={openResult.rewards}
+          boxName={openResult.boxName}
+          boxIcon={openResult.boxIcon}
+          onClose={() => setOpenResult(null)}
+        />
+      )}
+    </>
+  );
+};
+
 const TitleSection: React.FC<{ user: User | null; setUser: (u: User) => void; refreshKey?: number }> = ({ user, setUser, refreshKey }) => {
   const [titles, setTitles] = useState<any[]>([]);
   const [equippedTitle, setEquippedTitle] = useState('');
@@ -3396,28 +3740,38 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {Array.isArray(u.quests) && u.quests.length > 0 ? (
-            u.quests.map((quest: any) => {
-              const pct = Math.min(100, Math.round((quest.current / quest.target) * 100)) || 0;
-              return (
-                <div key={quest.id} className={`quest-card${quest.completed ? ' completed' : ''}`}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 800, fontSize: '0.95rem', textDecoration: quest.completed ? 'line-through' : 'none', color: quest.completed ? 'var(--text-muted)' : 'var(--text-main)' }}>
-                      {quest.completed ? '✅' : '🎯'} {quest.title}
-                    </span>
-                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                      {quest.current} / {quest.target}{quest.type === 'accuracy' ? '%' : ''}
-                    </span>
+            <>
+              {u.quests.map((quest: any) => {
+                const pct = Math.min(100, Math.round((quest.current / quest.target) * 100)) || 0;
+                const questColors: any = {
+                  solve: 'var(--color-4)',
+                  streak: '#f87575',
+                  accuracy: '#00e676',
+                  earn_xp: '#ffd700',
+                  consecutive: '#ff6b9d',
+                  perfect: '#9370db',
+                };
+                return (
+                  <div key={quest.id} className={`quest-card${quest.completed ? ' completed' : ''}`}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.95rem', textDecoration: quest.completed ? 'line-through' : 'none', color: quest.completed ? 'var(--text-muted)' : 'var(--text-main)' }}>
+                        {quest.completed ? '✅' : '🎯'} {quest.title}
+                      </span>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                        {quest.current} / {quest.target}{quest.type === 'accuracy' ? '%' : quest.type === 'consecutive' || quest.type === 'perfect' ? '연속' : ''}
+                      </span>
+                    </div>
+                    <div className="progress-bar">
+                      <div className="progress-fill" style={{ width: `${pct}%`, background: quest.completed ? 'var(--color-4)' : (questColors[quest.type] || 'var(--color-1)') }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.8rem', fontSize: '0.78rem', opacity: 0.75 }}>
+                      <span>✨ +{quest.xpReward} XP</span>
+                      {quest.tokenReward > 0 && <span>🪙 +{quest.tokenReward} 토큰</span>}
+                    </div>
                   </div>
-                  <div className="progress-bar">
-                    <div className="progress-fill" style={{ width: `${pct}%`, background: quest.completed ? 'var(--color-4)' : 'var(--color-1)' }} />
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.8rem', fontSize: '0.78rem', opacity: 0.75 }}>
-                    <span>✨ +{quest.xpReward} XP</span>
-                    {quest.tokenReward > 0 && <span>🪙 +{quest.tokenReward} 토큰</span>}
-                  </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </>
           ) : (
             <p style={{ color: 'var(--text-muted)', fontStyle: 'italic', margin: 0, fontSize: '0.95rem' }}>
               오늘의 퀘스트가 아직 생성되지 않았습니다. 문제를 풀면 퀘스트가 자동으로 시작됩니다!
@@ -3425,6 +3779,15 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
           )}
         </div>
       </div>
+
+      {/* ─── 프로필 테마 ─── */}
+      <ProfileThemes user={user} profileData={profileData} fetchProfile={fetchProfile} />
+
+      {/* ─── 내 뱃지 ─── */}
+      <ProfileBadges user={user} />
+
+      {/* ─── 보유 상자 ─── */}
+      <ProfileBoxes user={user} profileData={profileData} fetchProfile={fetchProfile} />
 
       {/* ─── 계정 설정 ─── */}
       <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
@@ -4169,6 +4532,150 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
   );
 };
 
+const ShopBoxes: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ user, setUser }) => {
+  const [boxes, setBoxes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  const [openResult, setOpenResult] = useState<any>(null);
+  const token = localStorage.getItem('token');
+
+  const fetchBoxes = () => {
+    fetch('/api/boxes', { headers: { 'Authorization': `Bearer ${token}` } })
+      .then(res => res.json())
+      .then(data => {
+        if (data.boxes) setBoxes(data.boxes);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  };
+
+  useEffect(() => { fetchBoxes(); }, [token]);
+
+  const handleBuy = async (boxId: string) => {
+    const res = await fetch('/api/boxes/buy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ boxId })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setMessage(`✅ ${data.message}`);
+      const updatedUser = { ...user!, tokens: (user!.tokens || 0) - (boxes.find(b => b.box_id === boxId)?.cost || 0) };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+      fetchBoxes();
+    } else {
+      setMessage(`❌ ${data.error}`);
+    }
+    setTimeout(() => setMessage(''), 3000);
+  };
+
+  const handleOpen = async (boxId: string) => {
+    const res = await fetch('/api/boxes/open', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ boxId })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setOpenResult(data);
+      const updatedUser = { ...user! };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+      fetchBoxes();
+    } else {
+      alert(data.error);
+    }
+  };
+
+  const rarityColors: any = {
+    common: 'var(--text-muted)',
+    rare: '#5c95ff',
+    epic: '#9370db',
+    legendary: '#ffd700',
+  };
+  const rarityBg: any = {
+    common: 'rgba(150,150,150,0.05)',
+    rare: 'rgba(92,149,255,0.05)',
+    epic: 'rgba(147,112,219,0.05)',
+    legendary: 'rgba(255,215,0,0.05)',
+  };
+
+  if (loading) return <p style={{ textAlign: 'center', opacity: 0.6 }}>로딩 중...</p>;
+
+  return (
+    <>
+      {message && (
+        <div style={{ padding: '0.8rem 1rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '0.5rem', marginBottom: '1.5rem', textAlign: 'center', fontWeight: 700, fontSize: '0.9rem' }}>
+          {message}
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1.25rem' }}>
+        {boxes.filter((b: any) => b.cost > 0 || b.box_id === 'common_box').map((b: any) => (
+          <div key={b.box_id} className="problem-card" style={{
+            margin: 0, textAlign: 'center',
+            border: `1.5px solid ${rarityColors[b.rarity] || 'var(--border)'}`,
+            background: rarityBg[b.rarity] || 'var(--card-bg)',
+          }}>
+            <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>{b.icon}</div>
+            <h3 style={{ margin: '0 0 0.3rem', color: rarityColors[b.rarity] || 'var(--color-4)', fontSize: '1.1rem' }}>{b.name}</h3>
+            <p style={{ margin: '0 0 0.3rem', opacity: 0.6, fontSize: '0.82rem' }}>{b.description}</p>
+            <div style={{
+              display: 'inline-block', padding: '0.15rem 0.6rem', borderRadius: '99px',
+              background: `${rarityColors[b.rarity]}22`, color: rarityColors[b.rarity],
+              fontSize: '0.7rem', fontWeight: 800, marginBottom: '1rem',
+            }}>
+              {b.rarity.toUpperCase()}
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+              {b.owned > 0 && (
+                <button onClick={() => handleOpen(b.box_id)}
+                  style={{
+                    padding: '0.5rem 1rem', borderRadius: '0.5rem',
+                    background: '#00b360', color: 'white', border: 'none', fontWeight: 700,
+                    cursor: 'pointer', fontSize: '0.85rem',
+                  }}>
+                  열기 ({b.owned})
+                </button>
+              )}
+              {b.cost > 0 && (
+                <button onClick={() => handleBuy(b.box_id)} disabled={(user?.tokens || 0) < b.cost}
+                  style={{
+                    padding: '0.5rem 1rem', borderRadius: '0.5rem',
+                    background: (user?.tokens || 0) >= b.cost ? rarityColors[b.rarity] : 'var(--border)',
+                    color: 'white', border: 'none', fontWeight: 700,
+                    cursor: (user?.tokens || 0) >= b.cost ? 'pointer' : 'not-allowed', fontSize: '0.85rem',
+                  }}>
+                  🪙 {b.cost} 구매
+                </button>
+              )}
+              {b.box_id === 'common_box' && !b.owned && b.cost === 0 && (
+                <button onClick={() => handleBuy(b.box_id)}
+                  style={{
+                    padding: '0.5rem 1rem', borderRadius: '0.5rem',
+                    background: rarityColors[b.rarity], color: 'white', border: 'none',
+                    fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem',
+                  }}>
+                  🆓 무료 받기
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {openResult && (
+        <BoxOpenModal
+          rewards={openResult.rewards}
+          boxName={openResult.boxName}
+          boxIcon={openResult.boxIcon}
+          onClose={() => setOpenResult(null)}
+        />
+      )}
+    </>
+  );
+};
+
 const Shop: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ user, setUser }) => {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -4277,6 +4784,13 @@ const Shop: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ use
           ))}
         </div>
       )}
+
+      {/* ─── 보상 상자 섹션 ─── */}
+      <h2 style={{ color: 'var(--color-4)', fontSize: '2rem', marginBottom: '0.5rem', marginTop: '3rem', textAlign: 'center' }}>🎁 보상 상자</h2>
+      <p style={{ textAlign: 'center', opacity: 0.7, marginBottom: '2rem', fontSize: '0.9rem' }}>
+        상자를 열어 토큰, XP, 피버타임 등 다양한 보상을 획득하세요!
+      </p>
+      <ShopBoxes user={user} setUser={setUser} />
     </main>
   );
 };

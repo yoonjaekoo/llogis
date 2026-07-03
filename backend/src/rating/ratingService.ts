@@ -204,11 +204,15 @@ export const processSubmission = async (userId: number, problemId: number, isCor
     if (isCorrect) {
       streakResult = await updateStreak(userId, client);
       finalTokens = await updateTokens(userId, client, isCorrect);
-      await updateQuests(userId, client, 'solve');
+      await updateQuests(userId, client, 'solve', { isCorrect: true });
       await updateQuests(userId, client, 'streak');
+      const xpEarned = Math.round(rewardRating) / 100;
+      await updateQuests(userId, client, 'earn_xp', { xpEarned: Math.max(1, Math.floor(xpEarned)) });
+      await updateQuests(userId, client, 'solve', { isCorrect: true, consecutiveCorrect: streakResult.newStreak });
       await client.query('UPDATE users SET problems_solved = problems_solved + 1 WHERE id = $1', [userId]);
     } else {
-      await updateQuests(userId, client, 'attempt');
+      await updateQuests(userId, client, 'attempt', { isCorrect: false });
+      await updateQuests(userId, client, 'solve', { isCorrect: false });
     }
 
     await client.query(
