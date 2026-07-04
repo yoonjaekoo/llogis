@@ -353,6 +353,9 @@ const ensureSchema = async () => {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_theme VARCHAR(50) DEFAULT 'default'
   `);
   await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_css TEXT DEFAULT ''
+  `);
+  await pool.query(`
     INSERT INTO profile_themes (theme_id, name, description, gradient, cost) VALUES
       ('default', '기본 테마', 'Logis 기본 프로필 테마', 'linear-gradient(135deg, var(--color-4), #7b5ff5)', 0),
       ('ocean', '오션 블루', '시원한 바다를 닮은 블루 테마', 'linear-gradient(135deg, #2193b0, #6dd5ed)', 200),
@@ -443,8 +446,14 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
     // Look up equipped title display name
     let equippedTitleName = '';
     if (user.equipped_title) {
-      const titleRes = await client.query('SELECT name FROM titles WHERE title_id = $1', [user.equipped_title]);
+      const titleRes = await pool.query('SELECT name FROM titles WHERE title_id = $1', [user.equipped_title]);
       if (titleRes.rows.length > 0) equippedTitleName = titleRes.rows[0].name;
+    }
+
+    let profileGradient = 'linear-gradient(135deg, var(--color-4), #7b5ff5)';
+    if (user.profile_theme) {
+      const themeRes = await pool.query('SELECT gradient FROM profile_themes WHERE theme_id = $1', [user.profile_theme]);
+      if (themeRes.rows.length > 0) profileGradient = themeRes.rows[0].gradient;
     }
 
     const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
@@ -471,7 +480,9 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         longest_streak: parseInt(user.longest_streak) || 0,
         xp: parseInt(user.xp) || 0,
         tokens: parseInt(user.tokens) || 0,
-        level: Math.floor(Math.sqrt((parseInt(user.xp) || 0) / 100)) + 1
+        level: Math.floor(Math.sqrt((parseInt(user.xp) || 0) / 100)) + 1,
+        profile_theme: user.profile_theme || 'default',
+        profile_css: user.profile_css || ''
       } 
     });
   } catch (err) {
@@ -487,7 +498,7 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
     const userId = req.user.id;
 
     const userResult = await pool.query(
-      "SELECT id, username, email, profile_image_url, bio, can_generate_problems, equipped_title, created_at, has_firework_effect, has_developer_chango, custom_title, problems_solved, profile_theme FROM users WHERE id = $1",
+      "SELECT id, username, email, profile_image_url, bio, can_generate_problems, equipped_title, created_at, has_firework_effect, has_developer_chango, custom_title, problems_solved, profile_theme, profile_css FROM users WHERE id = $1",
       [userId]
     );
 
@@ -501,6 +512,12 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
     if (user.equipped_title) {
       const titleRes = await pool.query('SELECT name FROM titles WHERE title_id = $1', [user.equipped_title]);
       if (titleRes.rows.length > 0) equippedTitleName = titleRes.rows[0].name;
+    }
+
+    let profileGradient = 'linear-gradient(135deg, var(--color-4), #7b5ff5)';
+    if (user.profile_theme) {
+      const themeRes = await pool.query('SELECT gradient FROM profile_themes WHERE theme_id = $1', [user.profile_theme]);
+      if (themeRes.rows.length > 0) profileGradient = themeRes.rows[0].gradient;
     }
 
     const statsResult = await pool.query(
@@ -524,7 +541,8 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
     res.json({
       user: {
         ...user,
-        equipped_title: equippedTitleName
+        equipped_title: equippedTitleName,
+        profile_gradient: profileGradient
       },
       stats: {
         totalSubmissions,
@@ -825,7 +843,7 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const userResult = await pool.query(
-      "SELECT id, username, profile_image_url, bio, equipped_title, has_firework_effect, has_developer_chango, custom_title, problems_solved, rating, created_at FROM users WHERE id = $1",
+      "SELECT id, username, profile_image_url, bio, equipped_title, has_firework_effect, has_developer_chango, custom_title, problems_solved, rating, created_at, profile_theme, profile_css FROM users WHERE id = $1",
       [id]
     );
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
@@ -834,6 +852,11 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
     if (user.equipped_title) {
       const titleRes = await pool.query('SELECT name FROM titles WHERE title_id = $1', [user.equipped_title]);
       if (titleRes.rows.length > 0) equippedTitleName = titleRes.rows[0].name;
+    }
+    let profileGradient = 'linear-gradient(135deg, var(--color-4), #7b5ff5)';
+    if (user.profile_theme) {
+      const themeRes = await pool.query('SELECT gradient FROM profile_themes WHERE theme_id = $1', [user.profile_theme]);
+      if (themeRes.rows.length > 0) profileGradient = themeRes.rows[0].gradient;
     }
     const titlesRes = await pool.query(
       'SELECT t.title_id, t.name, t.description FROM user_titles ut JOIN titles t ON t.title_id = ut.title_id WHERE ut.user_id = $1 ORDER BY ut.unlocked_at',
@@ -851,7 +874,8 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
         ...user,
         rating: parseFloat(user.rating) || 0,
         tier: getTier(parseFloat(user.rating) || 0),
-        equipped_title: equippedTitleName || user.equipped_title
+        equipped_title: equippedTitleName || user.equipped_title,
+        profile_gradient: profileGradient
       },
       titles: titlesRes.rows,
       stats: {
@@ -2565,6 +2589,45 @@ app.delete('/api/admin/users/:id', authenticateToken, async (req: any, res: Resp
   }
 });
 
+// --- Admin: User Submission History ---
+app.get('/api/admin/users/:userId/submissions', authenticateToken, async (req: any, res: Response) => {
+  if (req.user.username !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const { userId } = req.params;
+  const { page = '1' } = req.query;
+  const pageNum = Math.max(1, parseInt(page as string) || 1);
+  const limitNum = 100;
+  const offset = (pageNum - 1) * limitNum;
+
+  try {
+    const countRes = await pool.query(
+      'SELECT COUNT(*) FROM submissions WHERE user_id = $1', [userId]
+    );
+    const total = parseInt(countRes.rows[0].count);
+
+    const result = await pool.query(`
+      SELECT * FROM (
+        SELECT
+          s.id, s.submitted_at, s.is_correct, s.user_answer,
+          p.id as problem_id, p.title as problem_title, p.difficulty,
+          EXTRACT(EPOCH FROM (s.submitted_at - LAG(s.submitted_at) OVER (ORDER BY s.submitted_at ASC))) as time_diff_seconds
+        FROM submissions s
+        LEFT JOIN problems p ON s.problem_id = p.id
+        WHERE s.user_id = $1
+      ) sub
+      ORDER BY sub.submitted_at DESC
+      LIMIT $2 OFFSET $3
+    `, [userId, limitNum, offset]);
+
+    res.json({
+      submissions: result.rows,
+      pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) }
+    });
+  } catch (err) {
+    console.error('Failed to fetch user submissions:', err);
+    res.status(500).json({ error: '제출 기록 조회에 실패했습니다.' });
+  }
+});
+
 // --- Reward Boxes API ---
 app.get('/api/boxes', authenticateToken, async (req: any, res: Response) => {
   const userId = req.user.id;
@@ -2891,6 +2954,20 @@ app.post('/api/profile/themes/equip', authenticateToken, async (req: any, res: R
   } catch (err) {
     console.error('Failed to equip theme:', err);
     res.status(500).json({ error: '테마 장착에 실패했습니다.' });
+  }
+});
+
+// --- Profile CSS Customization ---
+app.post('/api/profile/css', authenticateToken, async (req: any, res: Response) => {
+  const userId = req.user.id;
+  const { css } = req.body;
+  if (typeof css !== 'string') return res.status(400).json({ error: '올바른 CSS 값을 입력해주세요.' });
+  try {
+    await pool.query('UPDATE users SET profile_css = $1 WHERE id = $2', [css, userId]);
+    res.json({ message: '프로필 CSS가 저장되었습니다.' });
+  } catch (err) {
+    console.error('Failed to save profile CSS:', err);
+    res.status(500).json({ error: 'CSS 저장에 실패했습니다.' });
   }
 });
 

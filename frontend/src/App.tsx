@@ -1420,7 +1420,8 @@ const UserProfile: React.FC = () => {
       <div style={{ maxWidth: '800px', margin: '0 auto' }}>
         <button onClick={() => navigate('/ranking')} style={{ background: 'none', border: 'none', color: 'var(--color-3)', cursor: 'pointer', marginBottom: '1rem', fontWeight: 800 }}>← 랭킹으로 돌아가기</button>
         
-        <article className="problem-card" style={{ textAlign: 'center' }}>
+        <article className="problem-card" style={{ textAlign: 'center', background: u.profile_gradient || 'var(--card-bg)', color: u.profile_gradient ? 'white' : undefined, textShadow: u.profile_gradient ? '0 2px 12px rgba(0,0,0,0.35)' : undefined }}>
+          {u.profile_css && <style>{u.profile_css}</style>}
           <div style={{ position: 'relative', width: '120px', height: '120px', margin: '0 auto 2rem' }}>
             {u.profile_image_url ? (
               <img src={u.profile_image_url} alt={`${u.username} 프로필 사진`} loading="lazy" style={{ width: '120px', height: '120px', borderRadius: '50%', objectFit: 'cover', boxShadow: '0 0 20px rgba(0,0,0,0.2)' }} />
@@ -1677,6 +1678,11 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
   const [tierConfigDraft, setTierConfigDraft] = useState<any[]>([]);
   const [savingTierConfig, setSavingTierConfig] = useState(false);
   const tierConfigTiers = useRef<any[]>([]);
+  const [selectedUserForSubs, setSelectedUserForSubs] = useState<any>(null);
+  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [subsPage, setSubsPage] = useState(1);
+  const [subsTotalPages, setSubsTotalPages] = useState(1);
+  const [loadingSubs, setLoadingSubs] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -2058,6 +2064,29 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
     }
   };
 
+  const fetchSubmissions = useCallback(async (userId: number, page: number) => {
+    setLoadingSubs(true);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/submissions?page=${page}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.submissions) {
+        setSubmissions(data.submissions);
+        setSubsPage(data.pagination.page);
+        setSubsTotalPages(data.pagination.totalPages);
+      }
+    } catch {}
+    setLoadingSubs(false);
+  }, []);
+
+  const handleViewSubmissions = (u: any) => {
+    setSelectedUserForSubs(u);
+    setSubsPage(1);
+    fetchSubmissions(u.id, 1);
+  };
+
   return (
     <main className="container" style={{ padding: '4rem 0' }}>
       <Helmet>
@@ -2211,64 +2240,133 @@ const Admin: React.FC<{ user: User | null }> = ({ user }) => {
         {/* Users Tab */}
         {activeTab === 'users' && (
         <div className="problem-card" style={{ margin: 0 }}>
-          <h3 style={{ marginBottom: '1.5rem' }}>사용자 관리 ({users.length})</h3>
-          {loadingUsers ? <p>사용자 목록 로딩 중...</p> : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
-                <thead>
-                  <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-muted)' }}>
-                    <th style={{ padding: '0.6rem' }}>순위</th>
-                    <th style={{ padding: '0.6rem' }}>사용자</th>
-                    <th style={{ padding: '0.6rem' }}>레이팅</th>
-                    <th style={{ padding: '0.6rem' }}>토큰</th>
-                    <th style={{ padding: '0.6rem' }}>칭호</th>
-                    <th style={{ padding: '0.6rem' }}>정답수</th>
-                    <th style={{ padding: '0.6rem' }}>문제 생성</th>
-                    <th style={{ padding: '0.6rem' }}>관리</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((u, i) => (
-                    <tr key={u.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '0.6rem', fontWeight: 800 }}>{i + 1}</td>
-                      <td style={{ padding: '0.6rem' }}>
-                        <div style={{ fontWeight: 800 }}>{u.username}</div>
-                        <div style={{ fontSize: '0.75rem', opacity: 0.6 }}>{u.email}</div>
-                      </td>
-                      <td style={{ padding: '0.6rem' }}>
-                        <div style={{ fontWeight: 800, fontSize: '0.85rem' }}>{Math.round(u.rating).toLocaleString()}</div>
-                        <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>{u.tier}</div>
-                      </td>
-                      <td style={{ padding: '0.6rem', fontWeight: 800, color: '#e6a800' }}>{(u.tokens || 0).toLocaleString()}</td>
-                      <td style={{ padding: '0.6rem', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        <span style={{ fontSize: '0.8rem' }}>{u.custom_title || '-'}</span>
-                      </td>
-                      <td style={{ padding: '0.6rem', fontSize: '0.85rem' }}>{u.correct_submissions} / {u.total_submissions}</td>
-                      <td style={{ padding: '0.6rem' }}>
-                        <button
-                          onClick={() => handleToggleProblemGeneration(u.id, !!u.can_generate_problems)}
-                          className="btn"
-                          style={{ padding: '0.3rem 0.6rem', fontSize: '0.7rem', width: 'auto', background: u.can_generate_problems ? '#00b894' : 'var(--border)', color: u.can_generate_problems ? 'white' : 'var(--text-main)' }}
-                        >
-                          {u.can_generate_problems ? '허용' : '부여'}
+          {selectedUserForSubs ? (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <h3 style={{ margin: 0 }}>{selectedUserForSubs.username}님의 제출 기록 ({submissions.length > 0 ? `${(subsPage - 1) * 100 + 1}-${(subsPage - 1) * 100 + submissions.length}` : '0'})</h3>
+                <button onClick={() => setSelectedUserForSubs(null)} className="btn" style={{ background: 'var(--border)', color: 'var(--text-main)', padding: '0.5rem 1rem', width: 'auto' }}>← 목록으로</button>
+              </div>
+              {loadingSubs ? <p>로딩 중...</p> : submissions.length === 0 ? (
+                <p style={{ textAlign: 'center', opacity: 0.5, padding: '2rem' }}>제출 기록이 없습니다.</p>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-muted)' }}>
+                        <th style={{ padding: '0.6rem' }}>시간</th>
+                        <th style={{ padding: '0.6rem' }}>문제</th>
+                        <th style={{ padding: '0.6rem' }}>정답 여부</th>
+                        <th style={{ padding: '0.6rem' }}>차이</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {submissions.map((s: any) => {
+                        const diff = s.time_diff_seconds;
+                        let diffStr = '-';
+                        if (diff !== null) {
+                          const secs = parseFloat(diff);
+                          if (secs < 60) diffStr = `${Math.round(secs)}초`;
+                          else if (secs < 3600) diffStr = `${Math.floor(secs / 60)}분 ${Math.round(secs % 60)}초`;
+                          else diffStr = `${Math.floor(secs / 3600)}시간 ${Math.floor((secs % 3600) / 60)}분`;
+                        }
+                        return (
+                          <tr key={s.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '0.6rem', whiteSpace: 'nowrap' }}>{new Date(s.submitted_at).toLocaleString('ko-KR')}</td>
+                            <td style={{ padding: '0.6rem', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {s.problem_id ? (
+                                <a href={`/problem/${s.problem_id}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-4)', fontWeight: 700, textDecoration: 'none' }}
+                                  onClick={e => { e.preventDefault(); navigate(`/problem/${s.problem_id}`); }}>
+                                  {s.problem_title || `문제 #${s.problem_id}`}
+                                </a>
+                              ) : <span style={{ opacity: 0.5 }}>삭제됨</span>}
+                            </td>
+                            <td style={{ padding: '0.6rem' }}>
+                              <span style={{ color: s.is_correct ? '#00b894' : '#ff7675', fontWeight: 800 }}>
+                                {s.is_correct ? '✅ 정답' : '❌ 오답'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.6rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{diffStr}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {subsTotalPages > 1 && (
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1rem' }}>
+                      {Array.from({ length: subsTotalPages }, (_, i) => i + 1).map(p => (
+                        <button key={p} onClick={() => { setSubsPage(p); fetchSubmissions(selectedUserForSubs.id, p); }}
+                          className="btn" style={{ padding: '0.3rem 0.7rem', fontSize: '0.8rem', width: 'auto', background: p === subsPage ? 'var(--color-4)' : 'var(--border)', color: p === subsPage ? 'white' : 'var(--text-main)' }}>
+                          {p}
                         </button>
-                      </td>
-                      <td style={{ padding: '0.6rem' }}>
-                        <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
-                          <button onClick={() => handleUpdateRating(u.id, u.rating)} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: 'var(--color-3)', color: 'white' }}>⭐</button>
-                          <button onClick={() => handleUpdateTokens(u.id, u.tokens || 0)} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: '#e6a800', color: 'white' }}>🪙</button>
-                          <button onClick={() => handleUpdateCustomTitle(u.id, u.custom_title || '')} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: 'var(--color-4)', color: 'white' }}>🏷️</button>
-                          <button onClick={() => handleUpdateUsername(u.id, u.username)} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: '#6c5ce7', color: 'white' }}>✏️</button>
-                          {u.username !== 'admin' && (
-                            <button onClick={() => handleDeleteUser(u.id, u.username)} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: '#ff7675', color: 'white' }}>🗑️</button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <h3 style={{ marginBottom: '1.5rem' }}>사용자 관리 ({users.length})</h3>
+              {loadingUsers ? <p>사용자 목록 로딩 중...</p> : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-muted)' }}>
+                        <th style={{ padding: '0.6rem' }}>순위</th>
+                        <th style={{ padding: '0.6rem' }}>사용자</th>
+                        <th style={{ padding: '0.6rem' }}>레이팅</th>
+                        <th style={{ padding: '0.6rem' }}>토큰</th>
+                        <th style={{ padding: '0.6rem' }}>칭호</th>
+                        <th style={{ padding: '0.6rem' }}>정답수</th>
+                        <th style={{ padding: '0.6rem' }}>문제 생성</th>
+                        <th style={{ padding: '0.6rem' }}>관리</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map((u, i) => (
+                        <tr key={u.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '0.6rem', fontWeight: 800 }}>{i + 1}</td>
+                          <td style={{ padding: '0.6rem' }}>
+                            <div style={{ fontWeight: 800 }}>{u.username}</div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.6 }}>{u.email}</div>
+                          </td>
+                          <td style={{ padding: '0.6rem' }}>
+                            <div style={{ fontWeight: 800, fontSize: '0.85rem' }}>{Math.round(u.rating).toLocaleString()}</div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>{u.tier}</div>
+                          </td>
+                          <td style={{ padding: '0.6rem', fontWeight: 800, color: '#e6a800' }}>{(u.tokens || 0).toLocaleString()}</td>
+                          <td style={{ padding: '0.6rem', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <span style={{ fontSize: '0.8rem' }}>{u.custom_title || '-'}</span>
+                          </td>
+                          <td style={{ padding: '0.6rem', fontSize: '0.85rem' }}>{u.correct_submissions} / {u.total_submissions}</td>
+                          <td style={{ padding: '0.6rem' }}>
+                            <button
+                              onClick={() => handleToggleProblemGeneration(u.id, !!u.can_generate_problems)}
+                              className="btn"
+                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.7rem', width: 'auto', background: u.can_generate_problems ? '#00b894' : 'var(--border)', color: u.can_generate_problems ? 'white' : 'var(--text-main)' }}
+                            >
+                              {u.can_generate_problems ? '허용' : '부여'}
+                            </button>
+                          </td>
+                          <td style={{ padding: '0.6rem' }}>
+                            <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                              <button onClick={() => handleUpdateRating(u.id, u.rating)} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: 'var(--color-3)', color: 'white' }}>⭐</button>
+                              <button onClick={() => handleUpdateTokens(u.id, u.tokens || 0)} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: '#e6a800', color: 'white' }}>🪙</button>
+                              <button onClick={() => handleUpdateCustomTitle(u.id, u.custom_title || '')} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: 'var(--color-4)', color: 'white' }}>🏷️</button>
+                              <button onClick={() => handleUpdateUsername(u.id, u.username)} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: '#6c5ce7', color: 'white' }}>✏️</button>
+                              <button onClick={() => handleViewSubmissions(u)} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: '#00b894', color: 'white' }}>📋</button>
+                              {u.username !== 'admin' && (
+                                <button onClick={() => handleDeleteUser(u.id, u.username)} className="btn" style={{ padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: 'auto', background: '#ff7675', color: 'white' }}>🗑️</button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
         </div>
         )}
@@ -3188,6 +3286,11 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
   const [editedUsername, setEditedUsername] = useState('');
   const [editedBio, setEditedBio] = useState('');
 
+  // Profile CSS customization
+  const [profileCssDraft, setProfileCssDraft] = useState('');
+  const [isEditingCss, setIsEditingCss] = useState(false);
+  const [savingCss, setSavingCss] = useState(false);
+
   // NVIDIA NIM API key state
   const [nimApiKey, setNimApiKey] = useState('');
   const [isEditingNimKey, setIsEditingNimKey] = useState(false);
@@ -3227,6 +3330,9 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
       if (!isEditingProfile) {
         setEditedUsername(data.user.username);
         setEditedBio(data.user.bio || '');
+      }
+      if (!isEditingCss) {
+        setProfileCssDraft(data.user.profile_css || '');
       }
       if (data.user) {
         const mergedUser = { ...user!, ...data.user };
@@ -3381,6 +3487,29 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
     }
   };
 
+  const handleSaveCss = async () => {
+    setSavingCss(true);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('/api/profile/css', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ css: profileCssDraft })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert('프로필 CSS가 저장되었습니다.');
+        setIsEditingCss(false);
+        fetchProfile();
+      } else {
+        alert(data.error || 'CSS 저장에 실패했습니다.');
+      }
+    } catch {
+      alert('CSS 저장에 실패했습니다.');
+    }
+    setSavingCss(false);
+  };
+
   if (!profileData) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>로딩 중...</div>;
 
   const { user: u, stats } = profileData;
@@ -3410,10 +3539,14 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
         <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
       </Helmet>
 
+      {u.profile_css && <style>{u.profile_css}</style>}
       {/* ─── 프로필 헤더 카드 ─── */}
       <div
         className="profile-header-card"
-        style={{ '--tier-color': tierColor } as React.CSSProperties}
+        style={{
+          '--tier-color': tierColor,
+          background: u.profile_gradient || 'var(--card-bg)',
+        } as React.CSSProperties}
         onMouseMove={e => {
           const rect = e.currentTarget.getBoundingClientRect();
           e.currentTarget.style.setProperty('--mouse-x', `${((e.clientX - rect.left) / rect.width) * 100}%`);
@@ -3782,6 +3915,36 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
 
       {/* ─── 프로필 테마 ─── */}
       <ProfileThemes user={user} profileData={profileData} fetchProfile={fetchProfile} />
+
+      {/* ─── 프로필 CSS ─── */}
+      <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
+        <h3 style={{ margin: '0 0 1.2rem', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          🎨 프로필 CSS
+        </h3>
+        <p style={{ fontSize: '0.85rem', opacity: 0.7, marginBottom: '1rem' }}>
+          사용자 정의 CSS로 프로필을 자유롭게 꾸며보세요. (예: <code>.profile-username &#123; color: red; &#125;</code>)
+        </p>
+        {isEditingCss ? (
+          <div>
+            <textarea value={profileCssDraft} onChange={e => setProfileCssDraft(e.target.value)}
+              placeholder="/* 여기에 CSS를 입력하세요 */"
+              style={{ width: '100%', minHeight: '150px', padding: '0.8rem 1rem', borderRadius: 'var(--radius-md)', border: '1.5px solid var(--border)', background: 'var(--bg-color)', color: 'var(--text-main)', fontFamily: 'monospace', fontSize: '0.85rem', boxSizing: 'border-box', resize: 'vertical' }} />
+            <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.8rem' }}>
+              <button onClick={handleSaveCss} disabled={savingCss} className="btn" style={{ background: 'var(--color-4)', color: 'white', opacity: savingCss ? 0.6 : 1 }}>{savingCss ? '저장 중...' : '저장'}</button>
+              <button onClick={() => { setIsEditingCss(false); setProfileCssDraft(u.profile_css || ''); }} className="btn" style={{ background: 'var(--border)', color: 'var(--text-main)' }}>취소</button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            {u.profile_css ? (
+              <pre style={{ padding: '0.8rem 1rem', borderRadius: 'var(--radius-md)', background: 'var(--bg-color)', border: '1px solid var(--border)', fontFamily: 'monospace', fontSize: '0.8rem', maxHeight: '200px', overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{u.profile_css}</pre>
+            ) : (
+              <p style={{ opacity: 0.5, fontStyle: 'italic' }}>아직 CSS가 없습니다.</p>
+            )}
+            <button onClick={() => setIsEditingCss(true)} className="btn" style={{ marginTop: '0.8rem', background: 'var(--color-4)', color: 'white', width: 'auto' }}>{u.profile_css ? '✏️ CSS 수정' : '➕ CSS 추가'}</button>
+          </div>
+        )}
+      </div>
 
       {/* ─── 내 뱃지 ─── */}
       <ProfileBadges user={user} />
