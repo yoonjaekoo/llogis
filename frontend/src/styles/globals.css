@@ -962,11 +962,6 @@ nav a.active::after {
   box-shadow: var(--card-shadow);
   transition: var(--transition);
 }
-.profile-header-card[style*="gradient"] { color: white; text-shadow: 0 2px 12px rgba(0,0,0,0.35); }
-.profile-header-card[style*="gradient"] .profile-edit-btn { background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); }
-.profile-header-card[style*="gradient"] .profile-edit-btn:hover { background: rgba(255,255,255,0.35); }
-.profile-header-card[style*="gradient"] .profile-username { background: none; -webkit-text-fill-color: white; }
-.profile-header-card[style*="gradient"] .profile-bio { color: rgba(255,255,255,0.85); }
 .profile-header-card::before {
   content: '';
   position: absolute;

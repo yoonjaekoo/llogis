@@ -314,6 +314,99 @@ const About: React.FC<{ user: User | null }> = ({ user }) => {
           <p style={{ marginBottom: '2rem' }}>수학 문제를 풀고 레이팅을 올리는 재미있는 수학 학습 플랫폼입니다.</p>
         )}
       </article>
+
+      {/* ─── AI 프로필 CSS 가이드 ─── */}
+      <article className="problem-card" style={{ marginTop: '2rem' }}>
+        <h2 style={{ color: 'var(--color-4)', marginBottom: '1rem', textAlign: 'center' }}>🤖 AI로 프로필 CSS 만들기</h2>
+        <div style={{ textAlign: 'left', lineHeight: 1.8, fontSize: '0.95rem' }}>
+          <p style={{ marginBottom: '1rem' }}>
+            프로필 페이지는 CSS 코드로 자유롭게 꾸밀 수 있습니다. AI에게 다음과 같이 요청해보세요:
+          </p>
+          <pre style={{
+            padding: '1rem', borderRadius: '0.75rem', background: 'var(--bg-color)',
+            border: '1px solid var(--border)', fontFamily: 'monospace', fontSize: '0.85rem',
+            whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginBottom: '1.5rem'
+          }}>
+{`프로필 CSS를 만들어줘. 내 프로필 페이지는 다음과 같은 구조로 되어 있어:
+
+- .profile-header-card : 프로필 상단 카드
+- .profile-avatar-wrap : 아바타 컨테이너
+- .profile-username : 사용자 이름
+- .profile-bio : 자기소개
+- .profile-tier-badge : 티어 뱃지
+- .stat-card-premium : 스탯 카드
+- .stat-label, .stat-value, .stat-sub : 스탯 텍스트
+- .tier-progress-card : 티어 진행도 카드
+- .tier-progress-bar, .tier-progress-fill : 진행도 바
+- .activity-timeline, .activity-item : 활동 기록
+- .quest-card : 퀘스트 카드
+- .profile-edit-btn : 프로필 수정 버튼
+
+CSS 변수:
+--bg-color (배경), --card-bg (카드 배경),
+--text-main (글자), --text-muted (희미한 글자),
+--border (테두리), --color-4 (포인트 색상)
+
+예쁘게 꾸며줘!`}
+          </pre>
+          <p style={{ marginBottom: '1rem' }}>
+            AI가 생성한 CSS 코드를 프로필 페이지 하단의 <strong>프로필 CSS</strong> 섹션에 붙여넣기 하세요.
+          </p>
+          <h3 style={{ color: 'var(--color-4)', margin: '1.5rem 0 0.8rem' }}>CSS 클래스 목록</h3>
+          <div style={{ display: 'grid', gap: '0.4rem', fontSize: '0.85rem' }}>
+            {[
+              ['.profile-header-card', '프로필 상단 카드 전체'],
+              ['.profile-avatar-wrap', '아바타 이미지 컨테이너'],
+              ['.profile-avatar-img', '아바타 이미지'],
+              ['.profile-avatar-fallback', '아바타 대체 텍스트'],
+              ['.profile-avatar-glow', '아바타 주변 글로우 효과'],
+              ['.profile-username', '사용자 이름'],
+              ['.profile-bio', '자기소개'],
+              ['.profile-tier-badge', '티어 뱃지'],
+              ['.profile-edit-btn', '프로필 수정 버튼'],
+              ['.stat-card-premium', '스탯 카드'],
+              ['.stat-icon', '스탯 아이콘'],
+              ['.stat-label', '스탯 레이블'],
+              ['.stat-value', '스탯 값'],
+              ['.stat-sub', '스탯 서브텍스트'],
+              ['.tier-progress-card', '티어 진행도 카드'],
+              ['.tier-progress-bar', '진행도 바 배경'],
+              ['.tier-progress-fill', '진행도 바 채움'],
+              ['.activity-timeline', '활동 기록 타임라인'],
+              ['.activity-item', '활동 기록 항목'],
+              ['.quest-card', '퀘스트 카드'],
+              ['.quest-card.completed', '완료된 퀘스트 카드'],
+              ['.progress-bar', '퀘스트 진행도 바'],
+              ['.progress-fill', '퀘스트 진행도 채움'],
+            ].map(([cls, desc]) => (
+              <div key={cls} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                <code style={{ fontWeight: 700, color: 'var(--color-4)', fontSize: '0.82rem', minWidth: '180px' }}>{cls}</code>
+                <span style={{ opacity: 0.7 }}>{desc}</span>
+              </div>
+            ))}
+          </div>
+          <h3 style={{ color: 'var(--color-4)', margin: '1.5rem 0 0.8rem' }}>CSS 변수</h3>
+          <div style={{ display: 'grid', gap: '0.4rem', fontSize: '0.85rem' }}>
+            {[
+              ['--bg-color', '페이지 배경색'],
+              ['--card-bg', '카드 배경색'],
+              ['--text-main', '기본 글자색'],
+              ['--text-muted', '희미한 글자색'],
+              ['--border', '테두리 색상'],
+              ['--color-4', '포인트/강조 색상'],
+              ['--card-shadow', '카드 그림자'],
+              ['--radius-sm', '작은 둥근 모서리'],
+              ['--radius-md', '중간 둥근 모서리'],
+              ['--radius-lg', '큰 둥근 모서리'],
+            ].map(([varName, desc]) => (
+              <div key={varName} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                <code style={{ fontWeight: 700, color: '#e6a800', fontSize: '0.82rem', minWidth: '180px' }}>{varName}</code>
+                <span style={{ opacity: 0.7 }}>{desc}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </article>
     </main>
   );
 };
@@ -1420,7 +1513,7 @@ const UserProfile: React.FC = () => {
       <div style={{ maxWidth: '800px', margin: '0 auto' }}>
         <button onClick={() => navigate('/ranking')} style={{ background: 'none', border: 'none', color: 'var(--color-3)', cursor: 'pointer', marginBottom: '1rem', fontWeight: 800 }}>← 랭킹으로 돌아가기</button>
         
-        <article className="problem-card" style={{ textAlign: 'center', background: u.profile_gradient || 'var(--card-bg)', color: u.profile_gradient ? 'white' : undefined, textShadow: u.profile_gradient ? '0 2px 12px rgba(0,0,0,0.35)' : undefined }}>
+        <article className="problem-card" style={{ textAlign: 'center' }}>
           {u.profile_css && <style>{u.profile_css}</style>}
           <div style={{ position: 'relative', width: '120px', height: '120px', margin: '0 auto 2rem' }}>
             {u.profile_image_url ? (
@@ -2894,105 +2987,6 @@ const BoxOpenModal: React.FC<{ rewards: any[]; boxName: string; boxIcon: string;
   );
 };
 
-const ProfileThemes: React.FC<{ user: User | null; profileData: any; fetchProfile: () => void }> = ({ user, profileData, fetchProfile }) => {
-  const [themes, setThemes] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState('');
-
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    fetch('/api/profile/themes', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.themes) setThemes(data.themes);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
-
-  const handleBuy = async (themeId: string) => {
-    const token = localStorage.getItem('token');
-    const res = await fetch('/api/profile/themes/buy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ themeId })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      setMessage(`✅ ${data.message}`);
-      fetchProfile();
-      const token2 = localStorage.getItem('token');
-      fetch('/api/profile/themes', { headers: { 'Authorization': `Bearer ${token2}` } })
-        .then(r => r.json()).then(d => { if (d.themes) setThemes(d.themes); });
-    } else {
-      setMessage(`❌ ${data.error}`);
-    }
-    setTimeout(() => setMessage(''), 3000);
-  };
-
-  const handleEquip = async (themeId: string) => {
-    const token = localStorage.getItem('token');
-    const res = await fetch('/api/profile/themes/equip', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ themeId })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      setMessage(`✅ ${data.message}`);
-      const updatedUser = { ...user!, profile_theme: themeId };
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      fetchProfile();
-      const token2 = localStorage.getItem('token');
-      fetch('/api/profile/themes', { headers: { 'Authorization': `Bearer ${token2}` } })
-        .then(r => r.json()).then(d => { if (d.themes) setThemes(d.themes); });
-    } else {
-      setMessage(`❌ ${data.error}`);
-    }
-    setTimeout(() => setMessage(''), 3000);
-  };
-
-  if (loading) return null;
-
-  return (
-    <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
-      <h3 style={{ margin: '0 0 1.2rem', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        🎨 프로필 테마
-      </h3>
-      {message && (
-        <div style={{ padding: '0.6rem 1rem', marginBottom: '1rem', borderRadius: '0.5rem', background: 'rgba(92,149,255,0.1)', border: '1px solid var(--color-4)', fontWeight: 700, fontSize: '0.9rem' }}>{message}</div>
-      )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '0.75rem' }}>
-        {themes.map((t: any) => {
-          const isEquipped = t.equipped;
-          return (
-            <div key={t.theme_id} style={{
-              padding: '1rem', borderRadius: '0.75rem', textAlign: 'center',
-              background: t.gradient, color: 'white', fontWeight: 800,
-              border: isEquipped ? '3px solid var(--color-4)' : '1px solid rgba(255,255,255,0.2)',
-              opacity: t.owned ? 1 : 0.5, cursor: t.owned ? 'pointer' : 'default',
-              transition: 'all 0.2s', minHeight: '80px', display: 'flex', flexDirection: 'column', justifyContent: 'center',
-            }}
-              onClick={() => {
-                if (t.owned && !isEquipped) handleEquip(t.theme_id);
-                else if (!t.owned && t.cost > 0) handleBuy(t.theme_id);
-              }}
-              title={t.owned ? (isEquipped ? '장착 중' : '클릭하여 장착') : `${t.cost} 토큰에 구매`}
-            >
-              <div style={{ fontSize: '0.9rem', textShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>{t.name}</div>
-              <div style={{ fontSize: '0.65rem', marginTop: '0.25rem', opacity: 0.8, textShadow: '0 1px 4px rgba(0,0,0,0.3)' }}>
-                {isEquipped ? '✨ 장착 중' : (t.owned ? '클릭 장착' : `🪙 ${t.cost}`)}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
 const ProfileBadges: React.FC<{ user: User | null }> = ({ user }) => {
   const [badges, setBadges] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -3543,10 +3537,7 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
       {/* ─── 프로필 헤더 카드 ─── */}
       <div
         className="profile-header-card"
-        style={{
-          '--tier-color': tierColor,
-          background: u.profile_gradient || 'var(--card-bg)',
-        } as React.CSSProperties}
+        style={{ '--tier-color': tierColor } as React.CSSProperties}
         onMouseMove={e => {
           const rect = e.currentTarget.getBoundingClientRect();
           e.currentTarget.style.setProperty('--mouse-x', `${((e.clientX - rect.left) / rect.width) * 100}%`);
@@ -3912,9 +3903,6 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
           )}
         </div>
       </div>
-
-      {/* ─── 프로필 테마 ─── */}
-      <ProfileThemes user={user} profileData={profileData} fetchProfile={fetchProfile} />
 
       {/* ─── 프로필 CSS ─── */}
       <div className="problem-card" style={{ marginBottom: '1.5rem' }}>

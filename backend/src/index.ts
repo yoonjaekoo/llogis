@@ -450,12 +450,6 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
       if (titleRes.rows.length > 0) equippedTitleName = titleRes.rows[0].name;
     }
 
-    let profileGradient = 'linear-gradient(135deg, var(--color-4), #7b5ff5)';
-    if (user.profile_theme) {
-      const themeRes = await pool.query('SELECT gradient FROM profile_themes WHERE theme_id = $1', [user.profile_theme]);
-      if (themeRes.rows.length > 0) profileGradient = themeRes.rows[0].gradient;
-    }
-
     const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
 
     const rating = parseFloat(user.rating) || 0;
@@ -514,12 +508,6 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
       if (titleRes.rows.length > 0) equippedTitleName = titleRes.rows[0].name;
     }
 
-    let profileGradient = 'linear-gradient(135deg, var(--color-4), #7b5ff5)';
-    if (user.profile_theme) {
-      const themeRes = await pool.query('SELECT gradient FROM profile_themes WHERE theme_id = $1', [user.profile_theme]);
-      if (themeRes.rows.length > 0) profileGradient = themeRes.rows[0].gradient;
-    }
-
     const statsResult = await pool.query(
       'SELECT COUNT(*) as total FROM submissions WHERE user_id = $1',
       [userId]
@@ -541,8 +529,7 @@ app.get('/api/users/profile', authenticateToken, async (req: any, res: Response)
     res.json({
       user: {
         ...user,
-        equipped_title: equippedTitleName,
-        profile_gradient: profileGradient
+        equipped_title: equippedTitleName
       },
       stats: {
         totalSubmissions,
@@ -853,11 +840,6 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
       const titleRes = await pool.query('SELECT name FROM titles WHERE title_id = $1', [user.equipped_title]);
       if (titleRes.rows.length > 0) equippedTitleName = titleRes.rows[0].name;
     }
-    let profileGradient = 'linear-gradient(135deg, var(--color-4), #7b5ff5)';
-    if (user.profile_theme) {
-      const themeRes = await pool.query('SELECT gradient FROM profile_themes WHERE theme_id = $1', [user.profile_theme]);
-      if (themeRes.rows.length > 0) profileGradient = themeRes.rows[0].gradient;
-    }
     const titlesRes = await pool.query(
       'SELECT t.title_id, t.name, t.description FROM user_titles ut JOIN titles t ON t.title_id = ut.title_id WHERE ut.user_id = $1 ORDER BY ut.unlocked_at',
       [id]
@@ -874,8 +856,7 @@ app.get('/api/users/:id/profile', async (req: Request, res: Response) => {
         ...user,
         rating: parseFloat(user.rating) || 0,
         tier: getTier(parseFloat(user.rating) || 0),
-        equipped_title: equippedTitleName || user.equipped_title,
-        profile_gradient: profileGradient
+        equipped_title: equippedTitleName || user.equipped_title
       },
       titles: titlesRes.rows,
       stats: {
@@ -2856,104 +2837,6 @@ app.post('/api/boxes/open', authenticateToken, async (req: any, res: Response) =
     res.status(500).json({ error: '상자 개봉에 실패했습니다.' });
   } finally {
     client.release();
-  }
-});
-
-// --- Profile Themes API ---
-app.get('/api/profile/themes', authenticateToken, async (req: any, res: Response) => {
-  const userId = req.user.id;
-  try {
-    const themesRes = await pool.query('SELECT * FROM profile_themes ORDER BY cost ASC');
-    const userThemesRes = await pool.query('SELECT theme_id FROM user_profile_themes WHERE user_id = $1', [userId]);
-    const userThemeIds = new Set(userThemesRes.rows.map((r: any) => r.theme_id));
-    const userRes = await pool.query('SELECT profile_theme FROM users WHERE id = $1', [userId]);
-    const currentTheme = userRes.rows[0]?.profile_theme || 'default';
-
-    const themes = themesRes.rows.map((t: any) => ({
-      ...t,
-      owned: userThemeIds.has(t.theme_id) || t.cost === 0,
-      equipped: currentTheme === t.theme_id,
-    }));
-    res.json({ themes });
-  } catch (err) {
-    console.error('Failed to fetch themes:', err);
-    res.status(500).json({ error: '테마 목록 조회에 실패했습니다.' });
-  }
-});
-
-app.post('/api/profile/themes/buy', authenticateToken, async (req: any, res: Response) => {
-  const userId = req.user.id;
-  const { themeId } = req.body;
-  if (!themeId) return res.status(400).json({ error: 'themeId is required' });
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const themeRes = await client.query('SELECT * FROM profile_themes WHERE theme_id = $1', [themeId]);
-    if (themeRes.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: '존재하지 않는 테마입니다.' });
-    }
-    const theme = themeRes.rows[0];
-    if (theme.cost === 0) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: '기본 테마는 구매할 수 없습니다.' });
-    }
-
-    const existingRes = await client.query(
-      'SELECT 1 FROM user_profile_themes WHERE user_id = $1 AND theme_id = $2',
-      [userId, themeId]
-    );
-    if (existingRes.rows.length > 0) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: '이미 보유한 테마입니다.' });
-    }
-
-    const userRes = await client.query('SELECT tokens FROM users WHERE id = $1 FOR UPDATE', [userId]);
-    if (userRes.rows[0].tokens < theme.cost) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: `토큰이 부족합니다. (필요: ${theme.cost} 토큰)` });
-    }
-
-    await client.query('UPDATE users SET tokens = tokens - $1 WHERE id = $2', [theme.cost, userId]);
-    await client.query(
-      'INSERT INTO user_profile_themes (user_id, theme_id) VALUES ($1, $2)',
-      [userId, themeId]
-    );
-
-    await client.query('COMMIT');
-    res.json({ message: `${theme.name} 테마를 구매했습니다!` });
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    console.error('Failed to buy theme:', err);
-    res.status(500).json({ error: '테마 구매에 실패했습니다.' });
-  } finally {
-    client.release();
-  }
-});
-
-app.post('/api/profile/themes/equip', authenticateToken, async (req: any, res: Response) => {
-  const userId = req.user.id;
-  const { themeId } = req.body;
-  if (!themeId) return res.status(400).json({ error: 'themeId is required' });
-
-  try {
-    if (themeId !== 'default') {
-      const ownedRes = await pool.query(
-        'SELECT 1 FROM user_profile_themes WHERE user_id = $1 AND theme_id = $2',
-        [userId, themeId]
-      );
-      if (ownedRes.rows.length === 0) {
-        return res.status(403).json({ error: '보유하지 않은 테마입니다.' });
-      }
-    }
-    await pool.query('UPDATE users SET profile_theme = $1 WHERE id = $2', [themeId, userId]);
-    const themeRes = await pool.query('SELECT name FROM profile_themes WHERE theme_id = $1', [themeId]);
-    const themeName = themeRes.rows.length > 0 ? themeRes.rows[0].name : '기본';
-    res.json({ message: `${themeName} 테마를 장착했습니다.`, profileTheme: themeId });
-  } catch (err) {
-    console.error('Failed to equip theme:', err);
-    res.status(500).json({ error: '테마 장착에 실패했습니다.' });
   }
 });
 
