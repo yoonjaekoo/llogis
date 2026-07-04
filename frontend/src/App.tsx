@@ -1457,287 +1457,7 @@ const Ranking: React.FC = () => {
 
 const UserProfile: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [profileData, setProfileData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [streakHistory, setStreakHistory] = useState<any>(null);
-  const [streakOffset, setStreakOffset] = useState(0);
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  useEffect(() => {
-    fetch(`/api/users/${id}/profile`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.error) {
-          alert(data.error);
-          navigate('/ranking');
-          return;
-        }
-        setProfileData(data);
-        setLoading(false);
-      })
-      .catch(() => {
-        alert('사용자 정보를 불러올 수 없습니다.');
-        navigate('/ranking');
-      });
-  }, [id, navigate]);
-
-  useEffect(() => {
-    if (!id) return;
-    fetch(`/api/users/${id}/streak-history?offset=${streakOffset}`)
-      .then(res => res.json())
-      .then(data => setStreakHistory(data))
-      .catch(() => {});
-  }, [id, streakOffset]);
-
-  if (loading) return <div className="container" style={{ padding: '4rem', textAlign: 'center' }}>로딩 중...</div>;
-
-  const { user: u, stats } = profileData;
-
-  const tierColors: { [key: string]: string } = {
-    'Bronze': '#cd7f32', 'Silver': '#c0c0c0', 'Gold': '#ffd700',
-    'Platinum': '#e5e4e2', 'Diamond': '#b9f2ff', 'Ruby': '#e0115f',
-    'Master': '#800080', 'God': '#ff4500', 'Hacker': '#00ff00',
-    '치피치피차파차파': '#ff1493', 'ChatGPT': '#10a37f',
-    '출제자': '#ffb300', '주인장': '#6a0dad', '정답': '#00e5ff'
-  };
-
-  return (
-    <main className="container" style={{ padding: '4rem 0' }}>
-      <Helmet>
-        <title>{u.username} 프로필 | Logis - 수학 문제 풀이 플랫폼</title>
-        <meta name="description" content={`${u.username}님의 Logis 프로필 - 레이팅 ${Math.round(u.rating).toLocaleString()} - 정답률 ${Math.round(stats.accuracy)}%`} />
-        <meta property="og:title" content={`${u.username} | Logis`} />
-        <link rel="canonical" href={`https://llogis.xyz${location.pathname}`} />
-      </Helmet>
-      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-        <button onClick={() => navigate('/ranking')} style={{ background: 'none', border: 'none', color: 'var(--color-3)', cursor: 'pointer', marginBottom: '1rem', fontWeight: 800 }}>← 랭킹으로 돌아가기</button>
-        
-        <article className="problem-card" style={{ textAlign: 'center' }}>
-          {u.profile_css && <style>{u.profile_css}</style>}
-          <div style={{ position: 'relative', width: '120px', height: '120px', margin: '0 auto 2rem' }}>
-            {u.profile_image_url ? (
-              <img src={u.profile_image_url} alt={`${u.username} 프로필 사진`} loading="lazy" style={{ width: '120px', height: '120px', borderRadius: '50%', objectFit: 'cover', boxShadow: '0 0 20px rgba(0,0,0,0.2)' }} />
-            ) : (
-              <div role="img" aria-label={`${u.username} 프로필 이미지`} style={{ 
-                width: '120px', height: '120px', borderRadius: '50%', 
-                background: 'var(--color-3)', 
-                display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                fontSize: '3rem', boxShadow: '0 0 20px rgba(0,0,0,0.2)', color: 'white', fontWeight: 800
-              }}>
-                {u.username[0].toUpperCase()}
-              </div>
-            )}
-          </div>
-
-          <h2 style={{ fontSize: '2.5rem', marginBottom: '0.5rem', color: 'var(--color-4)' }}>{u.username}</h2>
-          {u.equipped_title && (
-            <div style={{ marginBottom: '0.3rem', fontWeight: 700, color: 'var(--color-4)', fontSize: '1rem' }}>
-              [{u.equipped_title}]
-            </div>
-          )}
-          {u.custom_title && (
-            <div style={{ marginBottom: '0.5rem', fontWeight: 700, color: '#ff6b9d', fontSize: '0.95rem', fontStyle: 'italic' }}>
-              ✨ {u.custom_title}
-            </div>
-          )}
-
-          <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.8rem', flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 800, fontSize: '1.3rem', color: 'var(--color-4)' }}>
-              ✨ {Math.round(u.rating).toLocaleString()} RP
-            </span>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: '0.3rem', padding: '0.2rem 0.8rem',
-              borderRadius: '99px', background: `${tierColors[u.tier] || '#888'}22`,
-              border: `1.5px solid ${tierColors[u.tier] || '#888'}`,
-              color: tierColors[u.tier] || '#888', fontWeight: 800, fontSize: '0.85rem',
-              textTransform: 'uppercase', letterSpacing: '0.05em'
-            }}>
-              🏅 {u.tier}
-            </span>
-          </div>
-
-          <div style={{ 
-            maxWidth: '500px', margin: '0 auto 2.5rem', padding: '1.5rem', 
-            background: 'rgba(0,0,0,0.03)', borderRadius: '1rem', fontSize: '1.1rem', 
-            lineHeight: 1.6, whiteSpace: 'pre-wrap', fontStyle: u.bio ? 'normal' : 'italic', opacity: u.bio ? 1 : 0.5 
-          }}>
-            {u.bio || "자기소개가 없습니다."}
-          </div>
-
-          <section aria-label="통계" className="profile-stats-grid">
-            <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>해결 문제</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{u.problems_solved || stats.correctSubmissions}</div>
-            </div>
-            <div style={{ padding: '1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '1rem' }}>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>정답률</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{Math.round(stats.accuracy)}%</div>
-            </div>
-          </section>
-
-          {/* 프로필 아이콘 뱃지 */}
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
-            {u.has_firework_effect && <span style={{ padding: '0.2rem 0.6rem', borderRadius: '99px', background: 'var(--card-bg)', border: '1px solid var(--border)', fontSize: '0.8rem', fontWeight: 700 }}>🎆 폭죽 이펙트</span>}
-            {u.has_developer_chango && <span style={{ padding: '0.2rem 0.6rem', borderRadius: '99px', background: 'var(--card-bg)', border: '1px solid var(--border)', fontSize: '0.8rem', fontWeight: 700 }}>🎫 개발자의 칭호</span>}
-          </div>
-
-          <div style={{ textAlign: 'center', opacity: 0.6, fontSize: '0.9rem', marginTop: '1rem' }}>
-            가입일: {new Date(u.created_at).toLocaleDateString()}
-            {u.last_active_date ? ` · 마지막 활동: ${new Date(u.last_active_date).toLocaleDateString()}` : ''}
-          </div>
-        </article>
-
-        {/* 일일 퀘스트 */}
-        {u.quests && Array.isArray(u.quests) && u.quests.length > 0 && (
-          <div className="problem-card" style={{ marginTop: '1.5rem' }}>
-            <h3 style={{ margin: '0 0 0.75rem', color: '#5fae35', fontWeight: 800, fontSize: '1.1rem' }}>
-              📋 일일 퀘스트
-            </h3>
-            <div style={{ display: 'grid', gap: '0.75rem' }}>
-              {u.quests.map((q: any, i: number) => (
-                <div key={i} style={{
-                  padding: '0.8rem 1rem',
-                  borderRadius: '0.5rem',
-                  background: q.completed ? 'rgba(95,174,53,0.1)' : 'var(--card-bg)',
-                  border: `1px solid ${q.completed ? '#5fae35' : 'var(--border)'}`,
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  opacity: q.completed ? 0.8 : 1
-                }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{q.title}</div>
-                    {q.type === 'accuracy' ? (
-                      <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>{q.current}% / {q.target}%</div>
-                    ) : (
-                      <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>{q.current} / {q.target}</div>
-                    )}
-                  </div>
-                  <div style={{ textAlign: 'right', fontSize: '0.8rem' }}>
-                    <div style={{ fontWeight: 700, color: '#e6a800' }}>+{q.tokenReward}🪙</div>
-                    <div style={{ fontWeight: 700, color: '#00b360' }}>+{q.xpReward}⚡</div>
-                    {q.completed && <div style={{ color: '#5fae35', fontWeight: 800 }}>✅ 완료</div>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 6-month streak calendar for public profile */}
-        {
-          (() => {
-            const historyMap: Record<string, number> = {};
-            const repairMap: Record<string, boolean> = {};
-            if (streakHistory?.history) {
-              for (const h of streakHistory.history) {
-                historyMap[h.date] = parseInt(h.solved);
-                if (h.has_repair) repairMap[h.date] = true;
-              }
-            }
-            const now = new Date();
-            const endM = now.getMonth() - streakOffset * 6;
-            const calendarMonths = [];
-            for (let i = 5; i >= 0; i--) {
-              const m = endM - i;
-              const y = now.getFullYear() + Math.floor(m / 12);
-              calendarMonths.push({ year: y, month: ((m % 12) + 12) % 12 });
-            }
-            const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-            return (
-              <div className="problem-card" style={{ marginTop: '1.5rem' }}>
-                <h3 style={{ margin: '0 0 0.75rem', color: '#5fae35', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  📅 스트릭 달력
-                </h3>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <button onClick={() => setStreakOffset(o => o + 1)} className="btn" style={{ width: 'auto', padding: '0.4rem 1rem', fontSize: '0.85rem', background: 'var(--card-bg)', border: '1px solid var(--border)', color: 'var(--text-main)' }}>
-                    ◀ 이전
-                  </button>
-                  <span style={{ fontWeight: 800, fontSize: '1rem' }}>
-                    {calendarMonths[0].year}.{String(calendarMonths[0].month + 1).padStart(2, '0')} - {calendarMonths[5].year}.{String(calendarMonths[5].month + 1).padStart(2, '0')}
-                  </span>
-                  <button onClick={() => streakOffset > 0 && setStreakOffset(o => o - 1)} disabled={streakOffset <= 0} className="btn" style={{ width: 'auto', padding: '0.4rem 1rem', fontSize: '0.85rem', background: 'var(--card-bg)', border: '1px solid var(--border)', color: streakOffset > 0 ? 'var(--text-main)' : 'var(--text-muted)', opacity: streakOffset > 0 ? 1 : 0.5, cursor: streakOffset > 0 ? 'pointer' : 'not-allowed' }}>
-                    다음 ▶
-                  </button>
-                </div>
-                <div className="streak-calendar-grid">
-                  {calendarMonths.map(({ year, month }) => {
-                    const firstDay = new Date(year, month, 1).getDay();
-                    const daysInMonth = new Date(year, month + 1, 0).getDate();
-                    const cells: (null | { date: string; day: number; count: number })[] = [];
-                    for (let i = 0; i < firstDay; i++) cells.push(null);
-                    for (let d = 1; d <= daysInMonth; d++) {
-                      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                      cells.push({ date: dateStr, day: d, count: historyMap[dateStr] || 0 });
-                    }
-                    return (
-                      <div key={`${year}-${month}`} style={{ minWidth: '110px' }}>
-                        <div style={{ fontWeight: 800, fontSize: '0.85rem', textAlign: 'center', marginBottom: '0.4rem' }}>
-                          {year}.{String(month + 1).padStart(2, '0')}
-                        </div>
-                        <div className="streak-month-grid">
-                          {dayNames.map(dn => (
-                            <div key={dn} style={{ fontSize: '0.55rem', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{dn}</div>
-                          ))}
-                          {cells.map((cell, i) => (
-                            cell ? (
-                              <div
-                                key={i}
-                                title={repairMap[cell.date] ? `${cell.date} - 스트릭 리페어 사용` : `${cell.date} - ${cell.count}문제 해결`}
-                                className={`streak-day ${cell.count > 0 ? 'has-solved' : ''}`}
-                                style={{
-                                  background: repairMap[cell.date]
-                                    ? '#9370db'
-                                    : cell.count > 0
-                                    ? cell.count >= 5 ? '#7ad151'
-                                      : cell.count >= 3 ? '#a8e06a'
-                                      : '#d4ed9a'
-                                    : 'transparent',
-                                  color: repairMap[cell.date] ? 'white' : cell.count > 0 ? 'white' : 'var(--text-muted)',
-                                  fontWeight: repairMap[cell.date] ? 700 : cell.count > 0 ? 700 : 400
-                                }}>
-                                {cell.day}
-                              </div>
-                            ) : (
-                              <div key={i} />
-                            )
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })()
-        }
-
-        {/* 획득한 칭호 */}
-        {profileData?.titles && profileData.titles.length > 0 && (
-          <div className="problem-card" style={{ marginTop: '1.5rem' }}>
-            <h3 style={{ margin: '0 0 0.75rem', color: 'var(--color-4)', fontWeight: 800, fontSize: '1.1rem' }}>
-              🏅 획득한 칭호
-            </h3>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-              {profileData.titles.map((t: any) => (
-                <div key={t.title_id} style={{
-                  padding: '0.3rem 0.8rem',
-                  borderRadius: '99px',
-                  background: 'var(--card-bg)',
-                  border: '1px solid var(--border)',
-                  fontSize: '0.85rem',
-                  fontWeight: 700,
-                  color: u.equipped_title === t.title_id ? 'var(--color-4)' : 'var(--text-main)'
-                }}>
-                  {t.name}
-                  {u.equipped_title === t.title_id && <span style={{ marginLeft: '0.3rem', fontSize: '0.7rem', opacity: 0.7 }}>(장착 중)</span>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </main>
-  );
+  return <Profile user={null} setUser={() => {}} readonly profileUserId={parseInt(id || '0', 10)} />;
 };
 
 const Admin: React.FC<{ user: User | null }> = ({ user }) => {
@@ -3267,7 +2987,7 @@ const TitleSection: React.FC<{ user: User | null; setUser: (u: User) => void; re
   );
 };
 
-const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ user, setUser }) => {
+const Profile: React.FC<{ user: User | null; setUser: (u: User) => void; readonly?: boolean; profileUserId?: number }> = ({ user, setUser, readonly, profileUserId }) => {
   const [profileData, setProfileData] = useState<any>(null);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -3299,18 +3019,30 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
   const [problemTypeStats, setProblemTypeStats] = useState<any[]>([]);
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
 
+  const uid = readonly ? profileUserId : user?.id;
   useEffect(() => {
-    if (!user?.id) return;
-    fetch(`/api/users/${user.id}/streak-history?offset=${streakOffset}`)
+    if (!uid) return;
+    fetch(`/api/users/${uid}/streak-history?offset=${streakOffset}`)
       .then(res => res.json())
       .then(data => setStreakHistory(data))
       .catch(() => {});
-  }, [user?.id, streakOffset]);
+  }, [uid, streakOffset]);
 
   const navigate = useNavigate();
   const location = useLocation();
 
   const fetchProfile = useCallback(() => {
+    if (readonly) {
+      if (!profileUserId) return;
+      fetch(`/api/users/${profileUserId}/profile`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) return;
+          setProfileData(data);
+        })
+        .catch(() => {});
+      return;
+    }
     if (!user) return;
     const token = localStorage.getItem('token');
     fetch('/api/users/profile', {
@@ -3366,15 +3098,15 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
       if (Array.isArray(data)) setProblemTypeStats(data);
     })
     .catch(() => {});
-  }, [user]);
+  }, [user, readonly, profileUserId]);
 
   useEffect(() => {
-    if (!user) {
+    if (!readonly && !user) {
       navigate('/login');
       return;
     }
     fetchProfile();
-  }, [user, navigate, fetchProfile]);
+  }, [user, navigate, fetchProfile, readonly]);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3554,16 +3286,18 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
               {u.username[0].toUpperCase()}
             </div>
           )}
-          <button
-            onClick={() => setIsUpdatingImage(!isUpdatingImage)}
-            style={{ position: 'absolute', bottom: -2, right: -2, background: 'var(--color-4)', border: '3px solid var(--card-bg)', borderRadius: '0.7rem', width: '34px', height: '34px', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', zIndex: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.25)', transition: 'transform 0.2s' }}
-            title="프로필 사진 변경"
-          >
-            📷
-          </button>
+          {!readonly && (
+            <button
+              onClick={() => setIsUpdatingImage(!isUpdatingImage)}
+              style={{ position: 'absolute', bottom: -2, right: -2, background: 'var(--color-4)', border: '3px solid var(--card-bg)', borderRadius: '0.7rem', width: '34px', height: '34px', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', zIndex: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.25)', transition: 'transform 0.2s' }}
+              title="프로필 사진 변경"
+            >
+              📷
+            </button>
+          )}
         </div>
 
-        {isUpdatingImage && (
+        {!readonly && isUpdatingImage && (
           <form onSubmit={handleUpdateProfileImage} style={{ marginBottom: '1.5rem', maxWidth: '380px', margin: '0 auto 1.5rem' }}>
             <input
               type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif"
@@ -3575,7 +3309,7 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
           </form>
         )}
 
-        {isEditingProfile ? (
+        {!readonly && isEditingProfile ? (
           <form onSubmit={handleUpdateProfile} style={{ maxWidth: '480px', margin: '0 auto 1.5rem' }}>
             <div style={{ marginBottom: '1rem', textAlign: 'left' }}>
               <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>사용자 이름</label>
@@ -3623,9 +3357,11 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
               </div>
             )}
             {u.bio && <p className="profile-bio">{u.bio}</p>}
-            <button onClick={() => { setEditedUsername(u.username); setEditedBio(u.bio || ''); setIsEditingProfile(true); }} className="profile-edit-btn">
-              ✏️ 프로필 수정
-            </button>
+            {!readonly && (
+              <button onClick={() => { setEditedUsername(u.username); setEditedBio(u.bio || ''); setIsEditingProfile(true); }} className="profile-edit-btn">
+                ✏️ 프로필 수정
+              </button>
+            )}
           </>
         )}
       </div>
@@ -3912,7 +3648,7 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
         <p style={{ fontSize: '0.85rem', opacity: 0.7, marginBottom: '1rem' }}>
           사용자 정의 CSS로 프로필을 자유롭게 꾸며보세요. (예: <code>.profile-username &#123; color: red; &#125;</code>)
         </p>
-        {isEditingCss ? (
+        {!readonly && isEditingCss ? (
           <div>
             <textarea value={profileCssDraft} onChange={e => setProfileCssDraft(e.target.value)}
               placeholder="/* 여기에 CSS를 입력하세요 */"
@@ -3929,7 +3665,9 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
             ) : (
               <p style={{ opacity: 0.5, fontStyle: 'italic' }}>아직 CSS가 없습니다.</p>
             )}
-            <button onClick={() => setIsEditingCss(true)} className="btn" style={{ marginTop: '0.8rem', background: 'var(--color-4)', color: 'white', width: 'auto' }}>{u.profile_css ? '✏️ CSS 수정' : '➕ CSS 추가'}</button>
+            {!readonly && (
+              <button onClick={() => setIsEditingCss(true)} className="btn" style={{ marginTop: '0.8rem', background: 'var(--color-4)', color: 'white', width: 'auto' }}>{u.profile_css ? '✏️ CSS 수정' : '➕ CSS 추가'}</button>
+            )}
           </div>
         )}
       </div>
@@ -3940,57 +3678,58 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
       {/* ─── 보유 상자 ─── */}
       <ProfileBoxes user={user} profileData={profileData} fetchProfile={fetchProfile} />
 
-      {/* ─── 계정 설정 ─── */}
-      <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
-        <h3 style={{ margin: '0 0 1.2rem', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          🔐 계정 설정
-        </h3>
+      {!readonly && (
+        <>
+        <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
+          <h3 style={{ margin: '0 0 1.2rem', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            🔐 계정 설정
+          </h3>
 
-        <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-          가입일: {new Date(u.created_at).toLocaleDateString()}
+          <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+            가입일: {new Date(u.created_at).toLocaleDateString()}
+          </div>
+
+          <button
+            onClick={() => setIsChangingPassword(!isChangingPassword)}
+            style={{ background: 'none', border: 'none', color: 'var(--color-4)', cursor: 'pointer', fontWeight: 800, fontSize: '0.95rem', padding: 0, textDecoration: 'underline' }}
+          >
+            {isChangingPassword ? '취소' : '비밀번호 변경'}
+          </button>
+
+          {isChangingPassword && (
+            <form onSubmit={handleChangePassword} style={{ marginTop: '1.2rem', maxWidth: '380px' }}>
+              <input type="password" placeholder="현재 비밀번호" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)}
+                style={{ width: '100%', padding: '0.8rem 1rem', borderRadius: 'var(--radius-md)', border: '1.5px solid var(--border)', background: 'var(--bg-color)', color: 'var(--text-main)', marginBottom: '0.6rem', boxSizing: 'border-box' }} required />
+              <input type="password" placeholder="새 비밀번호" value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                style={{ width: '100%', padding: '0.8rem 1rem', borderRadius: 'var(--radius-md)', border: '1.5px solid var(--border)', background: 'var(--bg-color)', color: 'var(--text-main)', marginBottom: '0.8rem', boxSizing: 'border-box' }} required />
+              <button type="submit" className="btn" style={{ background: 'var(--color-4)', color: 'white', padding: '0.7rem' }}>변경 확인</button>
+            </form>
+          )}
         </div>
 
-        <button
-          onClick={() => setIsChangingPassword(!isChangingPassword)}
-          style={{ background: 'none', border: 'none', color: 'var(--color-4)', cursor: 'pointer', fontWeight: 800, fontSize: '0.95rem', padding: 0, textDecoration: 'underline' }}
-        >
-          {isChangingPassword ? '취소' : '비밀번호 변경'}
-        </button>
+        <TitleSection user={user} setUser={setUser} refreshKey={titleRefreshKey} />
 
-        {isChangingPassword && (
-          <form onSubmit={handleChangePassword} style={{ marginTop: '1.2rem', maxWidth: '380px' }}>
-            <input type="password" placeholder="현재 비밀번호" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)}
-              style={{ width: '100%', padding: '0.8rem 1rem', borderRadius: 'var(--radius-md)', border: '1.5px solid var(--border)', background: 'var(--bg-color)', color: 'var(--text-main)', marginBottom: '0.6rem', boxSizing: 'border-box' }} required />
-            <input type="password" placeholder="새 비밀번호" value={newPassword} onChange={e => setNewPassword(e.target.value)}
-              style={{ width: '100%', padding: '0.8rem 1rem', borderRadius: 'var(--radius-md)', border: '1.5px solid var(--border)', background: 'var(--bg-color)', color: 'var(--text-main)', marginBottom: '0.8rem', boxSizing: 'border-box' }} required />
-            <button type="submit" className="btn" style={{ background: 'var(--color-4)', color: 'white', padding: '0.7rem' }}>변경 확인</button>
-          </form>
+        {/* ─── 개발자의 칭호 ─── */}
+        {user?.has_developer_chango && (
+          <CustomTitleChango user={user} setUser={setUser} />
         )}
-      </div>
 
-      <TitleSection user={user} setUser={setUser} refreshKey={titleRefreshKey} />
-
-      {/* ─── 개발자의 칭호 ─── */}
-      {user?.has_developer_chango && (
-        <CustomTitleChango user={user} setUser={setUser} />
-      )}
-
-      {/* ─── NVIDIA NIM API 키 ─── */}
-      <div className="problem-card">
-        <h3 style={{ margin: '0 0 0.5rem', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          🤖 NVIDIA NIM API 키
-        </h3>
-        <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', margin: '0 0 1rem' }}>
-          {hasNimKey ? '✅ API 키가 등록되어 있습니다. AI 문제 생성 기능을 사용할 수 있습니다.' : 'AI 문제 생성 기능을 사용하려면 NVIDIA NIM API 키를 등록하세요.'}
-        </p>
-        <button
-          onClick={() => setIsEditingNimKey(!isEditingNimKey)}
-          className="btn"
-          style={{ background: 'var(--card-bg)', border: '1.5px solid var(--color-3)', color: 'var(--color-4)', width: 'auto', padding: '0.55rem 1.4rem', fontSize: '0.9rem' }}
-        >
-          {isEditingNimKey ? '취소' : hasNimKey ? 'API 키 변경' : 'API 키 등록'}
-        </button>
-        {isEditingNimKey && (
+        {/* ─── NVIDIA NIM API 키 ─── */}
+        <div className="problem-card">
+          <h3 style={{ margin: '0 0 0.5rem', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            🤖 NVIDIA NIM API 키
+          </h3>
+          <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', margin: '0 0 1rem' }}>
+            {hasNimKey ? '✅ API 키가 등록되어 있습니다. AI 문제 생성 기능을 사용할 수 있습니다.' : 'AI 문제 생성 기능을 사용하려면 NVIDIA NIM API 키를 등록하세요.'}
+          </p>
+          <button
+            onClick={() => setIsEditingNimKey(!isEditingNimKey)}
+            className="btn"
+            style={{ background: 'var(--card-bg)', border: '1.5px solid var(--color-3)', color: 'var(--color-4)', width: 'auto', padding: '0.55rem 1.4rem', fontSize: '0.9rem' }}
+          >
+            {isEditingNimKey ? '취소' : hasNimKey ? 'API 키 변경' : 'API 키 등록'}
+          </button>
+          {isEditingNimKey && (
           <form onSubmit={handleSaveNimKey} style={{ marginTop: '1.2rem', maxWidth: '480px' }}>
             <input
               type="password" placeholder="NVIDIA NIM API 키 (nvapi-...)"
@@ -4002,10 +3741,11 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ 
           </form>
         )}
       </div>
+        </>
+      )}
     </main>
   );
 };
-
 const CustomTitleChango: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ user, setUser }) => {
   const [customTitleInput, setCustomTitleInput] = useState('');
   const [sending, setSending] = useState(false);

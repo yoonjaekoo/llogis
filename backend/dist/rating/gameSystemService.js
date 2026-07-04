@@ -1,7 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.updateQuests = exports.updateTokens = exports.updateStreak = exports.handleDailyReset = exports.checkAndRepairStreak = exports.generateDailyQuests = exports.getTodayString = exports.getDaysDifference = void 0;
-// 날짜 차이 계산 함수 (KST 기준 YYYY-MM-DD 지원)
 const getDaysDifference = (dateStr1, dateStr2) => {
     if (!dateStr1 || !dateStr2)
         return 999;
@@ -11,59 +10,58 @@ const getDaysDifference = (dateStr1, dateStr2) => {
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 };
 exports.getDaysDifference = getDaysDifference;
-// 현재 날짜 문자열 반환 (KST YYYY-MM-DD)
 const getTodayString = () => {
     const now = new Date();
-    // 한국 시간대로 변환
     const kstOffset = 9 * 60 * 60 * 1000;
     const kstDate = new Date(now.getTime() + kstOffset);
     return kstDate.toISOString().split('T')[0];
 };
 exports.getTodayString = getTodayString;
-// 일일 퀘스트 생성기
-const generateDailyQuests = () => {
-    return [
-        {
-            id: 'solve_problems',
-            title: '수학 문제 3개 해결하기',
-            type: 'solve',
-            target: 3,
-            current: 0,
-            completed: false,
-            xpReward: 150,
-            tokenReward: 1
-        },
-        {
-            id: 'maintain_streak',
-            title: '오늘의 스트릭 시작/유지하기',
-            type: 'streak',
-            target: 1,
-            current: 0,
-            completed: false,
-            xpReward: 100,
-            tokenReward: 1
-        },
-        {
-            id: 'accuracy_threshold',
-            title: '정확도 80% 이상 달성하기 (최소 3문제 시도)',
-            type: 'accuracy',
-            target: 80,
-            current: 0,
-            completed: false,
-            xpReward: 200,
-            tokenReward: 2,
-            totalAttempts: 0,
-            correctCount: 0
-        }
+const generateVariedQuests = () => {
+    const pools = [
+        [
+            { id: 'solve_3', title: '수학 문제 3개 해결하기', type: 'solve', target: 3, current: 0, completed: false, xpReward: 150, tokenReward: 1 },
+            { id: 'solve_5', title: '수학 문제 5개 해결하기', type: 'solve', target: 5, current: 0, completed: false, xpReward: 250, tokenReward: 2 },
+            { id: 'solve_7', title: '수학 문제 7개 해결하기', type: 'solve', target: 7, current: 0, completed: false, xpReward: 350, tokenReward: 3 },
+        ],
+        [
+            { id: 'maintain_streak', title: '오늘의 스트릭 시작/유지하기', type: 'streak', target: 1, current: 0, completed: false, xpReward: 100, tokenReward: 1 },
+        ],
+        [
+            { id: 'accuracy_80', title: '정확도 80% 이상 달성하기 (최소 3문제)', type: 'accuracy', target: 80, current: 0, completed: false, xpReward: 200, tokenReward: 2, totalAttempts: 0, correctCount: 0 },
+            { id: 'accuracy_90', title: '정확도 90% 이상 달성하기 (최소 5문제)', type: 'accuracy', target: 90, current: 0, completed: false, xpReward: 300, tokenReward: 3, totalAttempts: 0, correctCount: 0 },
+        ],
+        [
+            { id: 'earn_xp_500', title: 'XP 500 획득하기', type: 'earn_xp', target: 500, current: 0, completed: false, xpReward: 100, tokenReward: 1 },
+            { id: 'earn_xp_1000', title: 'XP 1000 획득하기', type: 'earn_xp', target: 1000, current: 0, completed: false, xpReward: 200, tokenReward: 2 },
+        ],
+        [
+            { id: 'consecutive_3', title: '3연속 정답 달성하기', type: 'consecutive', target: 3, current: 0, completed: false, xpReward: 200, tokenReward: 2, consecutiveCount: 0 },
+            { id: 'consecutive_5', title: '5연속 정답 달성하기', type: 'consecutive', target: 5, current: 0, completed: false, xpReward: 350, tokenReward: 3, consecutiveCount: 0 },
+        ],
+        [
+            { id: 'perfect_round', title: '틀리지 않고 3문제 연속 풀기', type: 'perfect', target: 3, current: 0, completed: false, xpReward: 300, tokenReward: 3, consecutiveCount: 0 },
+        ],
     ];
+    const selected = [];
+    const usedIndices = new Set();
+    selected.push(pools[1][0]);
+    const poolIndices = [0, 2, 3, 4, 5];
+    const shuffled = poolIndices.sort(() => Math.random() - 0.5);
+    for (let i = 0; i < 2 && i < shuffled.length; i++) {
+        const pool = pools[shuffled[i]];
+        const quest = pool[Math.floor(Math.random() * pool.length)];
+        selected.push({ ...quest, current: 0, completed: false,
+            ...(quest.totalAttempts !== undefined ? { totalAttempts: 0, correctCount: 0 } : {}),
+            ...(quest.consecutiveCount !== undefined ? { consecutiveCount: 0 } : {}),
+        });
+    }
+    return selected;
+};
+const generateDailyQuests = () => {
+    return generateVariedQuests();
 };
 exports.generateDailyQuests = generateDailyQuests;
-/**
- * 1. 스트릭 복구 메커니즘
- * 로그인 시 혹은 문제 풀이 시도 시 호출됩니다.
- * 하루를 건너뛰어 스트릭이 끊겼는지 확인하고, streak_repaired 보호막을 소비하여 복구합니다.
- * 복구 시 submissions 테이블에 is_streak_repair = true 행을 추가합니다.
- */
 const checkAndRepairStreak = async (userId, client) => {
     const today = (0, exports.getTodayString)();
     const userRes = await client.query('SELECT streak, tokens, last_active_date, streak_repaired FROM users WHERE id = $1 FOR UPDATE', [userId]);
@@ -82,7 +80,6 @@ const checkAndRepairStreak = async (userId, client) => {
     const diff = (0, exports.getDaysDifference)(lastActive, today);
     if (diff >= 2) {
         if (user.streak_repaired) {
-            // 보호막 소비: 스트릭 유지, 어제 날짜로 last_active_date 설정
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
             const kstOffset = 9 * 60 * 60 * 1000;
@@ -94,7 +91,6 @@ const checkAndRepairStreak = async (userId, client) => {
             consumedRepair = true;
         }
         else {
-            // 보호막 없음 → 스트릭 초기화
             streak = 0;
             await client.query('UPDATE users SET streak = $1, last_active_date = $2 WHERE id = $3', [streak, today, userId]);
         }
@@ -102,10 +98,6 @@ const checkAndRepairStreak = async (userId, client) => {
     return { repaired, newStreak: streak, newTokens: tokens, consumedRepair };
 };
 exports.checkAndRepairStreak = checkAndRepairStreak;
-/**
- * 2. 일일 리셋 로직
- * 날짜가 바뀌었을 때 퀘스트를 리셋하고 streak_repaired 플래그를 원복합니다.
- */
 const handleDailyReset = async (userId, client, todayStr) => {
     const today = todayStr || (0, exports.getTodayString)();
     const userRes = await client.query('SELECT last_active_date, streak_repaired, quests FROM users WHERE id = $1 FOR UPDATE', [userId]);
@@ -114,16 +106,11 @@ const handleDailyReset = async (userId, client, todayStr) => {
     const user = userRes.rows[0];
     const lastActive = user.last_active_date;
     if (lastActive !== today) {
-        // 날짜가 바뀜 → 퀘스트 새로 생성 (streak_repaired는 유지, 보호막은 소비될 때까지 유지)
         const freshQuests = (0, exports.generateDailyQuests)();
         await client.query('UPDATE users SET quests = $1 WHERE id = $2', [JSON.stringify(freshQuests), userId]);
     }
 };
 exports.handleDailyReset = handleDailyReset;
-/**
- * 3. 스트릭 업데이트
- * 당일 첫 문제 해결 시 호출됩니다.
- */
 const updateStreak = async (userId, client) => {
     const today = (0, exports.getTodayString)();
     const userRes = await client.query('SELECT streak, last_active_date, tokens, longest_streak FROM users WHERE id = $1 FOR UPDATE', [userId]);
@@ -137,19 +124,18 @@ const updateStreak = async (userId, client) => {
     if (lastActive !== today) {
         const diff = (0, exports.getDaysDifference)(lastActive, today);
         if (diff === 1 || lastActive === '') {
-            // 정상적으로 다음 날 풀었거나 최초 풀이
             streak += 1;
         }
         else {
-            // 끊긴 경우 (이전 checkAndRepair가 수행되지 않았거나 실패한 상태)
             streak = 1;
         }
-        // 최장 스트릭 갱신
         if (streak > longestStreak)
             longestStreak = streak;
-        // 스트릭 보너스 토큰 계산 (하루에 최초 1회만 지급)
-        if (streak >= 10) {
-            bonusTokens = 2;
+        if (streak >= 30) {
+            bonusTokens = 5;
+        }
+        else if (streak >= 10) {
+            bonusTokens = 3;
         }
         else if (streak >= 5) {
             bonusTokens = 1;
@@ -159,10 +145,6 @@ const updateStreak = async (userId, client) => {
     return { newStreak: streak, bonusTokens };
 };
 exports.updateStreak = updateStreak;
-/**
- * 4. 토큰 지급
- * 문제 정답 시 1 토큰 기본 지급
- */
 const updateTokens = async (userId, client, isCorrect) => {
     if (!isCorrect) {
         const userRes = await client.query('SELECT tokens FROM users WHERE id = $1', [userId]);
@@ -172,10 +154,6 @@ const updateTokens = async (userId, client, isCorrect) => {
     return result.rows[0]?.tokens || 0;
 };
 exports.updateTokens = updateTokens;
-/**
- * 5. 퀘스트 업데이트 및 보상
- * 문제 풀이 시도/정답/스트릭 관련 활동이 발생할 때마다 퀘스트 달성 여부를 검사하고 즉시 보상 지급
- */
 const updateQuests = async (userId, client, action, data) => {
     const userRes = await client.query('SELECT quests, xp, tokens FROM users WHERE id = $1 FOR UPDATE', [userId]);
     if (userRes.rows.length === 0)
@@ -206,16 +184,59 @@ const updateQuests = async (userId, client, action, data) => {
             tokensGained += updatedQ.tokenReward;
         }
         else if (q.type === 'accuracy' && (action === 'attempt' || action === 'solve')) {
+            if (action === 'solve' && data?.isCorrect === false) {
+                return updatedQ;
+            }
             const total = (q.totalAttempts || 0) + 1;
-            const corrects = (q.correctCount || 0) + (action === 'solve' ? 1 : 0);
+            const corrects = (q.correctCount || 0) + (action === 'solve' && data?.isCorrect ? 1 : 0);
             updatedQ.totalAttempts = total;
             updatedQ.correctCount = corrects;
-            const accuracy = total >= 3 ? Math.round((corrects / total) * 100) : 0;
+            const accuracy = total >= q.target ? Math.round((corrects / total) * 100) : 0;
             updatedQ.current = accuracy;
             if (total >= 3 && accuracy >= q.target) {
                 updatedQ.completed = true;
                 xpGained += updatedQ.xpReward;
                 tokensGained += updatedQ.tokenReward;
+            }
+        }
+        else if (q.type === 'earn_xp' && action === 'earn_xp' && data?.xpEarned) {
+            updatedQ.current += data.xpEarned;
+            if (updatedQ.current >= updatedQ.target) {
+                updatedQ.completed = true;
+                xpGained += updatedQ.xpReward;
+                tokensGained += updatedQ.tokenReward;
+            }
+        }
+        else if (q.type === 'consecutive' && action === 'solve') {
+            if (data?.isCorrect) {
+                const cc = (q.consecutiveCount || 0) + 1;
+                updatedQ.consecutiveCount = cc;
+                updatedQ.current = cc;
+                if (cc >= q.target) {
+                    updatedQ.completed = true;
+                    xpGained += updatedQ.xpReward;
+                    tokensGained += updatedQ.tokenReward;
+                }
+            }
+            else {
+                updatedQ.consecutiveCount = 0;
+                updatedQ.current = 0;
+            }
+        }
+        else if (q.type === 'perfect' && action === 'solve') {
+            if (data?.isCorrect) {
+                const cc = (q.consecutiveCount || 0) + 1;
+                updatedQ.consecutiveCount = cc;
+                updatedQ.current = cc;
+                if (cc >= q.target) {
+                    updatedQ.completed = true;
+                    xpGained += updatedQ.xpReward;
+                    tokensGained += updatedQ.tokenReward;
+                }
+            }
+            else {
+                updatedQ.consecutiveCount = 0;
+                updatedQ.current = 0;
             }
         }
         return updatedQ;

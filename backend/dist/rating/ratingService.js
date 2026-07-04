@@ -123,13 +123,23 @@ const processSubmission = async (userId, problemId, isCorrect) => {
             throw new Error('User not found');
         }
         const currentRating = parseFloat(userRes.rows[0].rating);
+        let dailyBonusMultiplier = 1;
+        if (isCorrect) {
+            const todayStr = (0, gameSystemService_1.getTodayString)();
+            const todayRes = await client.query("SELECT COUNT(*) as cnt FROM submissions WHERE user_id = $1 AND is_correct = TRUE AND submitted_at::date = $2::date", [userId, todayStr]);
+            const todayCorrectCount = parseInt(todayRes.rows[0]?.cnt || '0');
+            if (todayCorrectCount === 0) {
+                dailyBonusMultiplier = 1.5;
+            }
+        }
         const baseDelta = isCorrect ? rewardRating : -getWrongAnswerPenalty(currentRating);
-        const ratingDelta = isCorrect ? Math.round(baseDelta * feverMultiplier) : baseDelta;
+        const ratingDelta = isCorrect ? Math.round(baseDelta * feverMultiplier * dailyBonusMultiplier) : baseDelta;
         const finalRating = Math.max(0, currentRating + ratingDelta);
         await client.query('UPDATE users SET rating = $1 WHERE id = $2', [finalRating, userId]);
         const activityType = isCorrect ? 'correct_reward' : 'wrong_penalty';
+        const dailyDescription = dailyBonusMultiplier > 1 ? ` (☀️첫 정답 1.5배)` : '';
         const activityDescription = isCorrect
-            ? `정답 제출 보상 +${Math.round(rewardRating).toLocaleString()} RP${feverDescription}`
+            ? `정답 제출 보상 +${Math.round(rewardRating).toLocaleString()} RP${feverDescription}${dailyDescription}`
             : `오답 패널티 -${Math.abs(Math.round(ratingDelta)).toLocaleString()} RP`;
         await client.query(`INSERT INTO rating_activity_logs (
         user_id, problem_id, activity_type, change_amount, before_rating, after_rating, description
@@ -147,12 +157,16 @@ const processSubmission = async (userId, problemId, isCorrect) => {
         if (isCorrect) {
             streakResult = await (0, gameSystemService_1.updateStreak)(userId, client);
             finalTokens = await (0, gameSystemService_1.updateTokens)(userId, client, isCorrect);
-            await (0, gameSystemService_1.updateQuests)(userId, client, 'solve');
+            await (0, gameSystemService_1.updateQuests)(userId, client, 'solve', { isCorrect: true });
             await (0, gameSystemService_1.updateQuests)(userId, client, 'streak');
+            const xpEarned = Math.round(rewardRating) / 100;
+            await (0, gameSystemService_1.updateQuests)(userId, client, 'earn_xp', { xpEarned: Math.max(1, Math.floor(xpEarned)) });
+            await (0, gameSystemService_1.updateQuests)(userId, client, 'solve', { isCorrect: true, consecutiveCorrect: streakResult.newStreak });
             await client.query('UPDATE users SET problems_solved = problems_solved + 1 WHERE id = $1', [userId]);
         }
         else {
-            await (0, gameSystemService_1.updateQuests)(userId, client, 'attempt');
+            await (0, gameSystemService_1.updateQuests)(userId, client, 'attempt', { isCorrect: false });
+            await (0, gameSystemService_1.updateQuests)(userId, client, 'solve', { isCorrect: false });
         }
         await client.query('INSERT INTO submissions (user_id, problem_id, is_correct) VALUES ($1, $2, $3)', [userId, problemId, isCorrect]);
         await client.query(`UPDATE problems SET 
@@ -169,12 +183,15 @@ const processSubmission = async (userId, problemId, isCorrect) => {
         const finalUserRes = await client.query('SELECT streak, tokens, xp, quests, last_active_date, streak_repaired, longest_streak, problems_solved FROM users WHERE id = $1', [userId]);
         const finalUser = finalUserRes.rows[0];
         await client.query('COMMIT');
+        const xp = finalUser.xp || 0;
+        const level = Math.floor(Math.sqrt(xp / 100)) + 1;
         return {
             newUserRating: finalRating,
             tier: (0, exports.getTier)(finalRating),
+            level,
             streak: finalUser.streak,
             tokens: finalUser.tokens,
-            xp: finalUser.xp,
+            xp,
             quests: finalUser.quests,
             streakRepaired: repairResult.repaired,
             streakRepairedFlag: finalUser.streak_repaired,
