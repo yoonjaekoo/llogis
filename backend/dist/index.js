@@ -14,7 +14,6 @@ const problemGenerator_1 = require("./problemGenerator");
 const nimGenerator_1 = require("./nimGenerator");
 const templateProblemGenerator_1 = require("./templateProblemGenerator");
 const ratingService_1 = require("./rating/ratingService");
-const gameSystemService_1 = require("./rating/gameSystemService");
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const multer_1 = __importDefault(require("multer"));
@@ -245,43 +244,6 @@ const ensureSchema = async () => {
     INSERT INTO page_content (page_key, content) VALUES ('about', '')
     ON CONFLICT (page_key) DO NOTHING
   `);
-    // Reward Boxes system
-    await pool.query(`
-    CREATE TABLE IF NOT EXISTS reward_boxes (
-      id SERIAL PRIMARY KEY,
-      box_id VARCHAR(50) UNIQUE NOT NULL,
-      name VARCHAR(100) NOT NULL,
-      description VARCHAR(255) NOT NULL,
-      rarity VARCHAR(20) NOT NULL DEFAULT 'common',
-      cost INTEGER NOT NULL DEFAULT 0,
-      icon VARCHAR(10) NOT NULL DEFAULT '🎁',
-      rewards JSONB NOT NULL DEFAULT '[]'::jsonb
-    )
-  `);
-    await pool.query(`
-    CREATE TABLE IF NOT EXISTS user_reward_boxes (
-      id SERIAL PRIMARY KEY,
-      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-      box_id VARCHAR(50) NOT NULL,
-      count INTEGER NOT NULL DEFAULT 1,
-      UNIQUE(user_id, box_id)
-    )
-  `);
-    await pool.query(`
-    INSERT INTO reward_boxes (box_id, name, description, rarity, cost, icon, rewards) VALUES
-      ('common_box', '일반 상자', '매일 무료로 열 수 있는 기본 보급품 상자', 'common', 0, '📦',
-        '[{"type":"tokens","min":1,"max":5},{"type":"xp","min":10,"max":50}]'),
-      ('rare_box', '레어 상자', '토큰과 XP를 추가로 획득할 수 있는 상자', 'rare', 50, '🎁',
-        '[{"type":"tokens","min":5,"max":20},{"type":"xp","min":50,"max":200},{"type":"streak_repair","chance":0.1}]'),
-      ('epic_box', '에픽 상자', '귀한 보상이 들어있는 상자', 'epic', 150, '🎉',
-        '[{"type":"tokens","min":20,"max":50},{"type":"xp","min":100,"max":500},{"type":"fever_2x","chance":0.2},{"type":"streak_repair","chance":0.3}]'),
-      ('legendary_box', '레전더리 상자', '최고의 보상을 약속하는 전설의 상자', 'legendary', 500, '👑',
-        '[{"type":"tokens","min":50,"max":200},{"type":"xp","min":200,"max":1000},{"type":"fever_5x","chance":0.15},{"type":"profile_badge","badge_id":"lucky_legend","chance":0.05}]')
-    ON CONFLICT (box_id) DO UPDATE SET
-      name = EXCLUDED.name, description = EXCLUDED.description,
-      rarity = EXCLUDED.rarity, cost = EXCLUDED.cost,
-      icon = EXCLUDED.icon, rewards = EXCLUDED.rewards
-  `);
     // Profile decorations
     await pool.query(`
     CREATE TABLE IF NOT EXISTS profile_themes (
@@ -418,12 +380,6 @@ app.post('/api/auth/login', async (req, res) => {
             if (titleRes.rows.length > 0)
                 equippedTitleName = titleRes.rows[0].name;
         }
-        let profileGradient = 'linear-gradient(135deg, var(--color-4), #7b5ff5)';
-        if (user.profile_theme) {
-            const themeRes = await pool.query('SELECT gradient FROM profile_themes WHERE theme_id = $1', [user.profile_theme]);
-            if (themeRes.rows.length > 0)
-                profileGradient = themeRes.rows[0].gradient;
-        }
         const token = jsonwebtoken_1.default.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
         const rating = parseFloat(user.rating) || 0;
         const tier = (0, ratingService_1.getTier)(rating);
@@ -474,12 +430,6 @@ app.get('/api/users/profile', authenticateToken, async (req, res) => {
             if (titleRes.rows.length > 0)
                 equippedTitleName = titleRes.rows[0].name;
         }
-        let profileGradient = 'linear-gradient(135deg, var(--color-4), #7b5ff5)';
-        if (user.profile_theme) {
-            const themeRes = await pool.query('SELECT gradient FROM profile_themes WHERE theme_id = $1', [user.profile_theme]);
-            if (themeRes.rows.length > 0)
-                profileGradient = themeRes.rows[0].gradient;
-        }
         const statsResult = await pool.query('SELECT COUNT(*) as total FROM submissions WHERE user_id = $1', [userId]);
         const stats = statsResult.rows[0];
         const totalSubmissions = parseInt(stats.total);
@@ -489,8 +439,7 @@ app.get('/api/users/profile', authenticateToken, async (req, res) => {
         res.json({
             user: {
                 ...user,
-                equipped_title: equippedTitleName,
-                profile_gradient: profileGradient
+                equipped_title: equippedTitleName
             },
             stats: {
                 totalSubmissions,
@@ -769,12 +718,6 @@ app.get('/api/users/:id/profile', async (req, res) => {
             if (titleRes.rows.length > 0)
                 equippedTitleName = titleRes.rows[0].name;
         }
-        let profileGradient = 'linear-gradient(135deg, var(--color-4), #7b5ff5)';
-        if (user.profile_theme) {
-            const themeRes = await pool.query('SELECT gradient FROM profile_themes WHERE theme_id = $1', [user.profile_theme]);
-            if (themeRes.rows.length > 0)
-                profileGradient = themeRes.rows[0].gradient;
-        }
         const titlesRes = await pool.query('SELECT t.title_id, t.name, t.description FROM user_titles ut JOIN titles t ON t.title_id = ut.title_id WHERE ut.user_id = $1 ORDER BY ut.unlocked_at', [id]);
         const statsResult = await pool.query('SELECT COUNT(*) as total FROM submissions WHERE user_id = $1', [id]);
         const stats = statsResult.rows[0];
@@ -785,8 +728,7 @@ app.get('/api/users/:id/profile', async (req, res) => {
                 ...user,
                 rating: parseFloat(user.rating) || 0,
                 tier: (0, ratingService_1.getTier)(parseFloat(user.rating) || 0),
-                equipped_title: equippedTitleName || user.equipped_title,
-                profile_gradient: profileGradient
+                equipped_title: equippedTitleName || user.equipped_title
             },
             titles: titlesRes.rows,
             stats: {
@@ -2376,268 +2318,6 @@ app.get('/api/admin/users/:userId/submissions', authenticateToken, async (req, r
     catch (err) {
         console.error('Failed to fetch user submissions:', err);
         res.status(500).json({ error: '제출 기록 조회에 실패했습니다.' });
-    }
-});
-// --- Reward Boxes API ---
-app.get('/api/boxes', authenticateToken, async (req, res) => {
-    const userId = req.user.id;
-    try {
-        const boxesRes = await pool.query('SELECT * FROM reward_boxes ORDER BY cost ASC');
-        const userBoxesRes = await pool.query('SELECT box_id, count FROM user_reward_boxes WHERE user_id = $1', [userId]);
-        const userBoxMap = {};
-        for (const r of userBoxesRes.rows) {
-            userBoxMap[r.box_id] = parseInt(r.count);
-        }
-        const todayKey = `free_claimed_${(0, gameSystemService_1.getTodayString)()}`;
-        const freeClaimedRes = await pool.query('SELECT custom_title FROM users WHERE id = $1', [userId]);
-        const boxes = boxesRes.rows.map((b) => ({
-            ...b,
-            owned: userBoxMap[b.box_id] || 0,
-            canClaimFree: b.box_id === 'common_box' && !userBoxMap[b.box_id + '_free_today'],
-        }));
-        res.json({ boxes });
-    }
-    catch (err) {
-        console.error('Failed to fetch boxes:', err);
-        res.status(500).json({ error: '상자 목록 조회에 실패했습니다.' });
-    }
-});
-app.post('/api/boxes/claim-free', authenticateToken, async (req, res) => {
-    const userId = req.user.id;
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        const userRes = await client.query('SELECT quests FROM users WHERE id = $1 FOR UPDATE', [userId]);
-        if (userRes.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return res.status(404).json({ error: 'User not found' });
-        }
-        const existingRes = await client.query('SELECT count FROM user_reward_boxes WHERE user_id = $1 AND box_id = $2', [userId, 'common_box']);
-        if (existingRes.rows.length > 0) {
-            await client.query('UPDATE user_reward_boxes SET count = count + 1 WHERE user_id = $1 AND box_id = $2', [userId, 'common_box']);
-        }
-        else {
-            await client.query('INSERT INTO user_reward_boxes (user_id, box_id, count) VALUES ($1, $2, 1)', [userId, 'common_box']);
-        }
-        await client.query('COMMIT');
-        res.json({ message: '무료 상자를 받았습니다!', boxId: 'common_box' });
-    }
-    catch (err) {
-        await client.query('ROLLBACK').catch(() => { });
-        console.error('Failed to claim free box:', err);
-        res.status(500).json({ error: '무료 상자 수령에 실패했습니다.' });
-    }
-    finally {
-        client.release();
-    }
-});
-app.post('/api/boxes/buy', authenticateToken, async (req, res) => {
-    const userId = req.user.id;
-    const { boxId } = req.body;
-    if (!boxId)
-        return res.status(400).json({ error: 'boxId is required' });
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        const boxRes = await client.query('SELECT * FROM reward_boxes WHERE box_id = $1', [boxId]);
-        if (boxRes.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return res.status(404).json({ error: '존재하지 않는 상자입니다.' });
-        }
-        const box = boxRes.rows[0];
-        const userRes = await client.query('SELECT tokens FROM users WHERE id = $1 FOR UPDATE', [userId]);
-        if (userRes.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return res.status(404).json({ error: 'User not found' });
-        }
-        if (userRes.rows[0].tokens < box.cost) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ error: `토큰이 부족합니다. (필요: ${box.cost} 토큰)` });
-        }
-        await client.query('UPDATE users SET tokens = tokens - $1 WHERE id = $2', [box.cost, userId]);
-        const existingRes = await client.query('SELECT count FROM user_reward_boxes WHERE user_id = $1 AND box_id = $2', [userId, boxId]);
-        if (existingRes.rows.length > 0) {
-            await client.query('UPDATE user_reward_boxes SET count = count + 1 WHERE user_id = $1 AND box_id = $2', [userId, boxId]);
-        }
-        else {
-            await client.query('INSERT INTO user_reward_boxes (user_id, box_id, count) VALUES ($1, $2, 1)', [userId, boxId]);
-        }
-        await client.query('COMMIT');
-        res.json({ message: `${box.name}을(를) 구매했습니다!`, boxId });
-    }
-    catch (err) {
-        await client.query('ROLLBACK').catch(() => { });
-        console.error('Failed to buy box:', err);
-        res.status(500).json({ error: '상자 구매에 실패했습니다.' });
-    }
-    finally {
-        client.release();
-    }
-});
-app.post('/api/boxes/open', authenticateToken, async (req, res) => {
-    const userId = req.user.id;
-    const { boxId } = req.body;
-    if (!boxId)
-        return res.status(400).json({ error: 'boxId is required' });
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        const boxRes = await client.query('SELECT * FROM reward_boxes WHERE box_id = $1', [boxId]);
-        if (boxRes.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return res.status(404).json({ error: '존재하지 않는 상자입니다.' });
-        }
-        const box = boxRes.rows[0];
-        const userBoxRes = await client.query('SELECT count FROM user_reward_boxes WHERE user_id = $1 AND box_id = $2 FOR UPDATE', [userId, boxId]);
-        if (userBoxRes.rows.length === 0 || parseInt(userBoxRes.rows[0].count) <= 0) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ error: '보유한 상자가 없습니다.' });
-        }
-        const rewards = [];
-        const parsedRewards = box.rewards;
-        for (const reward of parsedRewards) {
-            if (reward.chance !== undefined && Math.random() > reward.chance)
-                continue;
-            let amount = 0;
-            if (reward.min !== undefined && reward.max !== undefined) {
-                amount = Math.floor(Math.random() * (reward.max - reward.min + 1)) + reward.min;
-            }
-            switch (reward.type) {
-                case 'tokens':
-                    if (amount > 0) {
-                        await client.query('UPDATE users SET tokens = tokens + $1 WHERE id = $2', [amount, userId]);
-                        rewards.push({ type: 'tokens', amount, label: `${amount} 토큰` });
-                    }
-                    break;
-                case 'xp':
-                    if (amount > 0) {
-                        await client.query('UPDATE users SET xp = xp + $1 WHERE id = $2', [amount, userId]);
-                        rewards.push({ type: 'xp', amount, label: `${amount} XP` });
-                    }
-                    break;
-                case 'streak_repair':
-                    await client.query('UPDATE users SET streak_repaired = TRUE WHERE id = $1', [userId]);
-                    rewards.push({ type: 'streak_repair', amount: 1, label: '스트릭 복구권' });
-                    break;
-                case 'fever_2x':
-                    const fever2Expires = new Date(Date.now() + 2 * 60 * 1000);
-                    await client.query('UPDATE users SET fever_multiplier = 2, fever_expires_at = $1 WHERE id = $2', [fever2Expires, userId]);
-                    rewards.push({ type: 'fever_2x', amount: 1, label: '🔥 2배 피버 (2분)' });
-                    break;
-                case 'fever_5x':
-                    const fever5Expires = new Date(Date.now() + 5 * 60 * 1000);
-                    await client.query('UPDATE users SET fever_multiplier = 5, fever_expires_at = $1 WHERE id = $2', [fever5Expires, userId]);
-                    rewards.push({ type: 'fever_5x', amount: 1, label: '🔥 5배 피버 (5분)' });
-                    break;
-                case 'profile_badge':
-                    if (reward.badge_id) {
-                        await client.query('INSERT INTO user_profile_badges (user_id, badge_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [userId, reward.badge_id]);
-                        rewards.push({ type: 'profile_badge', badgeId: reward.badge_id, label: '🏅 특별 뱃지!' });
-                    }
-                    break;
-            }
-        }
-        if (rewards.length === 0) {
-            const fallbackTokens = Math.floor(Math.random() * 3) + 1;
-            await client.query('UPDATE users SET tokens = tokens + $1 WHERE id = $2', [fallbackTokens, userId]);
-            rewards.push({ type: 'tokens', amount: fallbackTokens, label: `${fallbackTokens} 토큰` });
-        }
-        await client.query('UPDATE user_reward_boxes SET count = count - 1 WHERE user_id = $1 AND box_id = $2', [userId, boxId]);
-        await client.query('COMMIT');
-        res.json({ message: `${box.name}을(를) 열었습니다!`, rewards, boxIcon: box.icon, boxName: box.name });
-    }
-    catch (err) {
-        await client.query('ROLLBACK').catch(() => { });
-        console.error('Failed to open box:', err);
-        res.status(500).json({ error: '상자 개봉에 실패했습니다.' });
-    }
-    finally {
-        client.release();
-    }
-});
-// --- Profile Themes API ---
-app.get('/api/profile/themes', authenticateToken, async (req, res) => {
-    const userId = req.user.id;
-    try {
-        const themesRes = await pool.query('SELECT * FROM profile_themes ORDER BY cost ASC');
-        const userThemesRes = await pool.query('SELECT theme_id FROM user_profile_themes WHERE user_id = $1', [userId]);
-        const userThemeIds = new Set(userThemesRes.rows.map((r) => r.theme_id));
-        const userRes = await pool.query('SELECT profile_theme FROM users WHERE id = $1', [userId]);
-        const currentTheme = userRes.rows[0]?.profile_theme || 'default';
-        const themes = themesRes.rows.map((t) => ({
-            ...t,
-            owned: userThemeIds.has(t.theme_id) || t.cost === 0,
-            equipped: currentTheme === t.theme_id,
-        }));
-        res.json({ themes });
-    }
-    catch (err) {
-        console.error('Failed to fetch themes:', err);
-        res.status(500).json({ error: '테마 목록 조회에 실패했습니다.' });
-    }
-});
-app.post('/api/profile/themes/buy', authenticateToken, async (req, res) => {
-    const userId = req.user.id;
-    const { themeId } = req.body;
-    if (!themeId)
-        return res.status(400).json({ error: 'themeId is required' });
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        const themeRes = await client.query('SELECT * FROM profile_themes WHERE theme_id = $1', [themeId]);
-        if (themeRes.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return res.status(404).json({ error: '존재하지 않는 테마입니다.' });
-        }
-        const theme = themeRes.rows[0];
-        if (theme.cost === 0) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ error: '기본 테마는 구매할 수 없습니다.' });
-        }
-        const existingRes = await client.query('SELECT 1 FROM user_profile_themes WHERE user_id = $1 AND theme_id = $2', [userId, themeId]);
-        if (existingRes.rows.length > 0) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ error: '이미 보유한 테마입니다.' });
-        }
-        const userRes = await client.query('SELECT tokens FROM users WHERE id = $1 FOR UPDATE', [userId]);
-        if (userRes.rows[0].tokens < theme.cost) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ error: `토큰이 부족합니다. (필요: ${theme.cost} 토큰)` });
-        }
-        await client.query('UPDATE users SET tokens = tokens - $1 WHERE id = $2', [theme.cost, userId]);
-        await client.query('INSERT INTO user_profile_themes (user_id, theme_id) VALUES ($1, $2)', [userId, themeId]);
-        await client.query('COMMIT');
-        res.json({ message: `${theme.name} 테마를 구매했습니다!` });
-    }
-    catch (err) {
-        await client.query('ROLLBACK').catch(() => { });
-        console.error('Failed to buy theme:', err);
-        res.status(500).json({ error: '테마 구매에 실패했습니다.' });
-    }
-    finally {
-        client.release();
-    }
-});
-app.post('/api/profile/themes/equip', authenticateToken, async (req, res) => {
-    const userId = req.user.id;
-    const { themeId } = req.body;
-    if (!themeId)
-        return res.status(400).json({ error: 'themeId is required' });
-    try {
-        if (themeId !== 'default') {
-            const ownedRes = await pool.query('SELECT 1 FROM user_profile_themes WHERE user_id = $1 AND theme_id = $2', [userId, themeId]);
-            if (ownedRes.rows.length === 0) {
-                return res.status(403).json({ error: '보유하지 않은 테마입니다.' });
-            }
-        }
-        await pool.query('UPDATE users SET profile_theme = $1 WHERE id = $2', [themeId, userId]);
-        const themeRes = await pool.query('SELECT name FROM profile_themes WHERE theme_id = $1', [themeId]);
-        const themeName = themeRes.rows.length > 0 ? themeRes.rows[0].name : '기본';
-        res.json({ message: `${themeName} 테마를 장착했습니다.`, profileTheme: themeId });
-    }
-    catch (err) {
-        console.error('Failed to equip theme:', err);
-        res.status(500).json({ error: '테마 장착에 실패했습니다.' });
     }
 });
 // --- Profile CSS Customization ---

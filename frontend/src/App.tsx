@@ -236,7 +236,7 @@ const Navbar: React.FC<{
           <li><Link to="/about">소개</Link></li>
           {user ? (
             <>
-              {user.username === 'admin' && <li><Link to="/admin" className="nav-admin-link">관리</Link></li>}
+              {user.username === 'admin' && <li><Link to="/admin" className="nav-admin-link">관@리</Link></li>}
               <li>
                 <Link to="/profile" aria-label={`${user.username} 프로필`} className="nav-user-link">
                   {user.profile_image_url ? (
@@ -2654,59 +2654,6 @@ const BugReport: React.FC<{ user: User | null }> = ({ user }) => {
   );
 };
 
-const BoxOpenModal: React.FC<{ rewards: any[]; boxName: string; boxIcon: string; onClose: () => void }> = ({ rewards, boxName, boxIcon, onClose }) => {
-  const [showContent, setShowContent] = useState(false);
-
-  useEffect(() => {
-    const t = setTimeout(() => setShowContent(true), 600);
-    return () => clearTimeout(t);
-  }, []);
-
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 10000,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: 'var(--card-bg)', borderRadius: '1.5rem', padding: '2.5rem',
-          maxWidth: '420px', width: '90%', textAlign: 'center',
-          boxShadow: '0 32px 80px rgba(0,0,0,0.5)', animation: 'boxOpenAnim 0.5s ease',
-        }}
-      >
-        {!showContent ? (
-          <div style={{ fontSize: '5rem', animation: 'boxShake 0.5s ease infinite' }}>{boxIcon}</div>
-        ) : (
-          <>
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎉</div>
-            <h3 style={{ color: 'var(--color-4)', margin: '0 0 0.5rem', fontSize: '1.3rem' }}>{boxName} 개봉 결과!</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', margin: '1.5rem 0' }}>
-              {rewards.map((r: any, i: number) => (
-                <div key={i} style={{
-                  padding: '0.8rem 1rem', borderRadius: '0.75rem',
-                  background: 'rgba(92,149,255,0.08)', border: '1px solid rgba(92,149,255,0.2)',
-                  fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-main)',
-                  animation: `fadeInUp 0.3s ease ${i * 0.15}s both`,
-                }}>
-                  {r.label}
-                </div>
-              ))}
-            </div>
-            <button onClick={onClose} className="btn" style={{ background: 'var(--color-4)', color: 'white', width: 'auto', padding: '0.7rem 2rem' }}>
-              확인
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-};
-
 const ProfileBadges: React.FC<{ user: User | null }> = ({ user }) => {
   const [badges, setBadges] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2756,145 +2703,6 @@ const ProfileBadges: React.FC<{ user: User | null }> = ({ user }) => {
         ))}
       </div>
     </div>
-  );
-};
-
-const ProfileBoxes: React.FC<{ user: User | null; profileData: any; fetchProfile: () => void }> = ({ user, profileData, fetchProfile }) => {
-  const [boxes, setBoxes] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [opening, setOpening] = useState<string | null>(null);
-  const [openResult, setOpenResult] = useState<any>(null);
-  const token = localStorage.getItem('token');
-
-  useEffect(() => {
-    fetch('/api/boxes', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.boxes) setBoxes(data.boxes);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, [token]);
-
-  const handleClaimFree = async () => {
-    const res = await fetch('/api/boxes/claim-free', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await res.json();
-    if (res.ok) {
-      fetchProfile();
-      const token2 = localStorage.getItem('token');
-      fetch('/api/boxes', { headers: { 'Authorization': `Bearer ${token2}` } })
-        .then(r => r.json()).then(d => { if (d.boxes) setBoxes(d.boxes); });
-    } else {
-      alert(data.error);
-    }
-  };
-
-  const handleBuy = async (boxId: string) => {
-    const res = await fetch('/api/boxes/buy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ boxId })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      fetchProfile();
-      const token2 = localStorage.getItem('token');
-      fetch('/api/boxes', { headers: { 'Authorization': `Bearer ${token2}` } })
-        .then(r => r.json()).then(d => { if (d.boxes) setBoxes(d.boxes); });
-    } else {
-      alert(data.error);
-    }
-  };
-
-  const handleOpen = async (boxId: string) => {
-    setOpening(boxId);
-    const res = await fetch('/api/boxes/open', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ boxId })
-    });
-    const data = await res.json();
-    setOpening(null);
-    if (res.ok) {
-      setOpenResult(data);
-      fetchProfile();
-      const token2 = localStorage.getItem('token');
-      fetch('/api/boxes', { headers: { 'Authorization': `Bearer ${token2}` } })
-        .then(r => r.json()).then(d => { if (d.boxes) setBoxes(d.boxes); });
-    } else {
-      alert(data.error);
-    }
-  };
-
-  if (loading) return null;
-
-  return (
-    <>
-      <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
-        <h3 style={{ margin: '0 0 1.2rem', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          🎁 보유 상자
-        </h3>
-        {boxes.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)', textAlign: 'center', fontSize: '0.9rem' }}>
-            보유한 상자가 없습니다. 상점에서 구매하거나 무료 상자를 받아보세요!
-          </p>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '0.75rem' }}>
-            {boxes.filter(b => b.owned > 0 || b.box_id === 'common_box').map((b: any) => {
-              const owned = b.owned || 0;
-              const rarityColors: any = {
-                common: 'var(--text-muted)',
-                rare: '#5c95ff',
-                epic: '#9370db',
-                legendary: '#ffd700',
-              };
-              return (
-                <div key={b.box_id} style={{
-                  padding: '1rem', borderRadius: '0.75rem', textAlign: 'center',
-                  border: `2px solid ${rarityColors[b.rarity] || 'var(--border)'}`,
-                  background: 'var(--card-bg)',
-                }}>
-                  <div style={{ fontSize: '2.5rem', marginBottom: '0.3rem' }}>{b.icon}</div>
-                  <div style={{ fontWeight: 800, fontSize: '0.85rem', color: rarityColors[b.rarity] }}>{b.name}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0.25rem 0' }}>
-                    {owned}개 보유
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.3rem', justifyContent: 'center' }}>
-                    <button
-                      onClick={() => handleOpen(b.box_id)}
-                      disabled={owned <= 0 || opening === b.box_id}
-                      style={{
-                        padding: '0.35rem 0.7rem', borderRadius: '0.5rem',
-                        background: rarityColors[b.rarity], color: 'white',
-                        border: 'none', fontWeight: 700, cursor: owned > 0 ? 'pointer' : 'not-allowed',
-                        fontSize: '0.8rem', opacity: owned > 0 ? 1 : 0.4,
-                      }}
-                    >
-                      {opening === b.box_id ? '🎲' : '열기'}
-                    </button>
-
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {openResult && (
-        <BoxOpenModal
-          rewards={openResult.rewards}
-          boxName={openResult.boxName}
-          boxIcon={openResult.boxIcon}
-          onClose={() => setOpenResult(null)}
-        />
-      )}
-    </>
   );
 };
 
@@ -3675,9 +3483,6 @@ const Profile: React.FC<{ user: User | null; setUser: (u: User) => void; readonl
       {/* ─── 내 뱃지 ─── */}
       <ProfileBadges user={user} />
 
-      {/* ─── 보유 상자 ─── */}
-      <ProfileBoxes user={user} profileData={profileData} fetchProfile={fetchProfile} />
-
       {!readonly && (
         <>
         <div className="problem-card" style={{ marginBottom: '1.5rem' }}>
@@ -4423,150 +4228,6 @@ const ProblemList: React.FC<{ user: User | null; setUser: (u: User) => void }> =
   );
 };
 
-const ShopBoxes: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ user, setUser }) => {
-  const [boxes, setBoxes] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState('');
-  const [openResult, setOpenResult] = useState<any>(null);
-  const token = localStorage.getItem('token');
-
-  const fetchBoxes = () => {
-    fetch('/api/boxes', { headers: { 'Authorization': `Bearer ${token}` } })
-      .then(res => res.json())
-      .then(data => {
-        if (data.boxes) setBoxes(data.boxes);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  };
-
-  useEffect(() => { fetchBoxes(); }, [token]);
-
-  const handleBuy = async (boxId: string) => {
-    const res = await fetch('/api/boxes/buy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ boxId })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      setMessage(`✅ ${data.message}`);
-      const updatedUser = { ...user!, tokens: (user!.tokens || 0) - (boxes.find(b => b.box_id === boxId)?.cost || 0) };
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      setUser(updatedUser);
-      fetchBoxes();
-    } else {
-      setMessage(`❌ ${data.error}`);
-    }
-    setTimeout(() => setMessage(''), 3000);
-  };
-
-  const handleOpen = async (boxId: string) => {
-    const res = await fetch('/api/boxes/open', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ boxId })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      setOpenResult(data);
-      const updatedUser = { ...user! };
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      setUser(updatedUser);
-      fetchBoxes();
-    } else {
-      alert(data.error);
-    }
-  };
-
-  const rarityColors: any = {
-    common: 'var(--text-muted)',
-    rare: '#5c95ff',
-    epic: '#9370db',
-    legendary: '#ffd700',
-  };
-  const rarityBg: any = {
-    common: 'rgba(150,150,150,0.05)',
-    rare: 'rgba(92,149,255,0.05)',
-    epic: 'rgba(147,112,219,0.05)',
-    legendary: 'rgba(255,215,0,0.05)',
-  };
-
-  if (loading) return <p style={{ textAlign: 'center', opacity: 0.6 }}>로딩 중...</p>;
-
-  return (
-    <>
-      {message && (
-        <div style={{ padding: '0.8rem 1rem', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '0.5rem', marginBottom: '1.5rem', textAlign: 'center', fontWeight: 700, fontSize: '0.9rem' }}>
-          {message}
-        </div>
-      )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1.25rem' }}>
-        {boxes.filter((b: any) => b.cost > 0 || b.box_id === 'common_box').map((b: any) => (
-          <div key={b.box_id} className="problem-card" style={{
-            margin: 0, textAlign: 'center',
-            border: `1.5px solid ${rarityColors[b.rarity] || 'var(--border)'}`,
-            background: rarityBg[b.rarity] || 'var(--card-bg)',
-          }}>
-            <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>{b.icon}</div>
-            <h3 style={{ margin: '0 0 0.3rem', color: rarityColors[b.rarity] || 'var(--color-4)', fontSize: '1.1rem' }}>{b.name}</h3>
-            <p style={{ margin: '0 0 0.3rem', opacity: 0.6, fontSize: '0.82rem' }}>{b.description}</p>
-            <div style={{
-              display: 'inline-block', padding: '0.15rem 0.6rem', borderRadius: '99px',
-              background: `${rarityColors[b.rarity]}22`, color: rarityColors[b.rarity],
-              fontSize: '0.7rem', fontWeight: 800, marginBottom: '1rem',
-            }}>
-              {b.rarity.toUpperCase()}
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
-              {b.owned > 0 && (
-                <button onClick={() => handleOpen(b.box_id)}
-                  style={{
-                    padding: '0.5rem 1rem', borderRadius: '0.5rem',
-                    background: '#00b360', color: 'white', border: 'none', fontWeight: 700,
-                    cursor: 'pointer', fontSize: '0.85rem',
-                  }}>
-                  열기 ({b.owned})
-                </button>
-              )}
-              {b.cost > 0 && (
-                <button onClick={() => handleBuy(b.box_id)} disabled={(user?.tokens || 0) < b.cost}
-                  style={{
-                    padding: '0.5rem 1rem', borderRadius: '0.5rem',
-                    background: (user?.tokens || 0) >= b.cost ? rarityColors[b.rarity] : 'var(--border)',
-                    color: 'white', border: 'none', fontWeight: 700,
-                    cursor: (user?.tokens || 0) >= b.cost ? 'pointer' : 'not-allowed', fontSize: '0.85rem',
-                  }}>
-                  🪙 {b.cost} 구매
-                </button>
-              )}
-              {b.box_id === 'common_box' && !b.owned && b.cost === 0 && (
-                <button onClick={() => handleBuy(b.box_id)}
-                  style={{
-                    padding: '0.5rem 1rem', borderRadius: '0.5rem',
-                    background: rarityColors[b.rarity], color: 'white', border: 'none',
-                    fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem',
-                  }}>
-                  🆓 무료 받기
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {openResult && (
-        <BoxOpenModal
-          rewards={openResult.rewards}
-          boxName={openResult.boxName}
-          boxIcon={openResult.boxIcon}
-          onClose={() => setOpenResult(null)}
-        />
-      )}
-    </>
-  );
-};
-
 const Shop: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ user, setUser }) => {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -4675,13 +4336,6 @@ const Shop: React.FC<{ user: User | null; setUser: (u: User) => void }> = ({ use
           ))}
         </div>
       )}
-
-      {/* ─── 보상 상자 섹션 ─── */}
-      <h2 style={{ color: 'var(--color-4)', fontSize: '2rem', marginBottom: '0.5rem', marginTop: '3rem', textAlign: 'center' }}>🎁 보상 상자</h2>
-      <p style={{ textAlign: 'center', opacity: 0.7, marginBottom: '2rem', fontSize: '0.9rem' }}>
-        상자를 열어 토큰, XP, 피버타임 등 다양한 보상을 획득하세요!
-      </p>
-      <ShopBoxes user={user} setUser={setUser} />
     </main>
   );
 };
@@ -4859,6 +4513,11 @@ const AppContent: React.FC = () => {
     <>
       <a href="#main-content" className="skip-link" style={{ position: 'absolute', left: '-9999px', top: 0, zIndex: 9999, padding: '1rem', background: '#5c95ff', color: 'white' }} onFocus={e => e.currentTarget.style.left = '0'} onBlur={e => e.currentTarget.style.left = '-9999px'}>본문으로 바로가기</a>
       <Navbar user={user} onLogout={handleLogout} theme={theme} toggleTheme={toggleTheme} onLogoClick={handleLogoClick} />
+      {user?.fever_expires_at && new Date(user.fever_expires_at) > new Date() && (
+        <div style={{ textAlign: 'center', padding: '0.5rem', background: 'linear-gradient(90deg, #ff6b6b22, #ff6b6b44, #ff6b6b22)', borderBottom: '1px solid #ff6b6b', fontWeight: 800, color: '#ff6b6b', fontSize: '1rem' }}>
+          🔥 {user.fever_multiplier}배 피버타임 활성중! — <FeverTimer expiresAt={user.fever_expires_at} />
+        </div>
+      )}
       <div id="main-content" role="main">
         <Routes>
           <Route path="/" element={<Landing user={user} />} />
