@@ -158,6 +158,9 @@ const GooseRoom: React.FC = () => {
           <p className="goose-room-description">
             만든 사람:구윤재<br />
             만든사람이 맨날 끌어안고 자는 거위인형임
+            그것은 상당한 거위인!
+            꽥!!!!!!
+            (참고: 만든사람은 항상 거위를 꾸스 라고 부른다.)
           </p>
           <p className="goose-room-hint">모델을 드래그해서 돌려보세요. 자동 회전도 켜져 있습니다.</p>
         </div>
