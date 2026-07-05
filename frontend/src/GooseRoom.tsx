@@ -37,7 +37,7 @@ const GooseRoom: React.FC = () => {
     controls.minDistance = 1.2;
     controls.maxDistance = 3.2;
     controls.autoRotate = true;
-    controls.autoRotateSpeed = 30;
+    controls.autoRotateSpeed = 200;
 
     let goose: THREE.Object3D | null = null;
     let rafId = 0;
