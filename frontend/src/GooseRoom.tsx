@@ -37,7 +37,7 @@ const GooseRoom: React.FC = () => {
     controls.minDistance = 1.2;
     controls.maxDistance = 3.2;
     controls.autoRotate = true;
-    controls.autoRotateSpeed = 1.2;
+    controls.autoRotateSpeed = 30;
 
     let goose: THREE.Object3D | null = null;
     let rafId = 0;
@@ -157,10 +157,10 @@ const GooseRoom: React.FC = () => {
           <h1>거위의 방</h1>
           <p className="goose-room-description">
             만든 사람:구윤재<br />
-            만든사람이 맨날 끌어안고 자는 거위인형임
-            그것은 상당한 거위인!
-            꽥!!!!!!
-            (참고: 만든사람은 항상 거위를 꾸스 라고 부른다.)
+            만든사람이 맨날 끌어안고 자는 거위인형임<br />
+            그것은 상당한 거위인!<br />
+            꽥!!!!!!<br />
+            (참고: 만든사람은 항상 거위를 꾸스 라고 부른다.)<br />
           </p>
           <p className="goose-room-hint">모델을 드래그해서 돌려보세요. 자동 회전도 켜져 있습니다.</p>
         </div>
