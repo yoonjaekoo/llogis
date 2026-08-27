@@ -225,7 +225,9 @@ export const processSubmission = async (userId: number, problemId: number, isCor
       'SELECT total_attempts, correct_attempts FROM problems WHERE id = $1',
       [problemId]
     );
-    if (counterRes.rows.length > 0) {
+    // Custom problems use the manually entered difficulty/reward permanently.
+    // Only generated/non-custom problems participate in solve-rate auto balancing.
+    if (!is_custom && counterRes.rows.length > 0) {
       const { total_attempts, correct_attempts } = counterRes.rows[0];
       const solveRate = total_attempts > 0 ? correct_attempts / total_attempts : 0.5;
       const newDifficulty = calculateDifficultyFromSolveRate(solveRate);
