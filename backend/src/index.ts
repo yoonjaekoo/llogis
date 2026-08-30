@@ -338,6 +338,49 @@ const ensureSchema = async () => {
       ('lucky_legend', '전설의 행운', '레전더리 상자에서 획득', '🍀', NULL, 0)
     ON CONFLICT (badge_id) DO NOTHING
   `);
+  // 서비스 배포 뒤에도 한 번만 추가되는 검증 완료 보스 커스텀 문제
+  const bossProblemTitle = '보스: 제곱수 사슬';
+  const bossProblemContent = `서로 다른 17개의 상자에 $1,2,3,\\dots,17$을 각각 하나씩 넣어 일렬로 배열하였다.
+
+왼쪽부터 들어 있는 수를
+
+$$a_1,a_2,\\dots,a_{17}$$
+
+이라 하자.
+
+모든 $k=1,2,\\dots,16$에 대하여
+
+$$a_k+a_{k+1}$$
+
+은 어떤 자연수의 제곱이다.
+
+이때 반드시 같은 값으로 결정되는 $a_9$의 값을 구하여라.
+
+정답 입력: 숫자 하나`;
+
+  await pool.query(`
+    INSERT INTO problems
+      (title, content, answer, initial_difficulty, current_difficulty, type, estimated_time, is_custom)
+    SELECT $1, $2, $3, $4, $5, 'Calculation', $6, TRUE
+    WHERE NOT EXISTS (
+      SELECT 1 FROM problems WHERE title = $1
+    )
+  `, [bossProblemTitle, bossProblemContent, '12', 300000, 300000, 15]);
+
+  await pool.query(`
+    INSERT INTO tags (name) VALUES ('수학 퍼즐')
+    ON CONFLICT (name) DO NOTHING
+  `);
+
+  await pool.query(`
+    INSERT INTO problem_tags (problem_id, tag_id)
+    SELECT p.id, t.id
+    FROM problems p
+    CROSS JOIN tags t
+    WHERE p.title = $1 AND t.name = '수학 퍼즐'
+    ON CONFLICT DO NOTHING
+  `, [bossProblemTitle]);
+
 };
 
 const authenticateToken = (req: any, res: any, next: NextFunction) => {
