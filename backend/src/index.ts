@@ -117,7 +117,8 @@ const ensureSchema = async () => {
     WHERE (total_attempts IS NULL OR total_attempts = 0) AND (is_custom IS NULL OR is_custom = FALSE)
   `);
   await pool.query(`
-    UPDATE problems SET current_difficulty = 60000
+    UPDATE problems
+    SET current_difficulty = GREATEST(COALESCE(current_difficulty, 60000), 60000)
     WHERE (total_attempts IS NULL OR total_attempts = 0) AND is_custom = TRUE
   `);
   // Drop the CASCADE constraint and recreate with SET NULL (submissions survive problem deletion)
